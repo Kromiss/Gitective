@@ -1,0 +1,23 @@
+<svg viewBox="0 0 200 200" width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+<!-- Gitective logo: detective fox (full detail) -->
+<path d="M44 96 Q32 46 58 34 Q72 58 74 78 Z" fill="#B8542A"/>
+<path d="M51 88 Q45 58 58 47 Q66 62 67 78 Z" fill="#7A3418"/>
+<path d="M156 96 Q168 46 142 34 Q128 58 126 78 Z" fill="#B8542A"/>
+<path d="M149 88 Q155 58 142 47 Q134 62 133 78 Z" fill="#7A3418"/>
+<path d="M100 172 C68 172 40 144 40 110 C40 84 64 70 100 70 C136 70 160 84 160 110 C160 144 132 172 100 172 Z" fill="#C9622F"/>
+<path d="M100 174 C80 174 64 160 60 142 C76 140 90 132 100 122 C110 132 124 140 140 142 C136 160 120 174 100 174 Z" fill="#F5E9DA"/>
+<line x1="65" y1="106" x2="50" y2="99" stroke="#1E2A44" stroke-width="4" stroke-linecap="round"/>
+<line x1="135" y1="106" x2="150" y2="99" stroke="#1E2A44" stroke-width="4" stroke-linecap="round"/>
+<circle cx="80" cy="110" r="15" fill="#FFFFFF" fill-opacity="0.4" stroke="#1E2A44" stroke-width="5"/>
+<circle cx="120" cy="110" r="15" fill="#FFFFFF" fill-opacity="0.4" stroke="#1E2A44" stroke-width="5"/>
+<line x1="95" y1="108" x2="105" y2="108" stroke="#1E2A44" stroke-width="4" stroke-linecap="round"/>
+<circle cx="80" cy="111" r="4.5" fill="#1E2A44"/>
+<circle cx="120" cy="111" r="4.5" fill="#1E2A44"/>
+<ellipse cx="100" cy="148" rx="8" ry="6" fill="#2A1E16"/>
+<path d="M100 154 Q100 162 92 162 M100 154 Q100 162 108 162" stroke="#2A1E16" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+<path d="M60 80 C60 44 140 44 140 80 Z" fill="#34425F"/>
+<line x1="100" y1="50" x2="100" y2="72" stroke="#4C5D82" stroke-width="2"/>
+<circle cx="100" cy="48" r="4" fill="#232E46"/>
+<rect x="60" y="71" width="80" height="8" fill="#232E46"/>
+<path d="M50 82 Q100 68 150 82 Q100 94 50 82 Z" fill="#232E46"/>
+</svg>

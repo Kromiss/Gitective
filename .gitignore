@@ -1,0 +1,9 @@
+# Local configuration: contains the GitLab token
+config.json
+config.json.tmp
+# Avatar cache
+avatars/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
