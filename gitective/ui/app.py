@@ -158,6 +158,18 @@ class App:
         self.settings.filters = self.filters.to_settings()
         self._save()
 
+    def column_widths(self, table: str) -> dict[str, int]:
+        """Column widths the user set for a table."""
+        return dict(self.settings.column_widths.get(table, {}))
+
+    def save_column_widths(self, table: str, widths: dict[str, int]) -> None:
+        """Remember dragged column widths in config.json."""
+        if widths:
+            self.settings.column_widths[table] = widths
+        else:
+            self.settings.column_widths.pop(table, None)
+        self._save()
+
     def remember_users(self, users: Iterable[User]) -> None:
         for user in users:
             self.known_users[user.id] = user
@@ -199,6 +211,7 @@ class App:
             self.settings.gitlab_url, self.settings.token, self.settings.verify_ssl)
         theme_changed = new.theme != self.settings.theme
         new.filters = self.filters.to_settings()
+        new.column_widths = self.settings.column_widths
         self.settings = new
         self._save()
         self._build_services()

@@ -74,7 +74,9 @@ class MrTab(ttk.Frame):
                   style="Muted.TLabel").pack(side="right")
 
         self.grid_view = DataGrid(self, BASE_COLUMNS, app.get_theme, on_sort=self._sort_by, on_link=app.open_url,
-                                  empty_text="Aucune merge request pour ces filtres")
+                                  empty_text="Aucune merge request pour ces filtres",
+                                  widths=app.column_widths("mr"),
+                                  on_widths_changed=lambda w: app.save_column_widths("mr", w))
         self.grid_view.pack(fill="both", expand=True, padx=16)
         self.pager = Pager(self, self._page_changed, page_size=app.filters.page_size)
         self.pager.pack(fill="x", padx=16, pady=10)
@@ -89,7 +91,7 @@ class MrTab(ttk.Frame):
         rules = self.app.rules
         criteria = rules.criteria if rules else []
         columns = [*BASE_COLUMNS,
-                   *(Column(f"c:{c.id}", c.label, 78, kind="status", align="center") for c in criteria),
+                   *(Column(f"c:{c.id}", c.label, 60, kind="status", align="center") for c in criteria),
                    SCORE_COLUMN]
         self._criteria_ids = [c.id for c in criteria]
         if self._sort_key not in self._sort_keys():

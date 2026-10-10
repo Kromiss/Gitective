@@ -103,6 +103,9 @@ The score is the weighted share of passing rules among the applicable ones.
 - Click a title to open the MR in your browser.
 - Hover a red **KO** cell to see why the rule failed.
 - Click a column header to sort the whole list.
+- Columns fit their title when the window opens. Drag a header border to
+  resize a column and double-click the border to fit it again. Widths are
+  saved in `config.json`; this works in every table.
 
 **Commits without MR tab**
 

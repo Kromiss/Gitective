@@ -74,7 +74,9 @@ class CommitsTab(ttk.Frame):
         self._count.pack(side="left")
         ttk.Label(summary, text="Clic sur un commit : ouvre sa page GitLab", style="Muted.TLabel").pack(side="right")
         self.grid_view = DataGrid(self, COLUMNS, app.get_theme, on_sort=self._sort_by, on_link=app.open_url,
-                                  empty_text="Aucun commit hors MR sur cette période")
+                                  empty_text="Aucun commit hors MR sur cette période",
+                                  widths=app.column_widths("commits"),
+                                  on_widths_changed=lambda w: app.save_column_widths("commits", w))
         self.grid_view.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         self.grid_view.set_sort(self._sort_key, self._ascending)
         app.filters.subscribe(self._filters_changed)

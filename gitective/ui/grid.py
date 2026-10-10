@@ -13,7 +13,10 @@ from gitective.ui.themes import Theme
 from gitective.ui.widgets import Tooltip
 
 ROW_HEIGHT = 34
-HEADER_HEIGHT = 48
+HEADER_HEIGHT = 38
+MIN_WIDTH = 40
+GRIP = 5  # px on each side of a header border that start a resize
+TITLE_PAD = 26  # room around a header title, including the sort arrow
 PAD = 10
 STATUS_TEXT = {"ok": "OK", "ko": "KO", "na": "N/A"}
 
@@ -31,7 +34,7 @@ class Column:
 
     key: str
     title: str
-    width: int
+    width: int  # minimum width needed by the cell content
     kind: str = "text"
     stretch: bool = False
     align: str = "w"
@@ -49,6 +52,8 @@ class DataGrid(ttk.Frame):
         on_sort: Callable[[str], None] | None = None,
         on_link: Callable[[str], None] | None = None,
         empty_text: str = "Aucune donnée",
+        widths: dict[str, int] | None = None,
+        on_widths_changed: Callable[[dict[str, int]], None] | None = None,
     ) -> None:
         super().__init__(master)
         self.columns = list(columns)
@@ -60,6 +65,10 @@ class DataGrid(ttk.Frame):
         self._sort_key: str | None = None
         self._ascending = True
         self._x: list[tuple[int, int]] = []
+        # Widths set by the user (dragged), by column key; saved in config.json.
+        self._user_widths: dict[str, int] = dict(widths or {})
+        self._on_widths_changed = on_widths_changed
+        self._drag: tuple[int, float, int] | None = None  # (column index, start x, start width)
         self.header = tk.Canvas(self, height=HEADER_HEIGHT, highlightthickness=0, borderwidth=0)
         self.body = tk.Canvas(self, highlightthickness=0, borderwidth=0)
         self.header.self_themed = True  # type: ignore[attr-defined]
@@ -82,7 +91,11 @@ class DataGrid(ttk.Frame):
         self.body.bind("<Button-4>", lambda e: self.body.yview_scroll(-1, "units"))
         self.body.bind("<Button-5>", lambda e: self.body.yview_scroll(1, "units"))
         self.body.bind("<Shift-MouseWheel>", lambda e: self._xview("scroll", str(int(-e.delta / 120) or -1), "units"))
-        self.header.bind("<Button-1>", self._on_header_click)
+        self.header.bind("<Button-1>", self._on_header_press)
+        self.header.bind("<B1-Motion>", self._on_header_drag)
+        self.header.bind("<ButtonRelease-1>", self._on_header_release)
+        self.header.bind("<Double-Button-1>", self._on_header_double)
+        self.header.bind("<Motion>", self._on_header_motion)
 
     # -------------------------------------------------------------- Public API
 
@@ -104,16 +117,28 @@ class DataGrid(ttk.Frame):
 
     # ---------------------------------------------------------------- Drawing
 
-    def _layout(self, width: int) -> None:
-        """Give spare width to stretch columns; wider than the view scrolls horizontally."""
-        fixed = sum(c.width for c in self.columns)
-        stretchers = [c for c in self.columns if c.stretch]
-        spare = max(0, width - fixed - 2 * PAD)
+    def auto_width(self, col: Column, bold: tkfont.Font | None = None) -> int:
+        """Width showing the whole title on one line, never below the content minimum."""
+        if bold is None:
+            theme = self._get_theme()
+            bold = tkfont.Font(font=(theme.font[0], theme.font[1], "bold"))
+        return max(col.width, bold.measure(col.title) + TITLE_PAD)
+
+    def _layout(self, width: int, bold: tkfont.Font) -> None:
+        """Compute column positions.
+
+        Each column uses the width set by the user, else its automatic width.
+        Stretch columns not resized by the user share the spare space; a
+        table wider than the view scrolls horizontally.
+        """
+        base = [self._user_widths.get(c.key) or self.auto_width(c, bold) for c in self.columns]
+        stretchers = [i for i, c in enumerate(self.columns) if c.stretch and c.key not in self._user_widths]
+        spare = max(0, width - sum(base) - 2 * PAD)
         extra = spare // len(stretchers) if stretchers else 0
         x = PAD
         self._x = []
-        for col in self.columns:
-            w = col.width + (extra if col.stretch else 0)
+        for index, w in enumerate(base):
+            w += extra if index in stretchers else 0
             self._x.append((x, x + w))
             x += w
         self._content_width = x + PAD
@@ -124,7 +149,7 @@ class DataGrid(ttk.Frame):
         bold = tkfont.Font(font=(theme.font[0], theme.font[1], "bold"))
         mono = tkfont.Font(font=theme.mono)
         view_width = max(self.body.winfo_width(), 200)
-        self._layout(view_width)
+        self._layout(view_width, bold)
         width = max(view_width, self._content_width)
         self._toggle_hscroll(self._content_width > view_width)
         self.header.configure(background=theme.header)
@@ -136,7 +161,9 @@ class DataGrid(ttk.Frame):
             title = col.title
             if col.key == self._sort_key:
                 title += " ▲" if self._ascending else " ▼"
-            self._text(self.header, x0, x1, HEADER_HEIGHT / 2, title, bold, theme.text, col.align, wrap=True)
+            self._text(self.header, x0, x1, HEADER_HEIGHT / 2, title, bold, theme.text, col.align)
+            # Column separator, also the handle for resizing.
+            self.header.create_line(x1, 8, x1, HEADER_HEIGHT - 8, fill=theme.border)
         self.header.create_line(0, HEADER_HEIGHT - 1, width, HEADER_HEIGHT - 1, fill=theme.border)
 
         if not self._rows:
@@ -253,12 +280,59 @@ class DataGrid(ttk.Frame):
         else:
             self._tooltip.hide()
 
-    def _on_header_click(self, event: tk.Event) -> None:
+    # ------------------------------------------------------- Header: sort & resize
+
+    def _border_at(self, x: float) -> int | None:
+        """Index of the column whose right border is under x, if any."""
+        for index, (_, x1) in enumerate(self._x):
+            if abs(x - x1) <= GRIP:
+                return index
+        return None
+
+    def _on_header_motion(self, event: tk.Event) -> None:
+        if self._drag is None:
+            near = self._border_at(self.header.canvasx(event.x)) is not None
+            self.header.configure(cursor="sb_h_double_arrow" if near else "")
+
+    def _on_header_press(self, event: tk.Event) -> None:
         x = self.header.canvasx(event.x)
+        border = self._border_at(x)
+        if border is not None:
+            x0, x1 = self._x[border]
+            self._drag = (border, x, x1 - x0)
+            return
         for col, (x0, x1) in zip(self.columns, self._x):
             if x0 <= x < x1 and col.sortable and self._on_sort:
                 self._on_sort(col.key)
                 return
+
+    def _on_header_drag(self, event: tk.Event) -> None:
+        if self._drag is None:
+            return
+        index, start_x, start_width = self._drag
+        new_width = max(MIN_WIDTH, int(start_width + self.header.canvasx(event.x) - start_x))
+        self._user_widths[self.columns[index].key] = new_width
+        self.redraw()
+
+    def _on_header_release(self, _event: tk.Event) -> None:
+        if self._drag is not None:
+            index, _, start_width = self._drag
+            self._drag = None
+            if self._user_widths.get(self.columns[index].key, start_width) != start_width:
+                self._widths_changed()
+
+    def _on_header_double(self, event: tk.Event) -> None:
+        """Double-click on a border: back to the automatic width."""
+        border = self._border_at(self.header.canvasx(event.x))
+        if border is not None:
+            self._drag = None
+            self._user_widths.pop(self.columns[border].key, None)
+            self.redraw()
+            self._widths_changed()
+
+    def _widths_changed(self) -> None:
+        if self._on_widths_changed:
+            self._on_widths_changed(dict(self._user_widths))
 
 
 def _ellipsize(text: str, font: tkfont.Font, room: int) -> str:

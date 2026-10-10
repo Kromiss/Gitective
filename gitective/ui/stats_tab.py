@@ -92,7 +92,9 @@ class StatsTab(ttk.Frame):
         ttk.Button(bar, text="⟳", width=3, style="Accent.TButton", command=app.refresh).pack(side="right", anchor="s")
 
         self.grid_view = DataGrid(self, HEAD_COLUMNS, app.get_theme, on_sort=self._sort_by,
-                                  empty_text="Aucune merge request sur cette période")
+                                  empty_text="Aucune merge request sur cette période",
+                                  widths=app.column_widths("stats"),
+                                  on_widths_changed=lambda w: app.save_column_widths("stats", w))
         self.grid_view.pack(fill="both", expand=True, padx=16, pady=(12, 0))
         self.update_columns()
         self.chart = WeeklyChart(self, app.get_theme)
@@ -106,7 +108,7 @@ class StatsTab(ttk.Frame):
         criteria = self.app.rules.criteria if self.app.rules else []
         self._criteria_ids = [c.id for c in criteria]
         columns = [*HEAD_COLUMNS,
-                   *(Column(f"ko:{c.id}", f"KO {c.label}", 100, align="e") for c in criteria),
+                   *(Column(f"ko:{c.id}", f"KO {c.label}", 60, align="e") for c in criteria),
                    LEAD_COLUMN]
         if self._sort_key not in self._sort_keys():
             self._sort_key, self._ascending = "score", False

@@ -105,6 +105,8 @@ class Settings:
     people: list[Person] = dc_field(default_factory=list)
     theme: str = "light"
     filters: Filters = dc_field(default_factory=Filters)
+    # Column widths set by dragging, per table ("mr", "commits", "stats") then column key.
+    column_widths: dict[str, dict[str, int]] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -140,6 +142,11 @@ class Settings:
             people=[Person(**_pick(p, Person)) for p in data.get("people") or []],
             theme=theme if theme in THEMES else base.theme,
             filters=Filters(**filters_data),
+            column_widths={
+                str(table): {str(k): int(v) for k, v in widths.items()}
+                for table, widths in (data.get("column_widths") or {}).items()
+                if isinstance(widths, dict)
+            },
         )
 
     @property

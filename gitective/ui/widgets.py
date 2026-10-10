@@ -32,7 +32,13 @@ class Tooltip:
         if text != self._text:
             self._label.configure(text=text, background=theme.tooltip[0], foreground=theme.tooltip[1], font=theme.font)
             self._text = text
-        self._window.wm_geometry(f"+{x_root + 14}+{y_root + 16}")
+        # Keep the tooltip inside the screen (flip to the left near the right edge).
+        self._window.update_idletasks()
+        width = self._window.winfo_reqwidth()
+        x = x_root + 14
+        if x + width > self._window.winfo_screenwidth():
+            x = max(0, x_root - width - 8)
+        self._window.wm_geometry(f"+{x}+{y_root + 16}")
         self._window.deiconify()
         self._window.lift()
 

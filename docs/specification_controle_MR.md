@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.2 (brouillon) — 08/10/2026
+Version : 1.3 (brouillon) — 08/10/2026
 
 ## 1. Objet
 
@@ -40,6 +40,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Correspondances personnes ↔ comptes | aucune |
 | Thème | Clair |
 | Derniers filtres utilisés (état, dates, auteurs, dépôts, taille de page) | Mergées « Depuis hier », 20 |
+| Largeurs de colonnes modifiées | aucune (ajustement au titre) |
 
 ## 4. Sélection des dépôts
 
@@ -160,6 +161,7 @@ Grille personnalisée (cellules colorées individuellement). Colonnes :
 | TA-01 | Survol d'une cellule KO : infobulle affichant le détail de l'erreur (ex. « PROJ-12 (titre) ≠ PROJ-21 (lien) »). |
 | TA-02 | Clic sur un en-tête de colonne : tri sur toute la liste filtrée (croissant / décroissant), puis repagination. |
 | TA-03 | Score moyen affiché en en-tête, calculé sur toute la liste filtrée. |
+| TA-04 | Largeur des colonnes : à l'ouverture, chaque colonne s'ajuste pour afficher son titre en entier sur une ligne. L'utilisateur peut la modifier en glissant la bordure de l'en-tête ; un double-clic sur la bordure revient à l'ajustement automatique. Les largeurs modifiées sont mémorisées dans `config.json`, par tableau (MR, Commits, Statistiques). S'applique aux trois tableaux. |
 
 ### 6.3 Pagination
 
