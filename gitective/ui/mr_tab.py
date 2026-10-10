@@ -7,17 +7,16 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
-from gitective.api.errors import GitLabError
-from gitective.api.models import MergeRequest
-from gitective.config.settings import TrackedProject
 from gitective.core.dates import format_datetime
-from gitective.core.merge_requests import evaluate_all, load_merge_requests
+from gitective.core.merge_requests import evaluate_all, load_merge_requests, load_pairs
 from gitective.core.rules import Evaluation, score_level
 from gitective.core.stats import average
+from gitective.ui.data_tab import DataTab
 from gitective.ui.filters import MrFilterBar
-from gitective.ui.grid import Column, DataGrid, sort_rows
+from gitective.ui.grid import Column, sort_rows
 from gitective.ui.pagination import Pager
-from gitective.ui.widgets import matches, search_box
+from gitective.core.search import matches
+from gitective.ui.widgets import search_box
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
@@ -48,20 +47,19 @@ BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
 Loaded = tuple[list[Evaluation], list[Exception]]
 
 
-class MrTab(ttk.Frame):
+class MrTab(DataTab):
     """Lists the merge requests of the tracked repositories with their checks."""
 
+    table = "mr"
+
     def __init__(self, master: tk.Misc, app: App) -> None:
-        super().__init__(master)
-        self.app = app
-        self.dirty = True
+        super().__init__(master, app, sort_key="merged", ascending=False)
         self._evaluations: list[Evaluation] = []
         self._visible_rows: list[Evaluation] = []
-        self._sort_key = "merged"
-        self._ascending = False
 
         self.bar = MrFilterBar(self, app.filters, app.get_theme, app.refresh, lambda m: app.notify("error", m))
         self.bar.pack(fill="x")
+        self.repos, self.authors = self.bar.repos, self.bar.authors
         summary = ttk.Frame(self, padding=(16, 10, 16, 6))
         summary.pack(fill="x")
         self._count = ttk.Label(summary, style="Title.TLabel")
@@ -75,10 +73,7 @@ class MrTab(ttk.Frame):
         ttk.Label(summary, text="Clic sur un titre : ouvre la MR dans le navigateur",
                   style="Muted.TLabel").pack(side="right")
 
-        self.grid_view = DataGrid(self, BASE_COLUMNS, app.get_theme, on_sort=self._sort_by, on_link=app.open_url,
-                                  empty_text="Aucune merge request pour ces filtres",
-                                  widths=app.column_widths("mr"),
-                                  on_widths_changed=lambda w: app.save_column_widths("mr", w))
+        self.grid_view = self.make_grid(BASE_COLUMNS, "Aucune merge request pour ces filtres", links=True)
         self.grid_view.pack(fill="both", expand=True, padx=16)
         self.pager = Pager(self, self._page_changed, page_size=app.filters.page_size)
         self.pager.pack(fill="x", padx=16, pady=10)
@@ -116,12 +111,6 @@ class MrTab(ttk.Frame):
         else:
             self.request_reload()
 
-    def request_reload(self) -> None:
-        """Reload now when visible, otherwise on next display (CH-04)."""
-        self.dirty = True
-        if self.app.is_visible(self):
-            self.reload()
-
     def reload(self) -> None:
         self.dirty = False
         if not self.app.ensure_connection():
@@ -137,15 +126,11 @@ class MrTab(ttk.Frame):
         assert client is not None and rules is not None
         self._progress_text.configure(text="Chargement…")
 
+        workers = self.app.settings.parallel_requests
+
         def task(progress: Callable[[int, int], None]) -> Loaded:
-            pairs: list[tuple[TrackedProject, MergeRequest]] = []
-            errors: list[Exception] = []
-            for project in projects:
-                try:
-                    pairs.extend((project, mr) for mr in load_merge_requests(client, cache, project, state, period))
-                except GitLabError as exc:
-                    errors.append(exc)
-            return evaluate_all(client, cache, pairs, rules, people, progress), errors
+            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(client, cache, p, state, period))
+            return evaluate_all(client, cache, pairs, rules, people, progress, workers), list(errors)
 
         self.app.runner.run("mr", task, self._loaded, self._failed, on_progress=self._on_progress)
 
@@ -159,12 +144,8 @@ class MrTab(ttk.Frame):
     def _loaded(self, result: Loaded) -> None:
         evaluations, errors = result
         self._progress_text.configure(text="")
-        if errors:
-            self.app.report_error(errors[0], extra=len(errors) - 1)
-        self.app.remember_users(u for e in evaluations for u in (e.mr.author, e.mr.merged_by) if u)
+        self.absorb(evaluations, errors)
         self._evaluations = evaluations
-        self.app.register_people((e.author.key, e.author.name) for e in evaluations)
-        self.app.register_people((e.merger.key, e.merger.name) for e in evaluations if e.merger)
         self._apply_view(reset_page=True)
 
     # ---------------------------------------------------------------- View
@@ -221,16 +202,6 @@ class MrTab(ttk.Frame):
             self.app.persist_filters()
         self._render_page()
 
-    def _sort_by(self, key: str) -> None:
-        """Sort the whole filtered list, then go back to page 1 (TA-02)."""
-        self._ascending = not self._ascending if key == self._sort_key else True
-        self._sort_key = key
-        self.grid_view.set_sort(key, self._ascending)
-        self._apply_view(reset_page=True)
-
     def restyle(self) -> None:
         self._show_summary()
-        self.grid_view.redraw()
-
-    def update_repo_items(self) -> None:
-        self.bar.repos.set_items([(str(p.id), p.path) for p in self.app.settings.projects])
+        super().restyle()

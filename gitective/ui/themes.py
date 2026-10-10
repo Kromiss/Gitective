@@ -126,6 +126,8 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     style.map("TRadiobutton", background=[("active", theme.surface)],
               indicatorbackground=[("selected", theme.accent)])
     style.configure("TEntry", fieldbackground=theme.surface, foreground=theme.text, padding=4)
+    style.configure("TSpinbox", fieldbackground=theme.surface, foreground=theme.text, background=theme.surface,
+                    arrowcolor=theme.text, padding=4)
     style.configure("TCombobox", fieldbackground=theme.surface, foreground=theme.text, background=theme.surface,
                     arrowcolor=theme.text)
     style.map("TCombobox", fieldbackground=[("readonly", theme.surface)], foreground=[("readonly", theme.text)])

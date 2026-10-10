@@ -19,6 +19,7 @@ AVATAR_DIR = APP_DIR / "avatars"
 FIXED_CRITERIA = ("ticket", "self_merge")
 THEMES = ("light", "dark", "win95", "matrix")
 PAGE_SIZES = (20, 50, 100)
+PARALLEL_RANGE = (1, 16)
 
 # Fields a custom rule can inspect (RP-02).
 RULE_FIELDS = {
@@ -104,6 +105,8 @@ class Settings:
     orange_threshold: float = 50.0
     people: list[Person] = dc_field(default_factory=list)
     theme: str = "light"
+    # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
+    parallel_requests: int = 6
     filters: Filters = dc_field(default_factory=Filters)
     # Column widths set by dragging, per table ("mr", "commits", "stats") then column key.
     column_widths: dict[str, dict[str, int]] = dc_field(default_factory=dict)
@@ -115,38 +118,25 @@ class Settings:
     def from_dict(cls, data: dict[str, Any]) -> Settings:
         """Build settings from JSON, ignoring unknown keys and filling defaults."""
         base = cls()
-        raw_weights = data.get("weights") or {}
-        weights = {**base.weights, **{k: float(v) for k, v in raw_weights.items() if k in FIXED_CRITERIA}}
-        filters_data = _pick(data.get("filters") or {}, Filters)
+        weights = {k: float(v) for k, v in (data.get("weights") or {}).items() if k in FIXED_CRITERIA}
         theme = data.get("theme", base.theme)
-        if "rules" in data:
-            rules = [CustomRule(**_pick(r, CustomRule)) for r in data.get("rules") or []]
-        else:
-            # Older config: convert title_regex / link_regex into custom rules.
-            rules = default_rules()
-            rules[0].pattern = str(data.get("title_regex", ""))
-            rules[1].pattern = str(data.get("link_regex", ""))
-            rules[0].weight = float(raw_weights.get("title", 25.0))
-            rules[1].weight = float(raw_weights.get("link", 25.0))
+        rules = data.get("rules")
         return cls(
             gitlab_url=str(data.get("gitlab_url", "")),
             token=str(data.get("token", "")),
             verify_ssl=bool(data.get("verify_ssl", True)),
             projects=[TrackedProject(**_pick(p, TrackedProject)) for p in data.get("projects") or []],
-            rules=rules,
+            rules=[CustomRule(**_pick(r, CustomRule)) for r in rules] if rules is not None else base.rules,
             link_regex=str(data.get("link_regex", "")),
             ticket_regex=str(data.get("ticket_regex", "")),
-            weights=weights,
+            weights={**base.weights, **weights},
             green_threshold=float(data.get("green_threshold", base.green_threshold)),
             orange_threshold=float(data.get("orange_threshold", base.orange_threshold)),
             people=[Person(**_pick(p, Person)) for p in data.get("people") or []],
             theme=theme if theme in THEMES else base.theme,
-            filters=Filters(**filters_data),
-            column_widths={
-                str(table): {str(k): int(v) for k, v in widths.items()}
-                for table, widths in (data.get("column_widths") or {}).items()
-                if isinstance(widths, dict)
-            },
+            filters=Filters(**_pick(data.get("filters") or {}, Filters)),
+            parallel_requests=clamp_parallel(data.get("parallel_requests", base.parallel_requests)),
+            column_widths=_column_widths(data.get("column_widths")),
         )
 
     @property
@@ -157,6 +147,22 @@ class Settings:
     @property
     def active_rules(self) -> list[CustomRule]:
         return [r for r in self.rules if r.active]
+
+
+def clamp_parallel(value: Any) -> int:
+    """Number of simultaneous requests, forced into PARALLEL_RANGE."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = Settings.parallel_requests
+    return max(PARALLEL_RANGE[0], min(PARALLEL_RANGE[1], number))
+
+
+def _column_widths(data: Any) -> dict[str, dict[str, int]]:
+    """Saved column widths, ignoring malformed entries."""
+    if not isinstance(data, dict):
+        return {}
+    return {str(t): {str(k): int(v) for k, v in w.items()} for t, w in data.items() if isinstance(w, dict)}
 
 
 def _pick(data: dict[str, Any], cls: type) -> dict[str, Any]:

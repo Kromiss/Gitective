@@ -57,11 +57,6 @@ def search_box(master: tk.Misc, on_change: Callable[[], None]) -> tk.StringVar:
     return var
 
 
-def matches(needle: str, *fields: str | None) -> bool:
-    """Case-insensitive substring search over several fields."""
-    return not needle or needle in " ".join(f for f in fields if f).casefold()
-
-
 class ScrollableFrame(ttk.Frame):
     """Frame with a vertical scrollbar; put children in .inner."""
 

@@ -144,19 +144,20 @@ class DataGrid(ttk.Frame):
         self._content_width = x + PAD
 
     def redraw(self) -> None:
+        """Redraw header and rows with the current theme, widths and sort."""
         theme = self._get_theme()
-        font = tkfont.Font(font=theme.font)
-        bold = tkfont.Font(font=(theme.font[0], theme.font[1], "bold"))
-        mono = tkfont.Font(font=theme.mono)
+        fonts = (tkfont.Font(font=theme.font), tkfont.Font(font=(theme.font[0], theme.font[1], "bold")),
+                 tkfont.Font(font=theme.mono))
         view_width = max(self.body.winfo_width(), 200)
-        self._layout(view_width, bold)
+        self._layout(view_width, fonts[1])
         width = max(view_width, self._content_width)
         self._toggle_hscroll(self._content_width > view_width)
-        self.header.configure(background=theme.header)
-        self.body.configure(background=theme.surface)
-        self.header.delete("all")
-        self.body.delete("all")
+        self._draw_header(theme, fonts[1], width)
+        self._draw_rows(theme, fonts, width)
 
+    def _draw_header(self, theme: Theme, bold: tkfont.Font, width: int) -> None:
+        self.header.configure(background=theme.header)
+        self.header.delete("all")
         for col, (x0, x1) in zip(self.columns, self._x):
             title = col.title
             if col.key == self._sort_key:
@@ -165,32 +166,38 @@ class DataGrid(ttk.Frame):
             # Column separator, also the handle for resizing.
             self.header.create_line(x1, 8, x1, HEADER_HEIGHT - 8, fill=theme.border)
         self.header.create_line(0, HEADER_HEIGHT - 1, width, HEADER_HEIGHT - 1, fill=theme.border)
+        self.header.configure(scrollregion=(0, 0, width, HEADER_HEIGHT))
 
+    def _draw_rows(self, theme: Theme, fonts: tuple[tkfont.Font, tkfont.Font, tkfont.Font], width: int) -> None:
+        font, bold, mono = fonts
+        self.body.configure(background=theme.surface)
+        self.body.delete("all")
         if not self._rows:
             self.body.create_text(width / 2, 40, text=self._empty_text, fill=theme.muted, font=font)
             self.body.configure(scrollregion=(0, 0, width, 80))
-            self.header.configure(scrollregion=(0, 0, width, HEADER_HEIGHT))
             return
-
         for index, row in enumerate(self._rows):
             top = index * ROW_HEIGHT
-            mid = top + ROW_HEIGHT / 2
             for col, (x0, x1) in zip(self.columns, self._x):
-                value = row.get(col.key)
-                if col.kind == "status" and value:
-                    self._pill(x0, x1, mid, STATUS_TEXT.get(value[0], value[0]), theme.status_colors(value[0]), bold)
-                elif col.kind == "score" and value:
-                    self._pill(x0, x1, mid, value[0], theme.level_colors(value[1]), bold, minimum=52)
-                elif col.kind == "link" and value:
-                    self._text(self.body, x0, x1, mid, value[0], font, theme.link, col.align, underline=True)
-                elif col.kind == "avatar" and value:
-                    self._avatar(x0, x1, mid, value, font, bold, theme)
-                elif value not in (None, ""):
-                    self._text(self.body, x0, x1, mid, str(value), mono if col.kind == "mono" else font,
-                               theme.text, col.align)
+                self._draw_cell(col, row.get(col.key), x0, x1, top + ROW_HEIGHT / 2, theme, fonts)
             self.body.create_line(0, top + ROW_HEIGHT - 1, width, top + ROW_HEIGHT - 1, fill=theme.header)
         self.body.configure(scrollregion=(0, 0, width, len(self._rows) * ROW_HEIGHT))
-        self.header.configure(scrollregion=(0, 0, width, HEADER_HEIGHT))
+
+    def _draw_cell(self, col: Column, value: Any, x0: int, x1: int, mid: float, theme: Theme,
+                   fonts: tuple[tkfont.Font, tkfont.Font, tkfont.Font]) -> None:
+        font, bold, mono = fonts
+        if value in (None, ""):
+            return
+        if col.kind == "status":
+            self._pill(x0, x1, mid, STATUS_TEXT.get(value[0], value[0]), theme.status_colors(value[0]), bold)
+        elif col.kind == "score":
+            self._pill(x0, x1, mid, value[0], theme.level_colors(value[1]), bold, minimum=52)
+        elif col.kind == "link":
+            self._text(self.body, x0, x1, mid, value[0], font, theme.link, col.align, underline=True)
+        elif col.kind == "avatar":
+            self._avatar(x0, x1, mid, value, font, bold, theme)
+        else:
+            self._text(self.body, x0, x1, mid, str(value), mono if col.kind == "mono" else font, theme.text, col.align)
 
     # ------------------------------------------------------- Horizontal scroll
 
@@ -210,13 +217,8 @@ class DataGrid(ttk.Frame):
             self._xview("moveto", "0")
 
     def _text(self, canvas: tk.Canvas, x0: int, x1: int, y: float, text: str, font: tkfont.Font,
-              color: str, align: str, underline: bool = False, wrap: bool = False) -> None:
+              color: str, align: str, underline: bool = False) -> None:
         room = x1 - x0 - 8
-        if wrap and font.measure(text) > room:
-            x = {"w": x0, "center": (x0 + x1) / 2, "e": x1 - 8}[align]
-            canvas.create_text(x, y, text=text, fill=color, font=font, anchor={"w": "w", "center": "center", "e": "e"}[align],
-                               width=room, justify={"w": "left", "center": "center", "e": "right"}[align])
-            return
         shown = _ellipsize(text, font, room)
         anchor = {"w": "w", "center": "center", "e": "e"}[align]
         x = {"w": x0, "center": (x0 + x1) / 2, "e": x1 - 8}[align]

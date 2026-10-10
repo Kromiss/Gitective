@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import tkinter as tk
 import webbrowser
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from tkinter import ttk
 
@@ -45,6 +45,7 @@ class App:
         self.avatars = AvatarStore(config.AVATAR_DIR, None)
         self.known_users: dict[int, User] = {}
         self._known_people: dict[str, str] = {}
+        self._people_listeners: list[Callable[[list[tuple[str, str]]], None]] = []
         self._build_services()
 
         root.title(f"{APP_NAME} — contrôle des merge requests")
@@ -84,7 +85,6 @@ class App:
     def _build_layout(self) -> None:
         header = ttk.Frame(self.root, style="Bar.TFrame", padding=(16, 8))
         header.pack(side="top", fill="x")
-        self._header = header
         if self.logo_small is not None:
             self._logo_header = self.load_avatar_image(ASSETS / "logo.png", 32)
             ttk.Label(header, image=self._logo_header, style="Bar.TLabel").pack(side="left", padx=(0, 8))
@@ -174,15 +174,19 @@ class App:
         for user in users:
             self.known_users[user.id] = user
 
+    def subscribe_people(self, listener: Callable[[list[tuple[str, str]]], None]) -> None:
+        """Be told the sorted (key, name) list of known people when it grows."""
+        self._people_listeners.append(listener)
+
     def register_people(self, people: Iterable[tuple[str, str]]) -> None:
-        """Add people to the author filters once they appear in the data."""
+        """Record people seen in the data and notify the author filters."""
         before = len(self._known_people)
         for key, name in people:
             self._known_people[key] = name
         if len(self._known_people) != before:
             items = sorted(self._known_people.items(), key=lambda i: i[1].casefold())
-            for widget in (self.mr_tab.bar.authors, self.commits_tab.authors, self.stats_tab.authors):
-                widget.set_items(items)
+            for listener in self._people_listeners:
+                listener(items)
 
     def load_avatar_image(self, path: Path, size: int) -> tk.PhotoImage | None:
         """Load a PNG/GIF and shrink it by an integer factor (AV-06)."""

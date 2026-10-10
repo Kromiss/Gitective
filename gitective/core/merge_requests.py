@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from gitective.api.client import GitLabClient
+from gitective.api.errors import GitLabError
 from gitective.api.models import Commit, MergeRequest
 from gitective.config.settings import TrackedProject
 from gitective.core.cache import SessionCache
 from gitective.core.dates import Period, in_period
+from gitective.core.parallel import run_parallel
 from gitective.core.people import PersonDirectory
 from gitective.core.rules import Evaluation, RuleSet
 
@@ -59,6 +61,21 @@ def load_all_states(
     return [m for m in mrs if not m.draft and in_period(m.created_at, period)]
 
 
+def load_pairs(
+    projects: Sequence[TrackedProject],
+    loader: Callable[[TrackedProject], list[MergeRequest]],
+) -> tuple[list[Pair], list[GitLabError]]:
+    """Load the MRs of each project; a failing project is reported, not fatal (ER-03)."""
+    pairs: list[Pair] = []
+    errors: list[GitLabError] = []
+    for project in projects:
+        try:
+            pairs.extend((project, mr) for mr in loader(project))
+        except GitLabError as exc:
+            errors.append(exc)
+    return pairs, errors
+
+
 def evaluate_all(
     client: GitLabClient,
     cache: SessionCache,
@@ -66,20 +83,18 @@ def evaluate_all(
     rules: RuleSet,
     people: PersonDirectory,
     progress: Progress | None = None,
+    workers: int = 1,
 ) -> list[Evaluation]:
     """Evaluate every (project, MR) pair.
 
-    Commits are fetched only when a rule inspects commit messages (RP-04);
-    this costs one request per MR, cached for the session.
+    Commits are fetched only when a rule inspects commit messages (RP-04):
+    one request per MR, run `workers` at a time and cached for the session.
     """
-    evaluations: list[Evaluation] = []
-    total = len(pairs)
-    for done, (project, mr) in enumerate(pairs, start=1):
-        commits: list[Commit] | None = None
-        if rules.needs_commits:
-            commits = cache.get_or_load(("mr-commits", project.id, mr.iid),
-                                        lambda p=project, m=mr: client.list_merge_request_commits(p.id, m.iid))
-            if progress:
-                progress(done, total)
-        evaluations.append(rules.evaluate(mr, project.path, people, commits))
-    return evaluations
+    commits: list[list[Commit] | None] = [None] * len(pairs)
+    if rules.needs_commits:
+        commits = run_parallel(
+            lambda pair: cache.get_or_load(("mr-commits", pair[0].id, pair[1].iid),
+                                           lambda: client.list_merge_request_commits(pair[0].id, pair[1].iid)),
+            pairs, workers, progress)
+    return [rules.evaluate(mr, project.path, people, mr_commits)
+            for (project, mr), mr_commits in zip(pairs, commits)]

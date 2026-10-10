@@ -2,7 +2,7 @@
 
 import unittest
 
-from gitective.ui.widgets import matches
+from gitective.core.search import matches
 
 
 class SearchTests(unittest.TestCase):

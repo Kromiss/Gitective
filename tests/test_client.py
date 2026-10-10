@@ -153,7 +153,7 @@ class OrphanCommitTests(unittest.TestCase):
         period = day_range(parse_date("01/10/2026"), parse_date("07/10/2026"))
         progress: list[tuple[int, int]] = []
         orphans = find_orphan_commits(client, SessionCache(), [project], period,
-                                      progress=lambda d, t: progress.append((d, t)))
+                                      progress=lambda d, t: progress.append((d, t)), workers=1)
         self.assertEqual([o.commit.short_id for o in orphans], ["bbb"])
         self.assertEqual(progress[-1], (2, 2))
 

@@ -43,6 +43,7 @@ next to `main.py`.
 | Setting | Purpose |
 |---|---|
 | URL, token, SSL verification | Connection to GitLab. You can disable SSL verification for an instance that uses an internal certificate. |
+| Simultaneous requests | Number of GitLab requests sent in parallel for per-commit and per-MR lookups (1–16, default 6). Lower it if your instance answers with HTTP 429. |
 | Custom rules | Any number of regex checks (see below). |
 | Ticket matching | Regex of the ticket link (searched in the description) and regex of the ticket number. The number found in the title must equal the number found in the link. |
 | Weights and thresholds | Each rule's weight in the score, and the color thresholds (green ≥ 100 %, orange ≥ 50 % by default). |

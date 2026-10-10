@@ -8,9 +8,6 @@ from pathlib import Path
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
-from gitective.api.errors import GitLabError
-from gitective.api.models import MergeRequest
-from gitective.config.settings import TrackedProject
 from gitective.core.avatars import badge_color, initials
 from gitective.core.dates import (
     Period,
@@ -22,11 +19,12 @@ from gitective.core.dates import (
     parse_date,
     week_label,
 )
-from gitective.core.merge_requests import evaluate_all, load_all_states
+from gitective.core.merge_requests import evaluate_all, load_all_states, load_pairs
 from gitective.core.rules import Evaluation, score_level
 from gitective.core.stats import GLOBAL_KEY, PersonStats, format_days, per_person, weekly_scores
 from gitective.ui.chart import Series, WeeklyChart
-from gitective.ui.grid import Column, DataGrid, sort_rows
+from gitective.ui.data_tab import DataTab
+from gitective.ui.grid import Column, sort_rows
 from gitective.ui.widgets import MultiSelect
 
 if TYPE_CHECKING:
@@ -49,18 +47,16 @@ BASE_SORT: dict[str, Callable[[PersonStats], Any]] = {
 }
 
 
-class StatsTab(ttk.Frame):
+class StatsTab(DataTab):
     """Aggregates every MR (any state, drafts excluded) per person."""
 
+    table = "stats"
+
     def __init__(self, master: tk.Misc, app: App) -> None:
-        super().__init__(master)
-        self.app = app
-        self.dirty = True
+        super().__init__(master, app, sort_key="score", ascending=False)
         self._evaluations: list[Evaluation] = []
         self._stats: list[PersonStats] = []
         self._images: dict[int, tk.PhotoImage] = {}
-        self._sort_key = "score"
-        self._ascending = False
         self._repos: list[int] = []
         start, end = last_days(30)
         self._from = tk.StringVar(value=format_date(start.date()))
@@ -86,15 +82,11 @@ class StatsTab(ttk.Frame):
         self._total_button.pack(side="left", padx=2)
         self.repos = MultiSelect(bar, "Dépôts", self._repos_changed, app.get_theme)
         self.repos.pack(side="left", padx=(16, 0), anchor="s")
-        self.authors = MultiSelect(bar, "Personnes", self._authors_changed, app.get_theme, all_text="Toutes")
+        self.authors = self.make_authors(bar, "Personnes")
         self.authors.pack(side="left", padx=(8, 0), anchor="s")
-        self.authors.set_selected(app.filters.authors)
-        ttk.Button(bar, text="⟳", width=3, style="Accent.TButton", command=app.refresh).pack(side="right", anchor="s")
+        self.refresh_button(bar, compact=True).pack(side="right", anchor="s")
 
-        self.grid_view = DataGrid(self, HEAD_COLUMNS, app.get_theme, on_sort=self._sort_by,
-                                  empty_text="Aucune merge request sur cette période",
-                                  widths=app.column_widths("stats"),
-                                  on_widths_changed=lambda w: app.save_column_widths("stats", w))
+        self.grid_view = self.make_grid(HEAD_COLUMNS, "Aucune merge request sur cette période")
         self.grid_view.pack(fill="both", expand=True, padx=16, pady=(12, 0))
         self.update_columns()
         self.chart = WeeklyChart(self, app.get_theme)
@@ -152,21 +144,12 @@ class StatsTab(ttk.Frame):
         self._repos = [int(k) for k in keys]
         self.request_reload()
 
-    def _authors_changed(self, keys: list[str]) -> None:
-        self.app.filters.authors = keys
-        self.app.filters.changed("authors")
-
     def _filters_changed(self, what: str) -> None:
         if what == "authors":
             self.authors.set_selected(self.app.filters.authors)
             self._apply_view()
 
     # ------------------------------------------------------------ Loading
-
-    def request_reload(self) -> None:
-        self.dirty = True
-        if self.app.is_visible(self):
-            self.reload()
 
     def reload(self) -> None:
         self.dirty = False
@@ -180,26 +163,18 @@ class StatsTab(ttk.Frame):
         projects = [p for p in self.app.settings.projects if not self._repos or p.id in self._repos]
         client, cache, rules, people = self.app.client, self.app.cache, self.app.rules, self.app.people
         assert client is not None and rules is not None
+        workers = self.app.settings.parallel_requests
 
         def task(progress: Callable[[int, int], None]) -> tuple[list[Evaluation], list[Exception]]:
-            pairs: list[tuple[TrackedProject, MergeRequest]] = []
-            errors: list[Exception] = []
-            for project in projects:
-                try:
-                    pairs.extend((project, mr) for mr in load_all_states(client, cache, project, period))
-                except GitLabError as exc:
-                    errors.append(exc)
-            return evaluate_all(client, cache, pairs, rules, people, progress), errors
+            pairs, errors = load_pairs(projects, lambda p: load_all_states(client, cache, p, period))
+            return evaluate_all(client, cache, pairs, rules, people, progress, workers), list(errors)
 
         self.app.runner.run("stats", task, self._loaded, self.app.report_error)
 
     def _loaded(self, result: tuple[list[Evaluation], list[Exception]]) -> None:
         evaluations, errors = result
-        if errors:
-            self.app.report_error(errors[0], extra=len(errors) - 1)
-        self.app.remember_users(u for e in evaluations for u in (e.mr.author, e.mr.merged_by) if u)
+        self.absorb(evaluations, errors)
         self._evaluations = evaluations
-        self.app.register_people((e.author.key, e.author.name) for e in self._evaluations)
         self._apply_view()
         self._load_avatars()
 
@@ -232,7 +207,7 @@ class StatsTab(ttk.Frame):
 
     # --------------------------------------------------------------- View
 
-    def _apply_view(self) -> None:
+    def _apply_view(self, reset_page: bool = False) -> None:
         authors = set(self.app.filters.authors)
         evaluations = [e for e in self._evaluations if not authors or e.author.key in authors]
         self._stats = sort_rows(per_person(evaluations), self._sort_keys()[self._sort_key], self._ascending)
@@ -259,18 +234,9 @@ class StatsTab(ttk.Frame):
             })
         self.grid_view.set_rows(rows)
 
-    def _sort_by(self, key: str) -> None:
-        self._ascending = not self._ascending if key == self._sort_key else True
-        self._sort_key = key
-        self.grid_view.set_sort(key, self._ascending)
-        self._apply_view()
-
     def forget_avatars(self) -> None:
         self._images.clear()
 
     def restyle(self) -> None:
-        self.grid_view.redraw()
+        super().restyle()
         self.chart.redraw()
-
-    def update_repo_items(self) -> None:
-        self.repos.set_items([(str(p.id), p.path) for p in self.app.settings.projects])

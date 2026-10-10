@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.4 (brouillon) — 08/10/2026
+Version : 1.5 (brouillon) — 08/10/2026
 
 ## 1. Objet
 
@@ -38,6 +38,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Pondération des règles fixes (RC-03, RC-04) | 25 chacune |
 | Seuils de couleur du score | vert = 100 %, orange ≥ 50 %, rouge < 50 % |
 | Correspondances personnes ↔ comptes | aucune |
+| Requêtes GitLab simultanées (1 à 16) | 6 |
 | Thème | Clair |
 | Derniers filtres utilisés (état, dates, auteurs, dépôts, taille de page) | Mergées « Depuis hier », 20 |
 | Largeurs de colonnes modifiées | aucune (ajustement au titre) |
@@ -229,6 +230,7 @@ Objectif : détecter les commits poussés directement sur une branche, sans pass
 | CO-06 | Colonnes : Dépôt, SHA court, Message, Auteur, Date de commit. |
 | CO-07 | Clic sur un commit : ouverture de sa page GitLab dans le navigateur. |
 | CO-08 | La détection interroge GitLab commit par commit : une barre de progression est affichée. Les longues périodes sont acceptées. |
+| CO-09 | Pagination identique à l'onglet MR (20 / 50 / 100 par page). |
 
 ## 10. Chargement, cache et rafraîchissement
 
@@ -239,6 +241,7 @@ Objectif : détecter les commits poussés directement sur une branche, sans pass
 | CH-03 | Cache en mémoire pour la session : le changement de page ou de tri ne réinterroge pas GitLab. |
 | CH-04 | Un changement de filtre ou de dates déclenche une nouvelle requête. |
 | CH-05 | Bouton **Rafraîchir** : vide le cache et recharge les données. |
+| CH-06 | Les requêtes « une par commit » (commits hors MR) et « une par MR » (règles sur les commits) partent en parallèle ; le nombre de requêtes simultanées se règle dans l'onglet Config (1 à 16, défaut 6). |
 
 ## 11. Gestion des erreurs
 
@@ -285,6 +288,9 @@ gitective/
 │   │   ├── orphan_commits.py # Commits-without-MR detection
 │   │   ├── cache.py        # Session cache
 │   │   ├── stats.py        # Per-author statistics, lead time, weekly scores
+│   │   ├── merge_requests.py # MR loading and evaluation
+│   │   ├── parallel.py     # Concurrent GitLab lookups
+│   │   ├── search.py       # Text search
 │   │   ├── people.py       # Account-to-person mapping
 │   │   ├── avatars.py      # Avatar download, disk cache, initials fallback
 │   │   └── dates.py        # Date parsing, "since yesterday", local timezone
@@ -292,7 +298,11 @@ gitective/
 │   │   └── settings.py     # Load/save config.json, defaults
 │   └── ui/
 │       ├── app.py          # Main window, tabs
-│       ├── settings_tab.py # Config tab, connection test, regex tester
+│       ├── data_tab.py     # Base class of the MR, Commits and Statistics tabs
+│       ├── mr_tab.py       # Merge Requests tab
+│       ├── commits_tab.py  # Commits without MR tab
+│       ├── settings_tab.py # Config tab, connection test, rule tester
+│       ├── dialogs.py      # Rule, repository and person dialogs
 │       ├── stats_tab.py    # Per-author statistics
 │       ├── chart.py        # Weekly score line chart (Canvas)
 │       ├── wizard.py       # First-launch wizard

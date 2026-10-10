@@ -164,11 +164,11 @@ class PeopleAndStatsTests(unittest.TestCase):
 
 
 class SettingsTests(unittest.TestCase):
-    def test_old_config_is_migrated(self) -> None:
-        settings = Settings.from_dict({"title_regex": "^T", "link_regex": "L", "weights": {"title": 10}})
-        self.assertEqual([r.pattern for r in settings.rules], ["^T", "L"])
-        self.assertEqual(settings.rules[0].weight, 10)
-        self.assertEqual(settings.link_regex, "L")
+    def test_missing_keys_use_defaults(self) -> None:
+        settings = Settings.from_dict({"parallel_requests": 99, "weights": {"ticket": 5}})
+        self.assertEqual([r.id for r in settings.rules], ["r_title", "r_link"])
+        self.assertEqual(settings.parallel_requests, 16)
+        self.assertEqual(settings.weights, {"ticket": 5.0, "self_merge": 25.0})
 
     def test_round_trip(self) -> None:
         settings = Settings()
