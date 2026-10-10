@@ -100,6 +100,10 @@ The score is the weighted share of passing rules among the applicable ones.
 
 - Filter by state (Merged, Open or Closed), merge dates (`DD/MM/YYYY`), "Since
   yesterday", repositories and authors.
+- Type in **Search** to filter as you type, case-insensitive. It looks in the
+  title, description, author, merger, repository and branches. The Commits
+  without MR tab has the same field, which looks in the message, SHA, author
+  and repository.
 - Click a title to open the MR in your browser.
 - Hover a red **KO** cell to see why the rule failed.
 - Click a column header to sort the whole list.

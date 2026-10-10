@@ -11,7 +11,7 @@ from gitective.core.dates import format_datetime
 from gitective.core.orphan_commits import OrphanCommit, find_orphan_commits
 from gitective.core.people import PersonRef
 from gitective.ui.grid import Column, DataGrid, sort_rows
-from gitective.ui.widgets import MultiSelect
+from gitective.ui.widgets import MultiSelect, matches, search_box
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
@@ -72,6 +72,7 @@ class CommitsTab(ttk.Frame):
         summary.pack(fill="x")
         self._count = ttk.Label(summary, style="Title.TLabel")
         self._count.pack(side="left")
+        self._search = search_box(summary, self._apply_view)
         ttk.Label(summary, text="Clic sur un commit : ouvre sa page GitLab", style="Muted.TLabel").pack(side="right")
         self.grid_view = DataGrid(self, COLUMNS, app.get_theme, on_sort=self._sort_by, on_link=app.open_url,
                                   empty_text="Aucun commit hors MR sur cette période",
@@ -153,7 +154,10 @@ class CommitsTab(ttk.Frame):
 
     def _apply_view(self) -> None:
         authors = set(self.app.filters.authors)
-        items = [i for i in self._items if not authors or i[1].key in authors]
+        needle = self._search.get().strip().casefold()
+        items = [(o, p) for o, p in self._items
+                 if (not authors or p.key in authors)
+                 and matches(needle, o.commit.message, o.commit.id, p.name, o.commit.author_email, o.project.path)]
         items = sort_rows(items, SORT_KEYS[self._sort_key], self._ascending)
         self._count.configure(text=f"{len(items)} commit(s) poussé(s) sans MR")
         self.grid_view.set_rows([{

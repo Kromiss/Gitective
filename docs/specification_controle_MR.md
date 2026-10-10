@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.3 (brouillon) — 08/10/2026
+Version : 1.4 (brouillon) — 08/10/2026
 
 ## 1. Objet
 
@@ -138,6 +138,7 @@ Une même personne peut posséder plusieurs comptes GitLab (changements de compt
 | FI-09 | Filtre par auteur, sélection multiple (tous par défaut). S'applique aussi à l'onglet Commits hors MR. |
 | FI-10 | Raccourci **F5** = Rafraîchir. |
 | FI-11 | Filtre par dépôt, sélection multiple parmi les dépôts suivis (tous par défaut). S'applique aussi à l'onglet Commits hors MR. Mémorisé comme les autres filtres (FI-06). |
+| FI-12 | Recherche texte instantanée, insensible à la casse : onglet MR (titre, description, auteur, mergeur, dépôt, branches) et onglet Commits hors MR (message, SHA, auteur, dépôt). Non mémorisée. |
 
 ### 6.2 Tableau
 

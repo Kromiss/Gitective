@@ -48,6 +48,20 @@ class Tooltip:
         self._text = ""
 
 
+def search_box(master: tk.Misc, on_change: Callable[[], None]) -> tk.StringVar:
+    """Live text search field; returns its variable."""
+    var = tk.StringVar()
+    var.trace_add("write", lambda *_: on_change())
+    ttk.Entry(master, textvariable=var, width=28).pack(side="right")
+    ttk.Label(master, text="Rechercher", style="Muted.TLabel").pack(side="right", padx=(16, 6))
+    return var
+
+
+def matches(needle: str, *fields: str | None) -> bool:
+    """Case-insensitive substring search over several fields."""
+    return not needle or needle in " ".join(f for f in fields if f).casefold()
+
+
 class ScrollableFrame(ttk.Frame):
     """Frame with a vertical scrollbar; put children in .inner."""
 

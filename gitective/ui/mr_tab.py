@@ -17,6 +17,7 @@ from gitective.core.stats import average
 from gitective.ui.filters import MrFilterBar
 from gitective.ui.grid import Column, DataGrid, sort_rows
 from gitective.ui.pagination import Pager
+from gitective.ui.widgets import matches, search_box
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
@@ -70,6 +71,7 @@ class MrTab(ttk.Frame):
         self._avg.pack(side="left")
         self._progress_text = ttk.Label(summary, style="Muted.TLabel")
         self._progress_text.pack(side="left", padx=(18, 0))
+        self._search = search_box(summary, lambda: self._apply_view(reset_page=True))
         ttk.Label(summary, text="Clic sur un titre : ouvre la MR dans le navigateur",
                   style="Muted.TLabel").pack(side="right")
 
@@ -169,7 +171,11 @@ class MrTab(ttk.Frame):
 
     def _apply_view(self, reset_page: bool = False) -> None:
         authors = set(self.app.filters.authors)
-        rows = [e for e in self._evaluations if not authors or e.author.key in authors]
+        needle = self._search.get().strip().casefold()
+        rows = [e for e in self._evaluations
+                if (not authors or e.author.key in authors)
+                and matches(needle, e.mr.title, e.mr.description, e.author.name, e.merger.name if e.merger else None,
+                            e.project_path, e.mr.source_branch, e.mr.target_branch)]
         self._visible_rows = sort_rows(rows, self._sort_keys()[self._sort_key], self._ascending)
         self.pager.update_total(len(self._visible_rows), reset=reset_page)
         self._show_summary()
