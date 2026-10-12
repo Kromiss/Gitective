@@ -143,15 +143,15 @@ class MrTab(DataTab):
             self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA.")
             return
         projects = self.app.selected_projects()
-        client, cache, rules, people = self.app.client, self.app.cache, self.app.rules, self.app.people
-        assert client is not None and rules is not None
+        data, rules, people = self.app.data, self.app.rules, self.app.people
+        assert rules is not None
         self._progress_text.configure(text="Chargement…")
 
         workers = self.app.settings.parallel_requests
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
-            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(client, cache, p, state, period))
-            return evaluate_all(client, cache, pairs, rules, people, progress, workers), list(errors)
+            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data, p, state, period))
+            return evaluate_all(data, pairs, rules, people, progress, workers), list(errors)
 
         self.app.runner.run("mr", task, self._loaded, self._failed, on_progress=self._on_progress)
 

@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
-from gitective.api.errors import GitLabError
+from gitective.api.errors import ForgeError
 from gitective.core.dates import now_local, to_local
 from gitective.core.merge_requests import evaluate_all, load_all_states, load_merge_requests, load_pairs
 from gitective.core.overview import SCORE_DAYS, WEEKS, OverviewData, build_overview, load_start
@@ -29,7 +29,7 @@ WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanc
 MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
           "septembre", "octobre", "novembre", "décembre")
 
-Loaded = tuple[OverviewData, list[Evaluation], list[GitLabError]]
+Loaded = tuple[OverviewData, list[Evaluation], list[ForgeError]]
 
 
 def blend(a: str, b: str, ratio: float) -> str:
@@ -117,14 +117,14 @@ class OverviewTab(ttk.Frame):
         self.dirty = False
         if self._refresh_due:
             self._refresh_due = False
-            self.app.refresh()  # clears the cache and reloads this tab
+            self.app.refresh()  # brings the store up to date and reloads this tab
             return
         if not self.app.ensure_connection():
             self._data, self._message = None, "Configurez la connexion et les dépôts dans l'onglet Config."
             self.redraw()
             return
-        client, cache, rules, people = self.app.client, self.app.cache, self.app.rules, self.app.people
-        assert client is not None and rules is not None
+        data_source, rules, people = self.app.data, self.app.rules, self.app.people
+        assert rules is not None
         settings = self.app.settings
         projects = list(settings.projects)
         workers = settings.parallel_requests
@@ -132,9 +132,9 @@ class OverviewTab(ttk.Frame):
         def task(progress: Callable[[int, int], None]) -> Loaded:
             now = now_local()
             period = (load_start(now), now)
-            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(client, cache, p, "merged", period))
-            evaluations = evaluate_all(client, cache, pairs, rules, people, progress, workers)
-            created, created_errors = load_pairs(projects, lambda p: load_all_states(client, cache, p, period))
+            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data_source, p, "merged", period))
+            evaluations = evaluate_all(data_source, pairs, rules, people, progress, workers)
+            created, created_errors = load_pairs(projects, lambda p: load_all_states(data_source, p, period))
             data = build_overview(evaluations, [mr for _, mr in created], [p.path for p in projects],
                                   rules.criteria, settings.green_threshold, settings.orange_threshold, now)
             return data, evaluations, [*errors, *created_errors]
@@ -145,10 +145,14 @@ class OverviewTab(ttk.Frame):
         data, evaluations, errors = result
         if errors:
             self.app.report_error(errors[0], extra=len(errors) - 1)
+        else:
+            self.app.report_offline()
         self.app.remember_users(u for e in evaluations for u in (e.mr.author, e.mr.merged_by) if u)
         self.app.register_people((p.key, p.name) for e in evaluations for p in (e.author, e.merger) if p)
         self._data = data
-        self._synced_at = now_local()
+        # Offline, the data dates from the last synchronisation, not from now (CH-08).
+        offline = self.app.data.offline_since
+        self._synced_at = to_local(offline) if offline else now_local()
         self._schedule_refresh()
         self.redraw()
 

@@ -1,13 +1,11 @@
-"""Avatar download, disk cache and initials fallback."""
+"""Avatars from the local store, and the initials badge fallback (AV-01..AV-07)."""
 
 from __future__ import annotations
 
 import hashlib
-import threading
-from pathlib import Path
 
-from gitective.api.client import GitLabClient
-from gitective.api.errors import GitLabError
+from gitective.api.errors import ForgeError
+from gitective.core.sync import ForgeData
 
 # Colors for initials badges; chosen by a stable hash of the person key.
 BADGE_COLORS = ("#B8542A", "#2B3A5C", "#5B4A8A", "#2F7A57", "#8A3D5C", "#2F8F8A", "#7A5A1F", "#3D6E9E")
@@ -39,48 +37,19 @@ def image_format(data: bytes) -> str | None:
 
 
 class AvatarStore:
-    """Downloads avatars once and keeps them in the avatars/ folder.
+    """Avatars kept in the local store (AV-07), downloaded again once per session.
 
-    Unsupported formats (JPEG...) are remembered with an empty marker file
-    so they are not downloaded again until the next refresh.
+    Unsupported formats (JPEG...) are stored as empty content so the badge
+    is shown without downloading them again until the next refresh.
     """
 
-    def __init__(self, folder: Path, client: GitLabClient | None) -> None:
-        self.folder = folder
-        self.client = client
-        self._lock = threading.Lock()
+    def __init__(self, data: ForgeData) -> None:
+        self.data = data
 
-    def _existing(self, user_id: int) -> Path | None:
-        for ext in ("png", "gif", "none"):
-            path = self.folder / f"{user_id}.{ext}"
-            if path.exists():
-                return path
-        return None
-
-    def path_for(self, user_id: int, avatar_url: str | None = None) -> Path | None:
-        """Local image path for a user, or None when an initials badge is needed."""
-        with self._lock:
-            found = self._existing(user_id)
-        if found is not None:
-            return None if found.suffix == ".none" else found
-        if self.client is None:
-            return None
+    def image_for(self, user_id: int, avatar_url: str | None = None) -> bytes | None:
+        """PNG or GIF bytes of a user's avatar, or None when an initials badge is needed."""
         try:
-            url = avatar_url or self.client.get_user(user_id).avatar_url
-            data = self.client.download(url) if url else b""
-        except (GitLabError, ValueError):
+            content = self.data.avatar(user_id, avatar_url)
+        except (ForgeError, ValueError):
             return None  # Unreachable avatar: badge fallback, not an error.
-        fmt = image_format(data)
-        with self._lock:
-            self.folder.mkdir(parents=True, exist_ok=True)
-            target = self.folder / f"{user_id}.{fmt or 'none'}"
-            target.write_bytes(data if fmt else b"")
-        return target if fmt else None
-
-    def clear(self) -> None:
-        """Forget cached avatars so they are downloaded again (AV-07)."""
-        with self._lock:
-            if self.folder.exists():
-                for path in self.folder.iterdir():
-                    if path.suffix in (".png", ".gif", ".none"):
-                        path.unlink(missing_ok=True)
+        return content if content and image_format(content) else None

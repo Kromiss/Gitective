@@ -47,7 +47,7 @@ next to `main.py`.
 | Custom rules | Any number of regex checks (see below). |
 | Ticket matching | Regex of the ticket link (searched in the description) and regex of the ticket number. The number found in the title must equal the number found in the link. |
 | Weights and thresholds | Each rule's weight in the score, and the color thresholds (green ≥ 100 %, orange ≥ 50 % by default). |
-| Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR. |
+| Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR, and a **CI attendue** box for repositories that run a CI (see "Green pipeline"). |
 | People | Groups several GitLab accounts and Git identities under one person. |
 | Theme | Default, Light, Dark, Windows 95 or Matrix. Default is a dark navy theme with a turquoise accent. |
 | Overview refresh | How often the Overview tab reloads the data on its own, in minutes (default 5). |
@@ -67,7 +67,7 @@ Each rule has:
 The regex may match anywhere in the field. Use `^` and `$` to anchor it.
 
 A commit-message rule passes only when every commit of the MR satisfies it.
-It needs one extra GitLab request per MR; results are cached for the session.
+It needs one extra GitLab request per MR; results are kept in the local database.
 
 Examples:
 
@@ -93,6 +93,15 @@ before you save.
 - **Merger ≠ author**: an MR must not be merged by the person who wrote it,
   whichever of their accounts they use. This rule is N/A for MRs that are not
   merged.
+- **Green pipeline**: when the MR was merged, every CI status of its last
+  commit had finished successfully. It reads the commit statuses GitLab
+  stores, so it covers GitLab CI and external CIs that report to GitLab, such
+  as Jenkins with its GitLab plugin (`gitlabCommitStatus` /
+  `updateGitlabCommitStatus`). For each status name, only the last one
+  created before the merge counts; statuses marked `allow_failure` are
+  ignored. A failed, canceled or still running status, or no status at all,
+  is KO; hover the cell to see which one. The rule is N/A for MRs that are not
+  merged and for repositories whose **CI attendue** box is not ticked.
 
 The score is the weighted share of passing rules among the applicable ones.
 
@@ -141,25 +150,53 @@ the chosen dates.
 
 **Choosing repositories**
 
-The list of projects visible to your token is saved in `projects_cache.json`,
+The list of projects visible to your token is kept in the local database,
 so the picker opens instantly. Click **Recharger la liste** to read it again from
 GitLab. Ticked repositories are listed first.
 
 **Statistics tab**
 
-Shows, for each author or merger: MRs created and merged, average score, KO
-count per rule, time from creation to merge, and, for mergers, time from the
-last commit to the merge. Delays are medians in business days; hover them for
+Switch between **Par personne** and **Par dépôt**; the choice is remembered.
+
+Per person: MRs created and merged, average score, KO count per rule,
+commits pushed without an MR, time from creation to merge, and, for mergers,
+time from the last commit to the merge. Delays are medians in business days; hover them for
 the average, minimum and maximum. The **Rôle** column says whether the person can
 merge (Mergeur) or not (Dev); hover "Mergeur" to see the repositories. It is
 computed from the project members and the protection rules of the watched
 branch. A weekly score chart is shown below:
 one global curve, plus one curve per selected person.
 
-**Refresh**
+Per repository: the same figures for each tracked repository, with one chart
+curve per repository selected in the repository filter. Click a repository to
+see its per-person statistics. The people filter restricts the MRs and
+commits counted.
 
-**F5** or the Refresh button clears the session cache, including avatars, and
-reloads the data.
+The direct commits of the period are searched like in the Merge Requests tab;
+a progress bar is shown the first time.
+
+**Local database and refresh**
+
+Everything read from GitLab is kept in `gitective.db` (SQLite), next to
+`main.py`. Changing page, sort or filter reads the database; GitLab is only
+asked for what is missing.
+
+- At launch and with **F5** or the Refresh button, Gitective asks GitLab only
+  for what changed since the last synchronisation, and downloads the avatars
+  again.
+- Data that can no longer change is never read twice: the commits and CI
+  statuses of merged MRs, and whether a commit belongs to an MR.
+- Changing a rule, a weight or a person mapping recomputes the display
+  without any GitLab request.
+- When the instance cannot be reached, the stored data is shown and a banner
+  gives the date of the last synchronisation.
+- **Vider la base locale** in the Config tab deletes every stored row. The
+  database belongs to one instance: changing the URL empties it, after
+  confirmation.
+- If the file is unreadable or corrupted, Gitective offers to recreate it and
+  reads everything again from GitLab.
+
+You can delete `gitective.db` at any time; it is rebuilt from GitLab.
 
 Errors are shown in a banner at the top of the window: invalid token, network,
 SSL, missing branch, and so on. Rate limiting (HTTP 429) and timeouts (30 s)
@@ -169,8 +206,8 @@ are retried automatically after 2, 4 and 8 seconds before an error is shown.
 
 ```
 main.py / main.pyw     entry points
-gitective/api          generic GitLab REST client (GitLabClient), models, errors
-gitective/core         rules, statistics, people mapping, caching, dates
+gitective/api          ForgeClient interface, its GitLab implementation (GitLabClient), models, errors
+gitective/core         local database, synchronisation, rules, statistics, people mapping, dates
 gitective/config       config.json loading and saving
 gitective/ui           Tkinter interface (one module per tab or widget)
 gitective/assets       logo (svg, png, ico)

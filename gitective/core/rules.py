@@ -1,4 +1,4 @@
-"""Process rules: custom regex rules, RC-03, RC-04 and the weighted score."""
+"""Process rules: custom regex rules, RC-03, RC-04, RC-05 and the weighted score."""
 
 from __future__ import annotations
 
@@ -7,14 +7,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from gitective.api.models import Commit, MergeRequest
+from gitective.api.models import Commit, CommitStatus, MergeRequest
 from gitective.config.settings import RULE_FIELDS, CustomRule, Settings
 from gitective.core.people import PersonDirectory, PersonRef
 
 OK, KO, NA = "ok", "ko", "na"
 
-TICKET, SELF_MERGE = "ticket", "self_merge"
-FIXED_LABELS = {TICKET: "N° ticket", SELF_MERGE: "Mergeur ≠ auteur"}
+TICKET, SELF_MERGE, PIPELINE = "ticket", "self_merge", "pipeline"
+FIXED_LABELS = {TICKET: "N° ticket", SELF_MERGE: "Mergeur ≠ auteur", PIPELINE: "Pipeline vert"}
+SUCCESS = "success"
+RUNNING_STATES = {"running", "pending", "created", "waiting_for_resource", "preparing", "scheduled", "manual"}
 MAX_LISTED_COMMITS = 5
 
 
@@ -104,6 +106,7 @@ class RuleSet:
         self.weights = {r.id: float(r.weight) for r in self.rules}
         self.weights[TICKET] = float(fixed_weights.get(TICKET, 0.0))
         self.weights[SELF_MERGE] = float(fixed_weights.get(SELF_MERGE, 0.0))
+        self.weights[PIPELINE] = float(fixed_weights.get(PIPELINE, 0.0))
 
     @classmethod
     def from_settings(cls, settings: Settings) -> RuleSet:
@@ -182,6 +185,8 @@ class RuleSet:
         project_path: str,
         people: PersonDirectory,
         commits: Sequence[Commit] | None = None,
+        statuses: Sequence[CommitStatus] | None = None,
+        ci_expected: bool = False,
     ) -> Evaluation:
         """Run every rule on a merge request and compute its score."""
         author = people.for_user(mr.author)
@@ -194,6 +199,7 @@ class RuleSet:
             results[SELF_MERGE] = CheckResult(KO, f"Mergée par son auteur (compte {account})")
         else:
             results[SELF_MERGE] = CheckResult(OK)
+        results[PIPELINE] = check_pipeline(mr.merged_at, statuses, ci_expected)
         last_commit = max((c.committed_date for c in commits), default=None) if commits else None
         return Evaluation(mr=mr, project_path=project_path, author=author, merger=merger,
                           results=results, score=self.score(results), last_commit_at=last_commit)
@@ -206,3 +212,36 @@ def score_level(score: float, green: float, orange: float) -> str:
     if score >= orange:
         return "orange"
     return "red"
+
+
+def check_pipeline(
+    merged_at: datetime | None,
+    statuses: Sequence[CommitStatus] | None,
+    ci_expected: bool,
+) -> CheckResult:
+    """RC-05: every CI status of the head commit had succeeded when the MR was merged (PI-01..PI-04)."""
+    if merged_at is None:
+        return CheckResult(NA, "MR non mergée")
+    if not ci_expected:
+        return CheckResult(NA, "CI non attendue sur ce dépôt")
+    if statuses is None:
+        return CheckResult(NA, "Statuts CI non chargés")
+    # Latest status of each name created before the merge; allow_failure ones do not count (PI-02, PI-03).
+    latest: dict[str, CommitStatus] = {}
+    for status in sorted((s for s in statuses if not s.allow_failure), key=lambda s: s.created_at):
+        if status.created_at <= merged_at:
+            latest[status.name] = status
+    if not latest:
+        return CheckResult(KO, "Aucun statut CI")
+    problems = []
+    for name, status in sorted(latest.items()):
+        finished = status.finished_at is None or status.finished_at <= merged_at
+        if status.status == SUCCESS and finished:
+            continue
+        if status.status in RUNNING_STATES or (status.status == SUCCESS and not finished):
+            problems.append(f"{name} : en cours au merge")
+        elif status.status == "canceled":
+            problems.append(f"{name} : annulé")
+        else:
+            problems.append(f"{name} : {status.status}")
+    return CheckResult(KO, "\n".join(problems)) if problems else CheckResult(OK)

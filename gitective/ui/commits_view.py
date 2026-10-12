@@ -87,8 +87,7 @@ class CommitsView(DataTab):
         projects = [p for p in self.app.selected_projects() if p.branch]
         if not projects:
             self.app.notify("info", "Aucune branche surveillée : définissez une branche par dépôt dans l'onglet Config.")
-        client, cache = self.app.client, self.app.cache
-        assert client is not None
+        data = self.app.data
         workers = self.app.settings.parallel_requests
         self._progress.pack(side="left")
         self._progress_text.configure(text="Recherche des commits…")
@@ -96,7 +95,7 @@ class CommitsView(DataTab):
 
         def task(progress: Callable[[int, int], None]) -> tuple[list[OrphanCommit], list[Exception]]:
             errors: list[Exception] = []
-            orphans = find_orphan_commits(client, cache, projects, period, progress=progress,
+            orphans = find_orphan_commits(data, projects, period, progress=progress,
                                           on_error=errors.append, workers=workers)
             return orphans, errors
 
@@ -119,6 +118,8 @@ class CommitsView(DataTab):
         self._hide_progress()
         if errors:
             self.app.report_error(errors[0], extra=len(errors) - 1)
+        else:
+            self.app.report_offline()
         self._items = [(o, self.app.people.for_git(o.commit.author_name, o.commit.author_email)) for o in orphans]
         self.app.register_people((p.key, p.name) for _, p in self._items)
         self._apply_view(reset_page=True)

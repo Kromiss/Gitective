@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from gitective.api.client import GitLabClient
 from gitective.api.models import Project, User
 from gitective.config.settings import RULE_FIELDS, RULE_MODES, CustomRule, Person, TrackedProject
+from gitective.core.dates import format_datetime, now_local
 from gitective.core.project_list import load_cached, save_cached
 from gitective.core.rules import validate_regex
 from gitective.ui.widgets import ProjectPicker
@@ -100,8 +101,8 @@ class RuleDialog(tk.Toplevel):
 class ProjectsDialog(tk.Toplevel):
     """Lists the projects visible to the token so the user ticks those to track.
 
-    The list comes from the disk cache when present (SD-04); "Recharger la
-    liste" reads it again from GitLab.
+    The list comes from the local store when present (SD-04); "Recharger la
+    liste" reads it again from GitLab and updates the store.
     """
 
     def __init__(self, master: tk.Misc, app: App, client: GitLabClient, tracked: list[TrackedProject],
@@ -128,7 +129,9 @@ class ProjectsDialog(tk.Toplevel):
         ttk.Button(buttons, text="Annuler", command=self.destroy).pack(side="right", padx=8)
         self._checked = [p.id for p in tracked]
 
-        cached = load_cached(client.base_url)
+        # The store belongs to the configured instance: another URL typed in the form is read from GitLab.
+        self._use_store = client.base_url.rstrip("/") == app.settings.gitlab_url.rstrip("/")
+        cached = load_cached(app.store) if self._use_store else None
         if cached:
             self._show(*cached)
         else:
@@ -144,11 +147,14 @@ class ProjectsDialog(tk.Toplevel):
             self._checked = self.picker.checked()  # keep ticks made before reloading
         self._status.configure(text="Chargement des projets…")
         self._reload_button.state(["disabled"])
-        client, workers = self._client, self._app.settings.parallel_requests
+        client, workers, store = self._client, self._app.settings.parallel_requests, self._app.store
+        use_store = self._use_store
 
         def task(_progress: object) -> tuple[list[Project], str]:
             projects = client.list_projects(workers=workers)
-            return projects, save_cached(client.base_url, projects)
+            if use_store:
+                return projects, save_cached(store, projects)
+            return projects, format_datetime(now_local())
 
         def loaded(result: tuple[list[Project], str]) -> None:
             if self.winfo_exists():
