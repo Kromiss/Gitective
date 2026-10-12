@@ -1,4 +1,4 @@
-"""Statistics tab: per-person figures, avatars and weekly chart (ST-01..ST-10)."""
+"""Statistics tab: per-person figures, role, avatars and weekly chart (ST-01..ST-11)."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from gitective.core.dates import (
     week_label,
 )
 from gitective.core.merge_requests import evaluate_all, load_all_states, load_pairs
+from gitective.core.mergers import merge_rights
 from gitective.core.rules import Evaluation, score_level
 from gitective.core.stats import GLOBAL_KEY, PersonStats, format_days, per_person, weekly_scores
 from gitective.ui.chart import Series, WeeklyChart
@@ -32,8 +33,11 @@ if TYPE_CHECKING:
 
 AVATAR_PX = 26
 
+Loaded = tuple[list[Evaluation], dict[str, list[str]], list[Exception]]
+
 HEAD_COLUMNS = [
     Column("person", "Personne", 220, kind="avatar", stretch=True),
+    Column("role", "Rôle", 80, kind="tip"),
     Column("mr", "MR", 60, align="e"),
     Column("score", "Score moyen", 96, kind="score", align="center"),
 ]
@@ -56,6 +60,7 @@ class StatsTab(DataTab):
         super().__init__(master, app, sort_key="score", ascending=False)
         self._evaluations: list[Evaluation] = []
         self._stats: list[PersonStats] = []
+        self._merge_repos: dict[str, list[str]] = {}  # person key → repos they can merge into
         self._images: dict[int, tk.PhotoImage] = {}
         self._repos: list[int] = []
         start, end = last_days(30)
@@ -109,6 +114,7 @@ class StatsTab(DataTab):
 
     def _sort_keys(self) -> dict[str, Callable[[PersonStats], Any]]:
         keys = dict(BASE_SORT)
+        keys["role"] = lambda s: s.person.key not in self._merge_repos
         for cid in self._criteria_ids:
             keys[f"ko:{cid}"] = lambda s, c=cid: s.ko_counts.get(c, 0)
         return keys
@@ -165,16 +171,22 @@ class StatsTab(DataTab):
         assert client is not None and rules is not None
         workers = self.app.settings.parallel_requests
 
-        def task(progress: Callable[[int, int], None]) -> tuple[list[Evaluation], list[Exception]]:
+        def task(progress: Callable[[int, int], None]) -> Loaded:
             pairs, errors = load_pairs(projects, lambda p: load_all_states(client, cache, p, period))
-            return evaluate_all(client, cache, pairs, rules, people, progress, workers), list(errors)
+            evaluations = evaluate_all(client, cache, pairs, rules, people, progress, workers)
+            rights, rights_errors = merge_rights(client, cache, projects, workers)
+            merge_repos: dict[str, set[str]] = {}
+            for user, repos in rights.items():
+                merge_repos.setdefault(people.for_user(user).key, set()).update(repos)
+            return evaluations, {k: sorted(v) for k, v in merge_repos.items()}, [*errors, *rights_errors]
 
         self.app.runner.run("stats", task, self._loaded, self.app.report_error)
 
-    def _loaded(self, result: tuple[list[Evaluation], list[Exception]]) -> None:
-        evaluations, errors = result
+    def _loaded(self, result: Loaded) -> None:
+        evaluations, merge_repos, errors = result
         self.absorb(evaluations, errors)
         self._evaluations = evaluations
+        self._merge_repos = merge_repos
         self._apply_view()
         self._load_avatars()
 
@@ -226,6 +238,7 @@ class StatsTab(DataTab):
             image = self._images.get(person.avatar_user_id) if person.avatar_user_id else None
             rows.append({
                 "person": (image, initials(person.name), badge_color(person.key), person.name),
+                "role": self._role(person.key),
                 "mr": str(stat.mr_count),
                 "score": (f"{stat.score_avg:.0f} %",
                           score_level(round(stat.score_avg, 6), settings.green_threshold, settings.orange_threshold)),
@@ -233,6 +246,13 @@ class StatsTab(DataTab):
                 "lead": format_days(stat.lead_time_days),
             })
         self.grid_view.set_rows(rows)
+
+    def _role(self, key: str) -> tuple[str, str]:
+        """'Mergeur' with its repositories as tooltip, or 'Dev'."""
+        repos = self._merge_repos.get(key)
+        if not repos:
+            return "Dev", ""
+        return "Mergeur", "Peut merger sur :\n" + "\n".join(repos)
 
     def forget_avatars(self) -> None:
         self._images.clear()

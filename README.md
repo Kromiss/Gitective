@@ -126,7 +126,10 @@ GitLab. Ticked repositories are listed first.
 **Statistics tab**
 
 Shows, for each person: MR count, average score, KO count per rule and
-average time from creation to merge. A weekly score chart is shown below:
+average time from creation to merge. The **Rôle** column says whether the person can
+merge (Mergeur) or not (Dev); hover "Mergeur" to see the repositories. It is
+computed from the project members and the protection rules of the watched
+branch. A weekly score chart is shown below:
 one global curve, plus one curve per selected person.
 
 **Refresh**

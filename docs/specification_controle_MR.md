@@ -220,6 +220,7 @@ Les regex du lien et du n° de ticket de RC-03 sont dans un bloc dédié « Corr
 | ST-08 | Colonne « Délai moyen création → merge » par personne, en jours avec une décimale (ex. 2,2 j), calculé sur les MR mergées uniquement. |
 | ST-09 | Courbe d'évolution du score moyen par semaine, dessinée en `Canvas` : une courbe globale + une courbe par personne sélectionnée dans le filtre auteurs. |
 | ST-10 | Semaine d'une MR déterminée par sa date de création ; la courbe suit les filtres de l'onglet (période, dépôts, auteurs) et les couleurs du thème. |
+| ST-11 | Colonne « Rôle » : **Mergeur** si la personne (l'un de ses comptes) a le droit de merger sur la branche surveillée d'au moins un dépôt de l'onglet, **Dev** sinon. Survol de « Mergeur » : infobulle listant ces dépôts. Droits calculés via l'API : membres du projet (héritage des groupes inclus) croisés avec les règles de branche protégée (rôle minimal, utilisateurs nommés ; règle la plus permissive si plusieurs correspondent). Branche non protégée : Developer et plus. Non pris en compte : droits accordés à un groupe (Premium), administrateurs de l'instance. Dépôt sans branche surveillée : ignoré. Triable. |
 
 ## 9. Commits directs (état de l'onglet Merge Requests)
 
@@ -287,12 +288,13 @@ gitective/
 │   │   └── logo.ico        # Window icon
 │   ├── api/
 │   │   ├── client.py       # GitLabClient: generic GitLab REST API wrapper
-│   │   ├── models.py       # Project, MergeRequest, Commit, User (dataclasses)
+│   │   ├── models.py       # Project, MergeRequest, Commit, User, ProtectedBranch (dataclasses)
 │   │   └── errors.py       # GitLabError hierarchy
 │   ├── core/
 │   │   ├── rules.py        # Custom rules, RC-03, RC-04 and score
 │   │   ├── orphan_commits.py # Commits-without-MR detection
 │   │   ├── project_list.py # Disk cache of the accessible projects
+│   │   ├── mergers.py      # Who can merge into the watched branches
 │   │   ├── cache.py        # Session cache
 │   │   ├── stats.py        # Per-author statistics, lead time, weekly scores
 │   │   ├── merge_requests.py # MR loading and evaluation
@@ -322,6 +324,7 @@ gitective/
 └── tests/
     ├── test_rules.py
     ├── test_client.py
+    ├── test_mergers.py
     └── test_project_list.py
 ```
 
@@ -336,7 +339,7 @@ Classe `GitLabClient`, générique et réutilisable, indépendante de l'applicat
 | API-03 | Gestion transparente de la pagination GitLab. |
 | API-04 | Renvoie des objets métier typés (`Project`, `MergeRequest`, `Commit`, `User`), pas de JSON brut. |
 | API-05 | Lève des exceptions dédiées : authentification, droits, ressource introuvable, réseau, SSL. |
-| API-06 | Méthodes minimales : lister les projets accessibles ; lister les MR d'un projet (état, dates) ; lister les commits d'une MR ; lister les commits d'une branche (dates) ; lister les MR associées à un commit. |
+| API-06 | Méthodes minimales : lister les projets accessibles ; lister les MR d'un projet (état, dates) ; lister les commits d'une MR ; lister les commits d'une branche (dates) ; lister les MR associées à un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet. |
 
 ## 13. Jalons
 

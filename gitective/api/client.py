@@ -23,7 +23,7 @@ from gitective.api.errors import (
     RateLimitError,
     SSLVerificationError,
 )
-from gitective.api.models import Commit, MergeRequest, Project, User
+from gitective.api.models import Commit, MergeRequest, Project, ProtectedBranch, User
 
 Opener = Callable[..., Any]
 
@@ -251,6 +251,15 @@ class GitLabClient:
         """List merge requests associated with a commit."""
         data = self._get(f"projects/{project_id}/repository/commits/{sha}/merge_requests")
         return [MergeRequest.from_json(m) for m in data or []]
+
+    def list_project_members(self, project_id: int) -> list[tuple[User, int]]:
+        """List project members with their access level, group memberships included."""
+        return [(User.from_json(m), int(m.get("access_level") or 0))
+                for m in self._paginate(f"projects/{project_id}/members/all")]
+
+    def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
+        """List the branch protection rules of a project."""
+        return [ProtectedBranch.from_json(b) for b in self._paginate(f"projects/{project_id}/protected_branches")]
 
     def download(self, url: str) -> bytes:
         """Download a raw file (e.g. an avatar).
