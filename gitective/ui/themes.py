@@ -1,4 +1,4 @@
-"""Fixed visual themes (TH-01 to TH-04) and their application to Tk/ttk."""
+"""Fixed visual themes (TH-00 to TH-04) and their application to Tk/ttk."""
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ class Theme:
     font: tuple[str, int]
     mono: tuple[str, int]
     relief: str = "flat"
+    radius: int = 0  # corner radius of the Overview cards
+    feature: str = ""  # background of the Overview's highlighted card (latest merges); surface when empty
     chart: tuple[str, ...] = ("#2B3A5C", "#C9622F", "#2F8F8A", "#5B4A8A", "#2F7A57", "#8A3D5C", "#7A5A1F")
 
     def status_colors(self, status: str) -> tuple[str, str]:
@@ -48,13 +50,23 @@ class Theme:
 
 
 THEMES: dict[str, Theme] = {
+    "default": Theme(
+        key="default", label="Default", bg="#0B1020", surface="#131A2E", text="#EEF1F8", muted="#A3ADC4",
+        border="#26304B", header="#1A2238", accent="#5ED3C6", accent_text="#0B1020", highlight="#8BE6DB",
+        link="#7FE0D5", ok=("#163A2E", "#5FD99E"), ko=("#3D1E22", "#FF7D74"), na=("#1E2740", "#A3ADC4"),
+        green=("#163A2E", "#5FD99E"), orange=("#3A2D16", "#F5B95C"), red=("#3D1E22", "#FF7D74"),
+        error=("#3D1E22", "#FFD0CC"), success=("#163A2E", "#C8F5DD"), info=("#173040", "#BFEFE9"),
+        tooltip=("#EEF1F8", "#0B1020"), font=("Segoe UI", 10), mono=("Consolas", 10),
+        chart=("#5ED3C6", "#F5B95C", "#8FA8FF", "#FF7D74", "#5FD99E", "#D7A6FF", "#7C87A0"),
+        radius=16, feature="#172139",
+    ),
     "light": Theme(
         key="light", label="Clair", bg="#F5F5F2", surface="#FFFFFF", text="#1C2230", muted="#5E6676",
         border="#D9DAD5", header="#F0F1EE", accent="#2B3A5C", accent_text="#FFFFFF", highlight="#C9622F",
         link="#2B3A5C", ok=("#E3F3E9", "#17643A"), ko=("#FCE8E6", "#A8201A"), na=("#ECEDEF", "#4B5563"),
         green=("#E3F3E9", "#17643A"), orange=("#FDF0DC", "#8A4205"), red=("#FCE8E6", "#A8201A"),
         error=("#FCE8E6", "#7A1712"), success=("#E3F3E9", "#12502E"), info=("#E6ECF7", "#1F3157"),
-        tooltip=("#1C2230", "#FFFFFF"), font=("Segoe UI", 10), mono=("Consolas", 10),
+        tooltip=("#1C2230", "#FFFFFF"), font=("Segoe UI", 10), mono=("Consolas", 10), radius=12,
     ),
     "dark": Theme(
         key="dark", label="Sombre", bg="#16191F", surface="#1F232B", text="#E6E8EC", muted="#9AA1AE",
@@ -63,7 +75,7 @@ THEMES: dict[str, Theme] = {
         green=("#183A27", "#7FD8A2"), orange=("#46341A", "#F5C27A"), red=("#4A1E1C", "#FF9D94"),
         error=("#4A1E1C", "#FFD3CF"), success=("#183A27", "#C6F0D6"), info=("#1E2A44", "#C9D7F5"),
         tooltip=("#E6E8EC", "#16191F"), font=("Segoe UI", 10), mono=("Consolas", 10),
-        chart=("#8FB0F5", "#E08A54", "#5CC6BF", "#B39DEB", "#7FD8A2", "#F08FB5", "#E6C36A"),
+        chart=("#8FB0F5", "#E08A54", "#5CC6BF", "#B39DEB", "#7FD8A2", "#F08FB5", "#E6C36A"), radius=12,
     ),
     "win95": Theme(
         key="win95", label="Windows 95", bg="#C0C0C0", surface="#FFFFFF", text="#000000", muted="#404040",
@@ -87,7 +99,7 @@ THEMES: dict[str, Theme] = {
 
 
 def get_theme(key: str) -> Theme:
-    return THEMES.get(key, THEMES["light"])
+    return THEMES.get(key, THEMES["default"])
 
 
 def apply_theme(root: tk.Tk, theme: Theme) -> None:

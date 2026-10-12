@@ -49,7 +49,8 @@ next to `main.py`.
 | Weights and thresholds | Each rule's weight in the score, and the color thresholds (green ≥ 100 %, orange ≥ 50 % by default). |
 | Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR. |
 | People | Groups several GitLab accounts and Git identities under one person. |
-| Theme | Light, Dark, Windows 95 or Matrix. |
+| Theme | Default, Light, Dark, Windows 95 or Matrix. Default is a dark navy theme with a turquoise accent. |
+| Overview refresh | How often the Overview tab reloads the data on its own, in minutes (default 5). |
 
 ### Custom rules
 
@@ -96,6 +97,27 @@ before you save.
 The score is the weighted share of passing rules among the applicable ones.
 
 ## Usage
+
+**Overview tab**
+
+The first tab, shown at launch. It is a read-only dashboard of every tracked
+repository, designed to stay on screen; it fits a 1920 × 1080 display.
+
+- **Latest merges**: the 20 most recent merged MRs, grouped by day, with
+  their repository, author → merger and score. Today's merges are
+  highlighted.
+- **Merges per day**: this week and last week, Monday to Sunday.
+- **Average score** of the MRs merged in the last 30 days, with the change
+  from the 30 days before.
+- **Merged MR quality per week**: the last 12 complete weeks, split by score
+  color.
+- **Repository ranking** by average score over 30 days, on two columns.
+- **Broken rules**: KO count per rule over 30 days.
+- **Created / merged MRs per week** over the last 12 complete weeks.
+
+The tab reloads the data every few minutes (see Configuration). If another
+tab is open at that moment, the reload waits until you come back to the
+overview. Press **F11** to toggle full screen.
 
 **Merge Requests tab**
 

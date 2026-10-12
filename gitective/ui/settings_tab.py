@@ -12,6 +12,7 @@ from gitective.api.models import Project, User
 from gitective.config.settings import (
     FIXED_CRITERIA,
     PARALLEL_RANGE,
+    REFRESH_RANGE,
     RULE_FIELDS,
     CustomRule,
     Person,
@@ -102,6 +103,12 @@ class SettingsTab(ttk.Frame):
         self.theme = tk.StringVar()
         for key, theme in THEMES.items():
             ttk.Radiobutton(box, text=theme.label, value=key, variable=self.theme).pack(anchor="w", pady=2)
+        self.overview_refresh = tk.StringVar()
+        row = ttk.Frame(box, style="Surface.TFrame")
+        row.pack(fill="x", pady=(10, 0))
+        ttk.Label(row, text="Rafraîchissement de la Vue d'ensemble (min)", style="Bar.TLabel").pack(side="left")
+        ttk.Spinbox(row, from_=REFRESH_RANGE[0], to=REFRESH_RANGE[1], textvariable=self.overview_refresh,
+                    width=4).pack(side="left", padx=8)
         ttk.Button(box, text="Relancer l'assistant de démarrage", command=self.app.open_wizard).pack(anchor="w", pady=(10, 0))
 
     def _build_rules(self, parent: tk.Misc) -> None:
@@ -191,6 +198,7 @@ class SettingsTab(ttk.Frame):
         self.verify_ssl.set(d.verify_ssl)
         self.parallel.set(str(d.parallel_requests))
         self.theme.set(d.theme)
+        self.overview_refresh.set(str(d.overview_refresh))
         self.link_regex.set(d.link_regex)
         self.ticket_regex.set(d.ticket_regex)
         for criterion, var in self.weights.items():
@@ -232,6 +240,10 @@ class SettingsTab(ttk.Frame):
         if not self.parallel.get().strip().isdigit() or not low <= int(self.parallel.get()) <= high:
             return None, f"Requêtes simultanées : un nombre entier entre {low} et {high}."
         d.parallel_requests = int(self.parallel.get())
+        low, high = REFRESH_RANGE
+        if not self.overview_refresh.get().strip().isdigit() or not low <= int(self.overview_refresh.get()) <= high:
+            return None, f"Rafraîchissement de la Vue d'ensemble : un nombre de minutes entre {low} et {high}."
+        d.overview_refresh = int(self.overview_refresh.get())
         for project in d.projects:
             project.branch = self._branch_vars[project.id].get().strip() if project.id in self._branch_vars else project.branch
         return d, ""
