@@ -1,12 +1,13 @@
-"""Per-person statistics, lead time and weekly score series."""
+"""Per-person statistics, lead time, merge delay and weekly score series."""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from statistics import median
 
-from gitective.core.dates import week_key
+from gitective.core.dates import business_days, week_key
 from gitective.core.people import PersonRef
 from gitective.core.rules import KO, Evaluation
 
@@ -15,13 +16,26 @@ GLOBAL_KEY = "__all__"
 
 @dataclass
 class PersonStats:
-    """Aggregated figures for one person (one row of the Statistics tab)."""
+    """Aggregated figures for one person (one row of the Statistics tab).
+
+    Delays are in business days (weekends excluded).
+    """
 
     person: PersonRef
     mr_count: int = 0
-    score_avg: float = 0.0
+    score_avg: float | None = None  # None when the person authored no MR
     ko_counts: dict[str, int] = field(default_factory=dict)
-    lead_time_days: float | None = None
+    merged_count: int = 0  # MRs this person merged (ST-13)
+    lead_times: list[float] = field(default_factory=list)  # creation → merge of authored MRs (ST-08)
+    merge_delays: list[float] = field(default_factory=list)  # last commit → merge of merged MRs (ST-12)
+
+    @property
+    def lead_time_days(self) -> float | None:
+        return median(self.lead_times) if self.lead_times else None
+
+    @property
+    def merge_delay_days(self) -> float | None:
+        return median(self.merge_delays) if self.merge_delays else None
 
 
 def average(values: Iterable[float]) -> float:
@@ -30,26 +44,42 @@ def average(values: Iterable[float]) -> float:
 
 
 def per_person(evaluations: Sequence[Evaluation]) -> list[PersonStats]:
-    """One PersonStats per MR author, sorted by name."""
-    groups: dict[str, list[Evaluation]] = defaultdict(list)
-    refs: dict[str, PersonRef] = {}
+    """One PersonStats per MR author or merger, sorted by name."""
+    rows: dict[str, PersonStats] = {}
+
+    def row(person: PersonRef) -> PersonStats:
+        return rows.setdefault(person.key, PersonStats(person=person))
+
+    scores: dict[str, list[float]] = defaultdict(list)
     for ev in evaluations:
-        groups[ev.author.key].append(ev)
-        refs[ev.author.key] = ev.author
-    rows: list[PersonStats] = []
-    for key, evs in groups.items():
-        row = PersonStats(person=refs[key], mr_count=len(evs), score_avg=average(e.score for e in evs))
-        for ev in evs:
-            for criterion, result in ev.results.items():
-                row.ko_counts.setdefault(criterion, 0)
-                if result.status == KO:
-                    row.ko_counts[criterion] += 1
-        # Lead time only on merged MRs (ST-08).
-        delays = [(e.mr.merged_at - e.mr.created_at).total_seconds() / 86400
-                  for e in evs if e.mr.merged_at is not None]
-        row.lead_time_days = average(delays) if delays else None
-        rows.append(row)
-    return sorted(rows, key=lambda r: r.person.name.casefold())
+        author = row(ev.author)
+        author.mr_count += 1
+        scores[ev.author.key].append(ev.score)
+        for criterion, result in ev.results.items():
+            author.ko_counts.setdefault(criterion, 0)
+            if result.status == KO:
+                author.ko_counts[criterion] += 1
+        merged_at = ev.mr.merged_at
+        if merged_at is None:
+            continue
+        author.lead_times.append(business_days(ev.mr.created_at, merged_at))
+        if ev.merger is None:
+            continue
+        merger = row(ev.merger)
+        merger.merged_count += 1
+        if ev.last_commit_at is not None:
+            merger.merge_delays.append(business_days(ev.last_commit_at, merged_at))
+    for key, values in scores.items():
+        rows[key].score_avg = average(values)
+    return sorted(rows.values(), key=lambda r: r.person.name.casefold())
+
+
+def delay_details(values: Sequence[float]) -> str:
+    """Tooltip of a delay cell: average, minimum and maximum."""
+    if not values:
+        return ""
+    return (f"Moyenne : {format_days(average(values))}\nMin : {format_days(min(values))}\n"
+            f"Max : {format_days(max(values))}\nSur {len(values)} MR")
 
 
 def weekly_scores(

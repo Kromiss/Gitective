@@ -1,4 +1,4 @@
-"""Statistics tab: per-person figures, role, avatars and weekly chart (ST-01..ST-11)."""
+"""Statistics tab: per-person figures, role, delays, avatars and weekly chart (ST-01..ST-14)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from gitective.core.dates import (
 from gitective.core.merge_requests import evaluate_all, load_all_states, load_pairs
 from gitective.core.mergers import merge_rights
 from gitective.core.rules import Evaluation, score_level
-from gitective.core.stats import GLOBAL_KEY, PersonStats, format_days, per_person, weekly_scores
+from gitective.core.stats import GLOBAL_KEY, PersonStats, delay_details, format_days, per_person, weekly_scores
 from gitective.ui.chart import Series, WeeklyChart
 from gitective.ui.data_tab import DataTab
 from gitective.ui.grid import Column, sort_rows
@@ -39,13 +39,19 @@ HEAD_COLUMNS = [
     Column("person", "Personne", 220, kind="avatar", stretch=True),
     Column("role", "Rôle", 80, kind="tip"),
     Column("mr", "MR", 60, align="e"),
+    Column("merged", "MR mergées", 90, align="e"),
     Column("score", "Score moyen", 96, kind="score", align="center"),
 ]
-LEAD_COLUMN = Column("lead", "Délai création → merge", 150, align="e")
+# Medians in business days; the tooltip gives average, min and max (ST-14).
+DELAY_COLUMNS = [
+    Column("lead", "Délai création → merge", 150, kind="tip", align="e"),
+    Column("merge_delay", "Délai dernier commit → merge", 190, kind="tip", align="e"),
+]
 
 BASE_SORT: dict[str, Callable[[PersonStats], Any]] = {
     "person": lambda s: s.person.name.casefold(),
     "mr": lambda s: s.mr_count,
+    "merged": lambda s: s.merged_count,
     "score": lambda s: s.score_avg,
     "lead": lambda s: s.lead_time_days,
 }
@@ -106,7 +112,7 @@ class StatsTab(DataTab):
         self._criteria_ids = [c.id for c in criteria]
         columns = [*HEAD_COLUMNS,
                    *(Column(f"ko:{c.id}", f"KO {c.label}", 60, align="e") for c in criteria),
-                   LEAD_COLUMN]
+                   *DELAY_COLUMNS]
         if self._sort_key not in self._sort_keys():
             self._sort_key, self._ascending = "score", False
         self.grid_view.set_columns(columns)
@@ -115,6 +121,7 @@ class StatsTab(DataTab):
     def _sort_keys(self) -> dict[str, Callable[[PersonStats], Any]]:
         keys = dict(BASE_SORT)
         keys["role"] = lambda s: s.person.key not in self._merge_repos
+        keys["merge_delay"] = lambda s: s.merge_delay_days if s.person.key in self._merge_repos else None
         for cid in self._criteria_ids:
             keys[f"ko:{cid}"] = lambda s, c=cid: s.ko_counts.get(c, 0)
         return keys
@@ -173,7 +180,7 @@ class StatsTab(DataTab):
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
             pairs, errors = load_pairs(projects, lambda p: load_all_states(client, cache, p, period))
-            evaluations = evaluate_all(client, cache, pairs, rules, people, progress, workers)
+            evaluations = evaluate_all(client, cache, pairs, rules, people, progress, workers, merged_commits=True)
             rights, rights_errors = merge_rights(client, cache, projects, workers)
             merge_repos: dict[str, set[str]] = {}
             for user, repos in rights.items():
@@ -192,7 +199,7 @@ class StatsTab(DataTab):
 
     def _load_avatars(self) -> None:
         """Fetch avatars in the background, then redraw (AV-01, AV-05)."""
-        wanted = {e.author.avatar_user_id for e in self._evaluations if e.author.avatar_user_id}
+        wanted = {p.avatar_user_id for e in self._evaluations for p in (e.author, e.merger) if p and p.avatar_user_id}
         wanted -= set(self._images)
         if not wanted:
             return
@@ -222,7 +229,9 @@ class StatsTab(DataTab):
     def _apply_view(self, reset_page: bool = False) -> None:
         authors = set(self.app.filters.authors)
         evaluations = [e for e in self._evaluations if not authors or e.author.key in authors]
-        self._stats = sort_rows(per_person(evaluations), self._sort_keys()[self._sort_key], self._ascending)
+        # Built from every MR so a merger's delay counts the MRs of all authors.
+        stats = [s for s in per_person(self._evaluations) if not authors or s.person.key in authors]
+        self._stats = sort_rows(stats, self._sort_keys()[self._sort_key], self._ascending)
         self._render()
         weeks, series = weekly_scores(evaluations, sorted(authors))
         names = {e.author.key: e.author.name for e in evaluations}
@@ -240,10 +249,14 @@ class StatsTab(DataTab):
                 "person": (image, initials(person.name), badge_color(person.key), person.name),
                 "role": self._role(person.key),
                 "mr": str(stat.mr_count),
-                "score": (f"{stat.score_avg:.0f} %",
-                          score_level(round(stat.score_avg, 6), settings.green_threshold, settings.orange_threshold)),
+                "merged": str(stat.merged_count),
+                "score": "" if stat.score_avg is None else (
+                    f"{stat.score_avg:.0f} %",
+                    score_level(round(stat.score_avg, 6), settings.green_threshold, settings.orange_threshold)),
                 **{f"ko:{c}": str(stat.ko_counts.get(c, 0)) for c in self._criteria_ids},
-                "lead": format_days(stat.lead_time_days),
+                "lead": (format_days(stat.lead_time_days), delay_details(stat.lead_times)),
+                "merge_delay": (format_days(stat.merge_delay_days), delay_details(stat.merge_delays))
+                if person.key in self._merge_repos else ("N/A", "Pas de droit de merge"),
             })
         self.grid_view.set_rows(rows)
 

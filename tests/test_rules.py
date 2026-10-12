@@ -152,11 +152,12 @@ class PeopleAndStatsTests(unittest.TestCase):
             rules.evaluate(MergeRequest.from_json(mr_json(iid=2, title="bad", merger=user_json(2, "bob"),
                                                           created_at="2026-09-28T08:00:00Z")), "g/r", people),
         ]
-        stats = per_person(evs)
-        self.assertEqual(len(stats), 1)
-        self.assertEqual(stats[0].mr_count, 2)
-        self.assertEqual(stats[0].ko_counts["r_title"], 1)
-        self.assertIsNotNone(stats[0].lead_time_days)
+        stats = {s.person.key: s for s in per_person(evs)}
+        self.assertEqual(stats["u:1"].mr_count, 2)
+        self.assertEqual(stats["u:1"].ko_counts["r_title"], 1)
+        self.assertIsNotNone(stats["u:1"].lead_time_days)
+        # The merger gets a row of its own, without authored MRs (ST-13).
+        self.assertEqual((stats["u:2"].mr_count, stats["u:2"].merged_count, stats["u:2"].score_avg), (0, 2, None))
         weeks, series = weekly_scores(evs, ["u:1"])
         self.assertEqual(len(weeks), 2)
         self.assertEqual(len(series["u:1"]), 2)

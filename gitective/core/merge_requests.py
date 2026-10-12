@@ -84,17 +84,23 @@ def evaluate_all(
     people: PersonDirectory,
     progress: Progress | None = None,
     workers: int = 1,
+    merged_commits: bool = False,
 ) -> list[Evaluation]:
     """Evaluate every (project, MR) pair.
 
-    Commits are fetched only when a rule inspects commit messages (RP-04):
-    one request per MR, run `workers` at a time and cached for the session.
+    Commits are fetched when a rule inspects commit messages (RP-04), and for
+    merged MRs when `merged_commits` is set (merge delay, ST-12): one request
+    per MR, run `workers` at a time and cached for the session.
     """
+    def load(pair: Pair) -> list[Commit] | None:
+        project, mr = pair
+        if not (rules.needs_commits or (merged_commits and mr.merged_at)):
+            return None
+        return cache.get_or_load(("mr-commits", project.id, mr.iid),
+                                 lambda: client.list_merge_request_commits(project.id, mr.iid))
+
     commits: list[list[Commit] | None] = [None] * len(pairs)
-    if rules.needs_commits:
-        commits = run_parallel(
-            lambda pair: cache.get_or_load(("mr-commits", pair[0].id, pair[1].iid),
-                                           lambda: client.list_merge_request_commits(pair[0].id, pair[1].iid)),
-            pairs, workers, progress)
+    if rules.needs_commits or merged_commits:
+        commits = run_parallel(load, pairs, workers, progress)
     return [rules.evaluate(mr, project.path, people, mr_commits)
             for (project, mr), mr_commits in zip(pairs, commits)]

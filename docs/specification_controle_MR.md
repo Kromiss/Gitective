@@ -211,16 +211,19 @@ Les regex du lien et du n° de ticket de RC-03 sont dans un bloc dédié « Corr
 | Réf. | Exigence |
 |---|---|
 | ST-01 | Onglet dédié « Statistiques ». |
-| ST-02 | Une ligne par auteur : nombre de MR, score moyen, nombre de KO par critère (règles personnalisées actives, RC-03, RC-04). |
+| ST-02 | Une ligne par personne auteur ou mergeur d'au moins une MR : nombre de MR créées, nombre de MR mergées, score moyen (vide sans MR créée), nombre de KO par critère (règles personnalisées actives, RC-03, RC-04). |
 | ST-03 | MR prises en compte : tous états (mergées, ouvertes, fermées), hors Draft. |
 | ST-04 | Filtres propres à l'onglet : période sur la date de création, dépôts (sélection multiple parmi les dépôts suivis). |
 | ST-05 | Période : deux dates `JJ/MM/AAAA` + raccourcis « 7 jours », « 30 jours », « Mois en cours », « Année en cours » + bouton « Total » (sans limite de date). |
 | ST-06 | Le filtre par auteur (FI-09) s'applique aussi à cet onglet. |
 | ST-07 | Tri par colonne. |
-| ST-08 | Colonne « Délai moyen création → merge » par personne, en jours avec une décimale (ex. 2,2 j), calculé sur les MR mergées uniquement. |
+| ST-08 | Colonne « Délai création → merge » par personne (MR dont elle est l'auteur), calculé sur les MR mergées uniquement (voir ST-14). |
 | ST-09 | Courbe d'évolution du score moyen par semaine, dessinée en `Canvas` : une courbe globale + une courbe par personne sélectionnée dans le filtre auteurs. |
 | ST-10 | Semaine d'une MR déterminée par sa date de création ; la courbe suit les filtres de l'onglet (période, dépôts, auteurs) et les couleurs du thème. |
 | ST-11 | Colonne « Rôle » : **Mergeur** si la personne (l'un de ses comptes) a le droit de merger sur la branche surveillée d'au moins un dépôt de l'onglet, **Dev** sinon. Survol de « Mergeur » : infobulle listant ces dépôts. Droits calculés via l'API : membres du projet (héritage des groupes inclus) croisés avec les règles de branche protégée (rôle minimal, utilisateurs nommés ; règle la plus permissive si plusieurs correspondent). Branche non protégée : Developer et plus. Non pris en compte : droits accordés à un groupe (Premium), administrateurs de l'instance. Dépôt sans branche surveillée : ignoré. Triable. |
+| ST-12 | Colonne « Délai dernier commit → merge » (réactivité des mergeurs) : pour chaque MR mergée par la personne, date de merge − date du dernier commit de la MR (`committed_date` le plus récent). Une requête par MR mergée (commits de la MR, en parallèle, mise en cache). « N/A » si la personne n'est pas Mergeur (ST-11), « — » si elle n'a rien mergé sur la période. Limite connue : un rebase juste avant le merge réécrit la date du dernier commit et sous-estime le délai. |
+| ST-13 | Les mergeurs apparaissent même sans MR créée sur la période ; leur délai couvre les MR de tous les auteurs, quel que soit le filtre auteur (qui ne filtre que les lignes affichées). |
+| ST-14 | Délais (ST-08, ST-12) : médiane, en jours ouvrés (samedi et dimanche exclus, heure locale), une décimale (ex. 1,3 j). Survol : infobulle avec moyenne, minimum, maximum et nombre de MR. |
 
 ## 9. Commits directs (état de l'onglet Merge Requests)
 
