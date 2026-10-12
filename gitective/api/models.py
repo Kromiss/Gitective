@@ -1,4 +1,4 @@
-"""Typed GitLab objects returned by GitLabClient."""
+"""Forge-neutral typed objects returned by every ForgeClient (API-04)."""
 
 from __future__ import annotations
 
@@ -78,6 +78,7 @@ class MergeRequest:
     target_branch: str = ""
     merge_commit_sha: str | None = None
     squash_commit_sha: str | None = None
+    sha: str | None = None  # head commit of the source branch (RC-05)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> MergeRequest:
@@ -104,6 +105,7 @@ class MergeRequest:
             target_branch=data.get("target_branch", "") or "",
             merge_commit_sha=data.get("merge_commit_sha"),
             squash_commit_sha=data.get("squash_commit_sha"),
+            sha=data.get("sha"),
         )
 
 
@@ -159,4 +161,27 @@ class ProtectedBranch:
             merge_levels=tuple(int(r["access_level"]) for r in rules if r.get("access_level") is not None
                                and not r.get("user_id") and not r.get("group_id")),
             merge_user_ids=tuple(int(r["user_id"]) for r in rules if r.get("user_id")),
+        )
+
+
+@dataclass(frozen=True)
+class CommitStatus:
+    """A CI result published on a commit (GitLab CI, Jenkins through its GitLab plugin...)."""
+
+    name: str
+    status: str  # success, failed, canceled, running, pending, created, skipped, manual
+    created_at: datetime
+    finished_at: datetime | None = None
+    allow_failure: bool = False
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> CommitStatus:
+        created = parse_datetime(data.get("created_at"))
+        assert created is not None
+        return cls(
+            name=data.get("name", "") or "default",
+            status=data.get("status", ""),
+            created_at=created,
+            finished_at=parse_datetime(data.get("finished_at")),
+            allow_failure=bool(data.get("allow_failure", False)),
         )

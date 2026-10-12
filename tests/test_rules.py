@@ -5,7 +5,7 @@ import unittest
 from gitective.api.models import Commit, MergeRequest, User
 from gitective.config.settings import CustomRule, Person, Settings
 from gitective.core.people import PersonDirectory
-from gitective.core.rules import KO, NA, OK, SELF_MERGE, TICKET, MrFields, RuleSet, score_level, validate_regex
+from gitective.core.rules import KO, NA, OK, PIPELINE, SELF_MERGE, TICKET, MrFields, RuleSet, score_level, validate_regex
 from gitective.core.stats import format_days, per_person, weekly_scores
 from tests.factories import commit_json, mr_json, user_json
 
@@ -101,7 +101,8 @@ class EvaluationTests(unittest.TestCase):
 
     def test_compliant_mr_scores_100(self) -> None:
         ev = self.evaluate(merger=user_json(2, "bob"))
-        self.assertEqual({r.status for r in ev.results.values()}, {OK})
+        self.assertEqual({r.status for k, r in ev.results.items() if k != PIPELINE}, {OK})
+        self.assertEqual(ev.results[PIPELINE].status, NA)  # no CI expected by default
         self.assertEqual(ev.score, 100.0)
 
     def test_self_merge_with_other_account_is_ko(self) -> None:
@@ -169,7 +170,7 @@ class SettingsTests(unittest.TestCase):
         settings = Settings.from_dict({"parallel_requests": 99, "weights": {"ticket": 5}})
         self.assertEqual([r.id for r in settings.rules], ["r_title", "r_link"])
         self.assertEqual(settings.parallel_requests, 16)
-        self.assertEqual(settings.weights, {"ticket": 5.0, "self_merge": 25.0})
+        self.assertEqual(settings.weights, {"ticket": 5.0, "self_merge": 25.0, "pipeline": 25.0})
 
     def test_round_trip(self) -> None:
         settings = Settings()

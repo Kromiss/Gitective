@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
 from gitective.api.client import GitLabClient
@@ -110,6 +110,7 @@ class SettingsTab(ttk.Frame):
         ttk.Spinbox(row, from_=REFRESH_RANGE[0], to=REFRESH_RANGE[1], textvariable=self.overview_refresh,
                     width=4).pack(side="left", padx=8)
         ttk.Button(box, text="Relancer l'assistant de démarrage", command=self.app.open_wizard).pack(anchor="w", pady=(10, 0))
+        ttk.Button(box, text="Vider la base locale", command=self._clear_store).pack(anchor="w", pady=(6, 0))
 
     def _build_rules(self, parent: tk.Misc) -> None:
         box = self._section(parent, "Règles personnalisées")
@@ -180,6 +181,7 @@ class SettingsTab(ttk.Frame):
         self._projects_frame = ttk.Frame(box, style="Surface.TFrame")
         self._projects_frame.pack(fill="x", pady=(8, 0))
         self._branch_vars: dict[int, tk.StringVar] = {}
+        self._ci_vars: dict[int, tk.BooleanVar] = {}
 
     def _build_people(self, parent: tk.Misc) -> None:
         box = self._section(parent, "Personnes et comptes")
@@ -246,6 +248,7 @@ class SettingsTab(ttk.Frame):
         d.overview_refresh = int(self.overview_refresh.get())
         for project in d.projects:
             project.branch = self._branch_vars[project.id].get().strip() if project.id in self._branch_vars else project.branch
+            project.ci_expected = self._ci_vars[project.id].get() if project.id in self._ci_vars else project.ci_expected
         return d, ""
 
     def _save(self) -> None:
@@ -253,9 +256,24 @@ class SettingsTab(ttk.Frame):
         if settings is None:
             self.app.notify("error", error)
             return
+        changed = settings.gitlab_url.rstrip("/") != self.app.settings.gitlab_url.rstrip("/")
+        if changed and self.app.settings.gitlab_url and not self.app.store.is_empty():
+            # The local base belongs to one instance (CH-10).
+            if not messagebox.askyesno("Changement d'instance",
+                                       "L'URL de l'instance change : la base locale va être vidée et les données "
+                                       "seront relues depuis la nouvelle instance.\n\nContinuer ?", parent=self):
+                return
         self.app.apply_settings(settings)
         self.draft = copy.deepcopy(settings)
         self.app.notify("success", "Configuration enregistrée.")
+
+    def _clear_store(self) -> None:
+        """OC-09: delete every stored row after confirmation."""
+        if messagebox.askyesno("Vider la base locale",
+                               "Supprimer toutes les données de gitective.db ? Elles seront relues depuis GitLab "
+                               "(la configuration est conservée).", parent=self):
+            self.app.clear_store()
+            self.app.notify("success", "Base locale vidée.")
 
     # --------------------------------------------------------- Connection
 
@@ -370,7 +388,9 @@ class SettingsTab(ttk.Frame):
         for child in self._projects_frame.winfo_children():
             child.destroy()
         previous = {pid: var.get() for pid, var in self._branch_vars.items()}
+        previous_ci = {pid: var.get() for pid, var in self._ci_vars.items()}
         self._branch_vars = {}
+        self._ci_vars = {}
         if not self.draft.projects:
             ttk.Label(self._projects_frame, text="Aucun dépôt suivi.", style="BarMuted.TLabel").pack(anchor="w")
         for project in self.draft.projects:
@@ -378,7 +398,11 @@ class SettingsTab(ttk.Frame):
             row.pack(fill="x", pady=2)
             var = tk.StringVar(value=previous.get(project.id, project.branch))
             self._branch_vars[project.id] = var
+            ci = tk.BooleanVar(value=previous_ci.get(project.id, project.ci_expected))
+            self._ci_vars[project.id] = ci
             ttk.Label(row, text=project.path, style="Bar.TLabel").pack(side="left")
+            # RC-05 is N/A for the MRs of a repository without CI (SD-08, PI-06).
+            ttk.Checkbutton(row, text="CI attendue", variable=ci).pack(side="right", padx=(8, 0))
             ttk.Entry(row, textvariable=var, width=14, font=self.app.get_theme().mono).pack(side="right")
 
     def _choose_projects(self) -> None:
@@ -445,7 +469,7 @@ class SettingsTab(ttk.Frame):
                     canvas.delete("all")
                     canvas.create_image(AVATAR_PX / 2, AVATAR_PX / 2, image=image)
 
-        self.app.runner.run(f"avatar-{id(canvas)}", lambda _p: store.path_for(user_id, user.avatar_url if user else None),
+        self.app.runner.run(f"avatar-{id(canvas)}", lambda _p: store.image_for(user_id, user.avatar_url if user else None),
                             done, lambda e: None)
 
     def _account_label(self, account_id: int) -> str:

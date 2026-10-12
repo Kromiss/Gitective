@@ -21,8 +21,9 @@ from gitective.api.errors import (
     RateLimitError,
     SSLVerificationError,
 )
-from gitective.core.cache import SessionCache
 from gitective.core.orphan_commits import BranchNotFoundError, find_orphan_commits
+from gitective.core.storage import MEMORY, Store
+from gitective.core.sync import ForgeData
 from gitective.config.settings import TrackedProject
 from gitective.core.dates import day_range, parse_date
 from tests.factories import commit_json, mr_json, user_json
@@ -163,7 +164,8 @@ class OrphanCommitTests(unittest.TestCase):
     def test_commits_without_mr_are_reported(self) -> None:
         opener = FakeOpener(
             FakeResponse({"name": "main"}),                                   # branch exists
-            FakeResponse([commit_json("aaa", "with mr"), commit_json("bbb", "direct push")]),
+            FakeResponse([{**commit_json("aaa", "with mr"), "committed_date": "2026-10-05T09:00:00Z"},
+                          {**commit_json("bbb", "direct push"), "committed_date": "2026-10-04T09:00:00Z"}]),
             FakeResponse([mr_json()]),                                        # aaa → MR
             FakeResponse([]),                                                 # bbb → none
         )
@@ -171,17 +173,22 @@ class OrphanCommitTests(unittest.TestCase):
         project = TrackedProject(id=10, path="group/repo", branch="main")
         period = day_range(parse_date("01/10/2026"), parse_date("07/10/2026"))
         progress: list[tuple[int, int]] = []
-        orphans = find_orphan_commits(client, SessionCache(), [project], period,
+        data = ForgeData(client, Store(MEMORY))
+        orphans = find_orphan_commits(data, [project], period,
                                       progress=lambda d, t: progress.append((d, t)), workers=1)
         self.assertEqual([o.commit.short_id for o in orphans], ["bbb"])
         self.assertEqual(progress[-1], (2, 2))
+        # Same session: everything comes from the store, no request left in the opener (CO-08).
+        again = find_orphan_commits(data, [project], period, workers=1)
+        self.assertEqual([o.commit.short_id for o in again], ["bbb"])
 
     def test_missing_branch_is_reported(self) -> None:
         client, _ = make_client(FakeOpener(http_error(404)))
         project = TrackedProject(id=10, path="group/repo", branch="develop")
         period = day_range(parse_date("01/10/2026"), parse_date("07/10/2026"))
         errors: list[Exception] = []
-        self.assertEqual(find_orphan_commits(client, SessionCache(), [project], period, on_error=errors.append), [])
+        data = ForgeData(client, Store(MEMORY))
+        self.assertEqual(find_orphan_commits(data, [project], period, on_error=errors.append), [])
         self.assertIsInstance(errors[0], BranchNotFoundError)
 
 

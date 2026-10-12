@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import math
 import tkinter as tk
 import webbrowser
+from tkinter import messagebox
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from tkinter import ttk
@@ -15,9 +17,11 @@ from gitective.api.models import User
 from gitective.config import settings as config
 from gitective.config.settings import Settings, TrackedProject
 from gitective.core.avatars import AvatarStore
-from gitective.core.cache import SessionCache
+from gitective.core.dates import format_datetime
 from gitective.core.people import PersonDirectory
 from gitective.core.rules import RuleSet
+from gitective.core.storage import Store, StoreError
+from gitective.core.sync import ForgeData
 from gitective.ui.filters import FilterState
 from gitective.ui.mr_tab import MrTab
 from gitective.ui.notifications import Banner, describe_error
@@ -38,11 +42,12 @@ class App:
         self.settings: Settings = config.load()
         self.theme: Theme = get_theme(self.settings.theme)
         self.filters = FilterState(self.settings.filters)
-        self.cache = SessionCache()
+        self.store = self._open_store()
         self.client: GitLabClient | None = None
+        self.data = ForgeData(None, self.store)
         self.rules: RuleSet | None = None
         self.people = PersonDirectory(self.settings.people)
-        self.avatars = AvatarStore(config.AVATAR_DIR, None)
+        self.avatars = AvatarStore(self.data)
         self.known_users: dict[int, User] = {}
         self._known_people: dict[str, str] = {}
         self._people_listeners: list[Callable[[list[tuple[str, str]]], None]] = []
@@ -57,19 +62,43 @@ class App:
 
         self.runner = BackgroundRunner(root, self._set_busy)
         self._build_layout()
+        apply_theme(root, self.theme)  # again, for the plain Tk widgets the tabs just created
         root.bind_all("<F5>", lambda e: self.refresh())
         root.bind_all("<F11>", lambda e: self.toggle_fullscreen())
         self.root.after(50, lambda: self._start(first_launch))
 
     # -------------------------------------------------------------- Setup
 
+    def _open_store(self) -> Store:
+        """Open gitective.db; offer to recreate it when unreadable (ER-06)."""
+        try:
+            store = Store(config.DB_PATH)
+        except StoreError as exc:
+            recreate = messagebox.askyesno(
+                "Base locale illisible",
+                f"La base locale gitective.db est illisible, corrompue ou verrouillée ({exc}).\n\n"
+                "La recréer ? Les données seront relues depuis GitLab.")
+            if not recreate:
+                raise SystemExit(1) from exc
+            for suffix in ("", "-wal", "-shm"):
+                config.DB_PATH.with_name(config.DB_PATH.name + suffix).unlink(missing_ok=True)
+            store = Store(config.DB_PATH)
+        # The base belongs to one instance (CH-10): data of another one is dropped.
+        url = self.settings.gitlab_url.rstrip("/")
+        if url and store.get_meta("instance_url") not in (None, url):
+            store.clear()
+        if url:
+            store.set_meta("instance_url", url)
+        return store
+
     def _build_services(self) -> None:
         """(Re)create the client, rules and directories from the settings."""
         s = self.settings
         self.client = GitLabClient(s.gitlab_url, s.token, verify_ssl=s.verify_ssl) if s.is_configured else None
+        self.data = ForgeData(self.client, self.store)
         self.rules = RuleSet.from_settings(s)
         self.people = PersonDirectory(s.people)
-        self.avatars = AvatarStore(config.AVATAR_DIR, self.client)
+        self.avatars = AvatarStore(self.data)
 
     def _load_logo(self, size: int) -> tk.PhotoImage | None:
         path = ASSETS / "logo.png"
@@ -128,6 +157,13 @@ class App:
         """Show the banner (every error goes through it, ER-04)."""
         self.banner.show(kind, message)
 
+    def report_offline(self) -> None:
+        """Banner of the offline mode: stored data is shown (CH-08)."""
+        since = self.data.offline_since
+        if since is not None:
+            self.notify("info", "Instance GitLab injoignable : affichage des données locales "
+                                f"(dernière synchronisation le {format_datetime(since)}).")
+
     def report_error(self, exc: BaseException, extra: int = 0) -> None:
         message = describe_error(exc)
         if extra > 0:
@@ -160,6 +196,11 @@ class App:
         self.settings.filters = self.filters.to_settings()
         self._save()
 
+    def save_stats_view(self, view: str) -> None:
+        """Remember the Statistics view, per person or per repository (ST-01)."""
+        self.settings.stats_view = view
+        self._save()
+
     def column_widths(self, table: str) -> dict[str, int]:
         """Column widths the user set for a table."""
         return dict(self.settings.column_widths.get(table, {}))
@@ -190,10 +231,13 @@ class App:
             for listener in self._people_listeners:
                 listener(items)
 
-    def load_avatar_image(self, path: Path, size: int) -> tk.PhotoImage | None:
-        """Load a PNG/GIF and shrink it by an integer factor (AV-06)."""
+    def load_avatar_image(self, source: Path | bytes, size: int) -> tk.PhotoImage | None:
+        """Load a PNG/GIF file or bytes and shrink it by an integer factor (AV-06)."""
         try:
-            image = tk.PhotoImage(master=self.root, file=str(path))
+            if isinstance(source, bytes):
+                image = tk.PhotoImage(master=self.root, data=base64.b64encode(source))
+            else:
+                image = tk.PhotoImage(master=self.root, file=str(source))
         except tk.TclError:
             return None
         factor = max(1, math.ceil(max(image.width(), image.height()) / size))
@@ -202,9 +246,8 @@ class App:
     # ------------------------------------------------------------ Actions
 
     def refresh(self) -> None:
-        """Empty the cache and reload the current tab (CH-05, AV-07)."""
-        self.cache.clear()
-        self.avatars.clear()
+        """Bring the stored data up to date and reload the current tab (CH-05, AV-07)."""
+        self.data.new_session()
         self.stats_tab.forget_avatars()
         for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
             tab.dirty = True
@@ -218,11 +261,16 @@ class App:
         theme_changed = new.theme != self.settings.theme
         new.filters = self.filters.to_settings()
         new.column_widths = self.settings.column_widths
+        url_changed = new.gitlab_url.rstrip("/") != self.settings.gitlab_url.rstrip("/")
         self.settings = new
         self._save()
+        if url_changed:  # the base belongs to one instance (CH-10)
+            self.store.clear()
+            if new.gitlab_url:
+                self.store.set_meta("instance_url", new.gitlab_url.rstrip("/"))
         self._build_services()
         if connection_changed:
-            self.cache.clear()
+            self.data.new_session()
         valid = {p.id for p in new.projects}
         self.filters.repos = [r for r in self.filters.repos if r in valid]
         if theme_changed:
@@ -238,6 +286,14 @@ class App:
         for tab in (self.mr_tab, self.stats_tab):
             tab.dirty = True
         self.overview_tab.settings_changed()
+
+    def clear_store(self) -> None:
+        """Delete every stored row and reload from GitLab (OC-09)."""
+        self.store.clear()
+        if self.settings.gitlab_url:
+            self.store.set_meta("instance_url", self.settings.gitlab_url.rstrip("/"))
+        self.stats_tab.forget_avatars()
+        self.refresh()
 
     def toggle_fullscreen(self) -> None:
         """F11: full screen on / off, for a permanent display of the overview (VE-02)."""

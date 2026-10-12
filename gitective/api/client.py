@@ -23,7 +23,7 @@ from gitective.api.errors import (
     RateLimitError,
     SSLVerificationError,
 )
-from gitective.api.models import Commit, MergeRequest, Project, ProtectedBranch, User
+from gitective.api.models import Commit, CommitStatus, MergeRequest, Project, ProtectedBranch, User
 
 Opener = Callable[..., Any]
 
@@ -42,7 +42,7 @@ def _iso(value: datetime | None) -> str | None:
 
 
 class GitLabClient:
-    """Thin, typed wrapper around the GitLab REST API v4.
+    """GitLab implementation of ForgeClient: thin, typed wrapper around the REST API v4.
 
     Handles authentication, pagination, retries on rate limiting and
     timeouts, and maps HTTP / network failures to GitLabError subclasses.
@@ -251,6 +251,11 @@ class GitLabClient:
         """List merge requests associated with a commit."""
         data = self._get(f"projects/{project_id}/repository/commits/{sha}/merge_requests")
         return [MergeRequest.from_json(m) for m in data or []]
+
+    def list_commit_statuses(self, project_id: int, sha: str) -> list[CommitStatus]:
+        """List every CI status of a commit, older runs included (PI-01)."""
+        return [CommitStatus.from_json(s) for s in
+                self._paginate(f"projects/{project_id}/repository/commits/{sha}/statuses", {"all": "true"})]
 
     def list_project_members(self, project_id: int) -> list[tuple[User, int]]:
         """List project members with their access level, group memberships included."""

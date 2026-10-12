@@ -10,3 +10,7 @@ __pycache__/
 # Cached list of the projects visible to the token
 projects_cache.json
 projects_cache.json.tmp
+# Local SQLite store (data read from GitLab)
+gitective.db
+gitective.db-wal
+gitective.db-shm

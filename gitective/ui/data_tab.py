@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
@@ -38,12 +38,14 @@ class DataTab(ttk.Frame):
     # ------------------------------------------------------------- Widgets
 
     def make_grid(self, columns: Sequence[Column], empty_text: str, links: bool = False,
-                  master: tk.Misc | None = None) -> DataGrid:
-        """Sortable grid whose column widths are saved under `table`."""
+                  master: tk.Misc | None = None, table: str | None = None,
+                  on_link: Callable[[str], None] | None = None) -> DataGrid:
+        """Sortable grid whose column widths are saved under `table` (the tab's own by default)."""
+        name = table or self.table
         grid = DataGrid(master or self, columns, self.app.get_theme, on_sort=self._sort_by,
-                        on_link=self.app.open_url if links else None, empty_text=empty_text,
-                        widths=self.app.column_widths(self.table),
-                        on_widths_changed=lambda w: self.app.save_column_widths(self.table, w))
+                        on_link=on_link or (self.app.open_url if links else None), empty_text=empty_text,
+                        widths=self.app.column_widths(name),
+                        on_widths_changed=lambda w: self.app.save_column_widths(name, w))
         grid.set_sort(self._sort_key, self._ascending)
         return grid
 
@@ -73,6 +75,8 @@ class DataTab(ttk.Frame):
         """Report load errors and record the users and people seen in the results."""
         if errors:
             self.app.report_error(errors[0], extra=len(errors) - 1)
+        else:
+            self.app.report_offline()
         evaluations = list(evaluations)
         self.app.remember_users(u for e in evaluations for u in (e.mr.author, e.mr.merged_by) if u)
         self.app.register_people((p.key, p.name) for e in evaluations for p in (e.author, e.merger) if p)

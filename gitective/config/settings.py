@@ -10,13 +10,14 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
-# Application root: the folder holding main.py, config.json and avatars/.
+# Application root: the folder holding main.py, config.json and gitective.db.
 APP_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_DIR / "config.json"
-AVATAR_DIR = APP_DIR / "avatars"
+DB_PATH = APP_DIR / "gitective.db"
 
-# Fixed criteria (RC-03, RC-04); custom rules are identified by their own id.
-FIXED_CRITERIA = ("ticket", "self_merge")
+# Fixed criteria (RC-03, RC-04, RC-05); custom rules are identified by their own id.
+FIXED_CRITERIA = ("ticket", "self_merge", "pipeline")
+STATS_VIEWS = ("person", "repo")
 THEMES = ("default", "light", "dark", "win95", "matrix")
 REFRESH_RANGE = (1, 120)  # Overview auto-refresh, in minutes (VE-03)
 PAGE_SIZES = (20, 50, 100)
@@ -66,6 +67,7 @@ class TrackedProject:
     path: str
     web_url: str = ""
     branch: str = ""
+    ci_expected: bool = False  # RC-05 applies only when the repository runs a CI (SD-08)
 
 
 @dataclass
@@ -109,10 +111,12 @@ class Settings:
     theme: str = "default"
     # Auto-refresh period of the Overview tab, in minutes (VE-03).
     overview_refresh: int = 5
+    # View of the Statistics tab: "person" or "repo" (ST-01).
+    stats_view: str = "person"
     # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
     parallel_requests: int = 6
     filters: Filters = dc_field(default_factory=Filters)
-    # Column widths set by dragging, per table ("mr", "commits" for the direct-commits view, "stats") then column key.
+    # Column widths set by dragging, per table ("mr", "commits", "stats", "stats_repo") then column key.
     column_widths: dict[str, dict[str, int]] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -141,6 +145,7 @@ class Settings:
             filters=Filters(**_pick(data.get("filters") or {}, Filters)),
             parallel_requests=clamp_parallel(data.get("parallel_requests", base.parallel_requests)),
             overview_refresh=clamp_refresh(data.get("overview_refresh", base.overview_refresh)),
+            stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
             column_widths=_column_widths(data.get("column_widths")),
         )
 

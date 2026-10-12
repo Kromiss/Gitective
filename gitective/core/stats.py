@@ -1,9 +1,9 @@
-"""Per-person statistics, lead time, merge delay and weekly score series."""
+"""Per-person and per-repository statistics, lead time, merge delay and weekly score series."""
 
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from statistics import median
 
@@ -28,6 +28,7 @@ class PersonStats:
     merged_count: int = 0  # MRs this person merged (ST-13)
     lead_times: list[float] = field(default_factory=list)  # creation → merge of authored MRs (ST-08)
     merge_delays: list[float] = field(default_factory=list)  # last commit → merge of merged MRs (ST-12)
+    direct_commits: int = 0  # commits pushed without MR (ST-15)
 
     @property
     def lead_time_days(self) -> float | None:
@@ -43,8 +44,8 @@ def average(values: Iterable[float]) -> float:
     return sum(items) / len(items) if items else 0.0
 
 
-def per_person(evaluations: Sequence[Evaluation]) -> list[PersonStats]:
-    """One PersonStats per MR author or merger, sorted by name."""
+def per_person(evaluations: Sequence[Evaluation], direct_authors: Sequence[PersonRef] = ()) -> list[PersonStats]:
+    """One PersonStats per MR author or merger, or author of a direct commit, sorted by name."""
     rows: dict[str, PersonStats] = {}
 
     def row(person: PersonRef) -> PersonStats:
@@ -71,7 +72,53 @@ def per_person(evaluations: Sequence[Evaluation]) -> list[PersonStats]:
             merger.merge_delays.append(business_days(ev.last_commit_at, merged_at))
     for key, values in scores.items():
         rows[key].score_avg = average(values)
+    for person in direct_authors:
+        row(person).direct_commits += 1
     return sorted(rows.values(), key=lambda r: r.person.name.casefold())
+
+
+@dataclass
+class RepoStats:
+    """Aggregated figures for one repository (SR-02)."""
+
+    path: str
+    mr_count: int = 0
+    merged_count: int = 0
+    score_avg: float | None = None  # None when no MR was created
+    ko_counts: dict[str, int] = field(default_factory=dict)
+    direct_commits: int = 0
+    lead_times: list[float] = field(default_factory=list)
+
+    @property
+    def lead_time_days(self) -> float | None:
+        return median(self.lead_times) if self.lead_times else None
+
+
+def per_repo(
+    evaluations: Sequence[Evaluation],
+    repo_paths: Sequence[str],
+    direct_repos: Sequence[str] = (),
+) -> list[RepoStats]:
+    """One RepoStats per repository of repo_paths, in that order (SR-01)."""
+    rows = {path: RepoStats(path=path) for path in repo_paths}
+    scores: dict[str, list[float]] = defaultdict(list)
+    for ev in evaluations:
+        row = rows.get(ev.project_path)
+        if row is None:
+            continue
+        row.mr_count += 1
+        scores[ev.project_path].append(ev.score)
+        for criterion, result in ev.results.items():
+            row.ko_counts[criterion] = row.ko_counts.get(criterion, 0) + (result.status == KO)
+        if ev.mr.merged_at is not None:
+            row.merged_count += 1
+            row.lead_times.append(business_days(ev.mr.created_at, ev.mr.merged_at))
+    for path, values in scores.items():
+        rows[path].score_avg = average(values)
+    for path in direct_repos:
+        if path in rows:
+            rows[path].direct_commits += 1
+    return list(rows.values())
 
 
 def delay_details(values: Sequence[float]) -> str:
@@ -82,22 +129,32 @@ def delay_details(values: Sequence[float]) -> str:
             f"Max : {format_days(max(values))}\nSur {len(values)} MR")
 
 
+def by_author(ev: Evaluation) -> str:
+    return ev.author.key
+
+
+def by_repo(ev: Evaluation) -> str:
+    return ev.project_path
+
+
 def weekly_scores(
     evaluations: Sequence[Evaluation],
     person_keys: Sequence[str],
+    key_of: Callable[[Evaluation], str] = by_author,
 ) -> tuple[list[tuple[int, int]], dict[str, list[float | None]]]:
-    """Average score per ISO week of creation (ST-09, ST-10).
+    """Average score per ISO week of creation (ST-09, ST-10, SR-04).
 
     Returns the sorted weeks and, for the global series and each requested
-    person, one value per week (None when that person had no MR that week).
+    key (a person by default, or a repository with key_of=by_repo), one value
+    per week (None when that key had no MR that week).
     """
     buckets: dict[str, dict[tuple[int, int], list[float]]] = defaultdict(lambda: defaultdict(list))
     wanted = set(person_keys)
     for ev in evaluations:
         week = week_key(ev.mr.created_at)
         buckets[GLOBAL_KEY][week].append(ev.score)
-        if ev.author.key in wanted:
-            buckets[ev.author.key][week].append(ev.score)
+        if key_of(ev) in wanted:
+            buckets[key_of(ev)][week].append(ev.score)
     weeks = sorted(buckets[GLOBAL_KEY].keys())
     series: dict[str, list[float | None]] = {}
     for key in [GLOBAL_KEY, *person_keys]:
