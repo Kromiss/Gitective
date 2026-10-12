@@ -1,4 +1,4 @@
-"""Shared filter state and the Merge Requests filter bar (FI-01..FI-11)."""
+"""Shared filter state and the Merge Requests filter bar (FI-01..FI-13)."""
 
 from __future__ import annotations
 
@@ -13,21 +13,26 @@ from gitective.ui.widgets import MultiSelect
 
 Listener = Callable[[str], None]
 
+# "direct" lists the commits pushed without a merge request (CO-01).
+STATES = (("merged", "Mergées"), ("opened", "Ouvertes"), ("closed", "Fermées"), ("direct", "Commits directs"))
+DATED_STATES = ("merged", "direct")
+
 
 class FilterState:
-    """Filters shared by the Merge Requests and Commits tabs.
+    """Filters of the Merge Requests tab, partly shared with the Statistics tab.
 
     Listeners receive the name of what changed: 'state', 'period',
-    'authors' or 'repos'.
+    'authors', 'mergers' or 'repos'.
     """
 
     def __init__(self, saved: Filters) -> None:
-        self.state = saved.state if saved.state in ("merged", "opened", "closed") else "merged"
+        self.state = saved.state if saved.state in dict(STATES) else "merged"
         self.since_yesterday = saved.since_yesterday
         today = format_date(now_local().date())
         self.date_from = saved.date_from or today
         self.date_to = saved.date_to or today
         self.authors: list[str] = list(saved.authors)
+        self.mergers: list[str] = list(saved.mergers)
         self.repos: list[int] = [int(r) for r in saved.repos]
         self.page_size = saved.page_size
         self._listeners: list[Listener] = []
@@ -52,12 +57,13 @@ class FilterState:
 
     def to_settings(self) -> Filters:
         return Filters(state=self.state, since_yesterday=self.since_yesterday, date_from=self.date_from,
-                       date_to=self.date_to, authors=list(self.authors), repos=list(self.repos),
+                       date_to=self.date_to, authors=list(self.authors), mergers=list(self.mergers),
+                       repos=list(self.repos),
                        page_size=self.page_size)
 
 
 class MrFilterBar(ttk.Frame):
-    """State, dates, repositories, authors and Refresh controls."""
+    """State, dates, repositories, authors, mergers and Refresh controls."""
 
     def __init__(
         self,
@@ -77,7 +83,7 @@ class MrFilterBar(ttk.Frame):
         ttk.Label(states, text="État", style="BarMuted.TLabel").pack(anchor="w")
         row = ttk.Frame(states, style="Bar.TFrame")
         row.pack()
-        for value, text in (("merged", "Mergées"), ("opened", "Ouvertes"), ("closed", "Fermées")):
+        for value, text in STATES:
             ttk.Radiobutton(row, text=text, value=value, variable=self._state, style="Toolbutton",
                             command=self._state_changed).pack(side="left")
 
@@ -101,8 +107,11 @@ class MrFilterBar(ttk.Frame):
         self.repos.pack(side="left", padx=(16, 0), anchor="s")
         self.authors = MultiSelect(self, "Auteurs", self._authors_changed, get_theme, all_text="Toutes")
         self.authors.pack(side="left", padx=(8, 0), anchor="s")
+        self.mergers = MultiSelect(self, "Mergeurs", self._mergers_changed, get_theme, all_text="Toutes")
+        self.mergers.pack(side="left", padx=(8, 0), anchor="s")
         self.repos.set_selected([str(r) for r in filters.repos])
         self.authors.set_selected(filters.authors)
+        self.mergers.set_selected(filters.mergers)
 
         ttk.Button(self, text="⟳  Rafraîchir (F5)", style="Accent.TButton", command=on_refresh).pack(
             side="right", anchor="s")
@@ -147,12 +156,18 @@ class MrFilterBar(ttk.Frame):
         self.filters.authors = keys
         self.filters.changed("authors")
 
+    def _mergers_changed(self, keys: list[str]) -> None:
+        self.filters.mergers = keys
+        self.filters.changed("mergers")
+
     def _sync(self, what: str) -> None:
         """Reflect the shared state (also changed from other tabs)."""
-        merged = self.filters.state == "merged"
+        dated = self.filters.state in DATED_STATES
         for widget in (*self._date_entries, self._apply, self._yesterday):
-            widget.state(["!disabled"] if merged else ["disabled"])
-        self._yesterday.configure(style="Accent.TButton" if self.filters.since_yesterday and merged else "TButton")
+            widget.state(["!disabled"] if dated else ["disabled"])
+        # Only merged MRs have a merger (FI-13).
+        self.mergers.state(["!disabled"] if self.filters.state == "merged" else ["disabled"])
+        self._yesterday.configure(style="Accent.TButton" if self.filters.since_yesterday and dated else "TButton")
         if what == "authors":
             self.authors.set_selected(self.filters.authors)
         if what == "repos":

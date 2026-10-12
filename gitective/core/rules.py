@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from gitective.api.models import Commit, MergeRequest
 from gitective.config.settings import RULE_FIELDS, CustomRule, Settings
@@ -64,6 +65,7 @@ class Evaluation:
     merger: PersonRef | None
     results: dict[str, CheckResult] = field(default_factory=dict)
     score: float = 0.0
+    last_commit_at: datetime | None = None  # known only when the MR commits were loaded
 
 
 def validate_regex(pattern: str) -> str | None:
@@ -192,8 +194,9 @@ class RuleSet:
             results[SELF_MERGE] = CheckResult(KO, f"Mergée par son auteur (compte {account})")
         else:
             results[SELF_MERGE] = CheckResult(OK)
+        last_commit = max((c.committed_date for c in commits), default=None) if commits else None
         return Evaluation(mr=mr, project_path=project_path, author=author, merger=merger,
-                          results=results, score=self.score(results))
+                          results=results, score=self.score(results), last_commit_at=last_commit)
 
 
 def score_level(score: float, green: float, orange: float) -> str:

@@ -85,6 +85,7 @@ class Filters:
     date_from: str = ""
     date_to: str = ""
     authors: list[str] = dc_field(default_factory=list)
+    mergers: list[str] = dc_field(default_factory=list)
     repos: list[int] = dc_field(default_factory=list)
     page_size: int = 20
 
@@ -108,7 +109,7 @@ class Settings:
     # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
     parallel_requests: int = 6
     filters: Filters = dc_field(default_factory=Filters)
-    # Column widths set by dragging, per table ("mr", "commits", "stats") then column key.
+    # Column widths set by dragging, per table ("mr", "commits" for the direct-commits view, "stats") then column key.
     column_widths: dict[str, dict[str, int]] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

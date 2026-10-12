@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from gitective.api.client import GitLabClient
 from gitective.api.models import Project, User
 from gitective.config.settings import RULE_FIELDS, RULE_MODES, CustomRule, Person, TrackedProject
+from gitective.core.project_list import load_cached, save_cached
 from gitective.core.rules import validate_regex
 from gitective.ui.widgets import ProjectPicker
 
@@ -97,7 +98,11 @@ class RuleDialog(tk.Toplevel):
 
 
 class ProjectsDialog(tk.Toplevel):
-    """Lists the projects visible to the token so the user ticks those to track."""
+    """Lists the projects visible to the token so the user ticks those to track.
+
+    The list comes from the disk cache when present (SD-04); "Recharger la
+    liste" reads it again from GitLab.
+    """
 
     def __init__(self, master: tk.Misc, app: App, client: GitLabClient, tracked: list[TrackedProject],
                  on_done: Callable[[list[Project]], None]) -> None:
@@ -106,31 +111,56 @@ class ProjectsDialog(tk.Toplevel):
         self.geometry("520x560")
         self.transient(master.winfo_toplevel())
         self.configure(background=app.get_theme().bg)
+        self._app, self._client = app, client
         self._projects: list[Project] = []
         self._on_done = on_done
-        self._status = ttk.Label(self, text="Chargement des projets…")
-        self._status.pack(anchor="w", padx=12, pady=(12, 4))
+        top = ttk.Frame(self)
+        top.pack(fill="x", padx=12, pady=(12, 4))
+        self._status = ttk.Label(top)
+        self._status.pack(side="left")
+        self._reload_button = ttk.Button(top, text="⟳  Recharger la liste", command=self._reload)
+        self._reload_button.pack(side="right")
         self.picker = ProjectPicker(self, app.get_theme)
         self.picker.pack(fill="both", expand=True, padx=12)
         buttons = ttk.Frame(self, padding=12)
         buttons.pack(fill="x")
         ttk.Button(buttons, text="Valider", style="Accent.TButton", command=self._validate).pack(side="right")
         ttk.Button(buttons, text="Annuler", command=self.destroy).pack(side="right", padx=8)
-        checked = [p.id for p in tracked]
+        self._checked = [p.id for p in tracked]
 
-        def loaded(projects: list[Project]) -> None:
-            if not self.winfo_exists():
-                return
-            self._projects = projects
-            self._status.configure(text=f"{len(projects)} projet(s) accessible(s)")
-            self.picker.set_projects([(p.id, p.path_with_namespace) for p in projects], checked)
+        cached = load_cached(client.base_url)
+        if cached:
+            self._show(*cached)
+        else:
+            self._reload()
+
+    def _show(self, projects: list[Project], saved_at: str) -> None:
+        self._projects = projects
+        self._status.configure(text=f"{len(projects)} projet(s) accessible(s) — liste du {saved_at}")
+        self.picker.set_projects([(p.id, p.path_with_namespace) for p in projects], self._checked)
+
+    def _reload(self) -> None:
+        if self._projects:
+            self._checked = self.picker.checked()  # keep ticks made before reloading
+        self._status.configure(text="Chargement des projets…")
+        self._reload_button.state(["disabled"])
+        client, workers = self._client, self._app.settings.parallel_requests
+
+        def task(_progress: object) -> tuple[list[Project], str]:
+            projects = client.list_projects(workers=workers)
+            return projects, save_cached(client.base_url, projects)
+
+        def loaded(result: tuple[list[Project], str]) -> None:
+            if self.winfo_exists():
+                self._reload_button.state(["!disabled"])
+                self._show(*result)
 
         def failed(exc: BaseException) -> None:
             if self.winfo_exists():
                 self.destroy()
-            app.report_error(exc)
+            self._app.report_error(exc)
 
-        app.runner.run("projects", lambda _p: client.list_projects(), loaded, failed)
+        self._app.runner.run("projects", task, loaded, failed)
 
     def _validate(self) -> None:
         chosen = set(self.picker.checked())

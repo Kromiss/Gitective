@@ -1,4 +1,4 @@
-"""Merge Requests tab: filters, colored grid, average score, pagination."""
+"""Merge Requests tab: filters, colored grid, average score, pagination, direct commits."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from gitective.core.dates import format_datetime
 from gitective.core.merge_requests import evaluate_all, load_merge_requests, load_pairs
 from gitective.core.rules import Evaluation, score_level
 from gitective.core.stats import average
+from gitective.ui.commits_view import CommitsView
 from gitective.ui.data_tab import DataTab
 from gitective.ui.filters import MrFilterBar
 from gitective.ui.grid import Column, sort_rows
@@ -21,7 +22,7 @@ from gitective.ui.widgets import search_box
 if TYPE_CHECKING:
     from gitective.ui.app import App
 
-STATE_WORDS = {"merged": "mergée(s)", "opened": "ouverte(s)", "closed": "fermée(s)"}
+STATE_WORDS = {"merged": "mergée(s)", "opened": "ouverte(s)", "closed": "fermée(s)", "direct": ""}
 STATUS_ORDER = {"ok": 0, "na": 1, "ko": 2}
 
 BASE_COLUMNS = [
@@ -60,7 +61,10 @@ class MrTab(DataTab):
         self.bar = MrFilterBar(self, app.filters, app.get_theme, app.refresh, lambda m: app.notify("error", m))
         self.bar.pack(fill="x")
         self.repos, self.authors = self.bar.repos, self.bar.authors
-        summary = ttk.Frame(self, padding=(16, 10, 16, 6))
+        # Two interchangeable views under the shared filter bar.
+        self._mr_view = ttk.Frame(self)
+        self.commits = CommitsView(self, app, self.repos, self.authors)
+        summary = ttk.Frame(self._mr_view, padding=(16, 10, 16, 6))
         summary.pack(fill="x")
         self._count = ttk.Label(summary, style="Title.TLabel")
         self._count.pack(side="left")
@@ -73,13 +77,25 @@ class MrTab(DataTab):
         ttk.Label(summary, text="Clic sur un titre : ouvre la MR dans le navigateur",
                   style="Muted.TLabel").pack(side="right")
 
-        self.grid_view = self.make_grid(BASE_COLUMNS, "Aucune merge request pour ces filtres", links=True)
+        self.grid_view = self.make_grid(BASE_COLUMNS, "Aucune merge request pour ces filtres", links=True,
+                                        master=self._mr_view)
         self.grid_view.pack(fill="both", expand=True, padx=16)
-        self.pager = Pager(self, self._page_changed, page_size=app.filters.page_size)
+        self.pager = Pager(self._mr_view, self._page_changed, page_size=app.filters.page_size)
         self.pager.pack(fill="x", padx=16, pady=10)
         self.update_columns()
         app.filters.subscribe(self._filters_changed)
+        self._show_view()
         self._show_summary()
+
+    @property
+    def _direct(self) -> bool:
+        return self.app.filters.state == "direct"
+
+    def _show_view(self) -> None:
+        """Show the commits view for the "Commits directs" state, the MR view otherwise."""
+        shown, hidden = (self.commits, self._mr_view) if self._direct else (self._mr_view, self.commits)
+        hidden.pack_forget()
+        shown.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------ Columns
 
@@ -106,13 +122,18 @@ class MrTab(DataTab):
 
     def _filters_changed(self, what: str) -> None:
         self.app.persist_filters()
-        if what == "authors":
-            self._apply_view(reset_page=True)
+        if what == "state":
+            self._show_view()
+        if what in ("authors", "mergers"):
+            (self.commits if self._direct else self)._apply_view(reset_page=True)
         else:
             self.request_reload()
 
     def reload(self) -> None:
         self.dirty = False
+        if self._direct:
+            self.commits.reload()
+            return
         if not self.app.ensure_connection():
             return
         state = self.app.filters.state
@@ -145,6 +166,7 @@ class MrTab(DataTab):
         evaluations, errors = result
         self._progress_text.configure(text="")
         self.absorb(evaluations, errors)
+        self.bar.mergers.set_items(sorted({(e.merger.key, e.merger.name) for e in evaluations if e.merger}))
         self._evaluations = evaluations
         self._apply_view(reset_page=True)
 
@@ -152,9 +174,12 @@ class MrTab(DataTab):
 
     def _apply_view(self, reset_page: bool = False) -> None:
         authors = set(self.app.filters.authors)
+        # The merger filter only exists for merged MRs (FI-13).
+        mergers = set(self.app.filters.mergers) if self.app.filters.state == "merged" else set()
         needle = self._search.get().strip().casefold()
         rows = [e for e in self._evaluations
                 if (not authors or e.author.key in authors)
+                and (not mergers or (e.merger is not None and e.merger.key in mergers))
                 and matches(needle, e.mr.title, e.mr.description, e.author.name, e.merger.name if e.merger else None,
                             e.project_path, e.mr.source_branch, e.mr.target_branch)]
         self._visible_rows = sort_rows(rows, self._sort_keys()[self._sort_key], self._ascending)
@@ -204,4 +229,5 @@ class MrTab(DataTab):
 
     def restyle(self) -> None:
         self._show_summary()
+        self.commits.restyle()
         super().restyle()

@@ -29,6 +29,7 @@ class Column:
 
     kind: 'text', 'mono', 'link' (value = (text, url)), 'status'
     (value = (status, detail)), 'score' (value = (text, level)),
+    'tip' (value = (text, tooltip shown on hover)),
     'avatar' (value = (PhotoImage | None, initials, color, name)).
     """
 
@@ -196,6 +197,8 @@ class DataGrid(ttk.Frame):
             self._text(self.body, x0, x1, mid, value[0], font, theme.link, col.align, underline=True)
         elif col.kind == "avatar":
             self._avatar(x0, x1, mid, value, font, bold, theme)
+        elif col.kind == "tip":
+            self._text(self.body, x0, x1, mid, value[0], font, theme.text, col.align)
         else:
             self._text(self.body, x0, x1, mid, str(value), mono if col.kind == "mono" else font, theme.text, col.align)
 
@@ -275,6 +278,8 @@ class DataGrid(ttk.Frame):
             if col.kind == "link" and value:
                 cursor = "hand2"
             if col.kind == "status" and value and value[0] in ("ko", "na") and value[1]:
+                tip = value[1]
+            if col.kind == "tip" and value and value[1]:
                 tip = value[1]
         self.body.configure(cursor=cursor)
         if tip:

@@ -18,7 +18,6 @@ from gitective.core.avatars import AvatarStore
 from gitective.core.cache import SessionCache
 from gitective.core.people import PersonDirectory
 from gitective.core.rules import RuleSet
-from gitective.ui.commits_tab import CommitsTab
 from gitective.ui.filters import FilterState
 from gitective.ui.mr_tab import MrTab
 from gitective.ui.notifications import Banner, describe_error
@@ -98,11 +97,9 @@ class App:
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
         self.notebook.pack(side="top", fill="both", expand=True)
         self.mr_tab = MrTab(self.notebook, self)
-        self.commits_tab = CommitsTab(self.notebook, self)
         self.stats_tab = StatsTab(self.notebook, self)
         self.settings_tab = SettingsTab(self.notebook, self)
         self.notebook.add(self.mr_tab, text="Merge Requests")
-        self.notebook.add(self.commits_tab, text="Commits hors MR")
         self.notebook.add(self.stats_tab, text="Statistiques")
         self.notebook.add(self.settings_tab, text="Config")
         self.notebook.bind("<<NotebookTabChanged>>", lambda e: self._tab_changed())
@@ -204,7 +201,7 @@ class App:
         self.cache.clear()
         self.avatars.clear()
         self.stats_tab.forget_avatars()
-        for tab in (self.mr_tab, self.commits_tab, self.stats_tab):
+        for tab in (self.mr_tab, self.stats_tab):
             tab.dirty = True
         self.banner.hide()
         self._tab_changed()
@@ -227,13 +224,13 @@ class App:
             self.theme = get_theme(new.theme)
             apply_theme(self.root, self.theme)
             self.banner.restyle()
-            for tab in (self.mr_tab, self.commits_tab, self.stats_tab):
+            for tab in (self.mr_tab, self.stats_tab):
                 tab.restyle()
         self.mr_tab.update_columns()
         self.stats_tab.update_columns()
         self._update_repo_items()
         self.settings_tab.reset()
-        for tab in (self.mr_tab, self.commits_tab, self.stats_tab):
+        for tab in (self.mr_tab, self.stats_tab):
             tab.dirty = True
 
     def open_wizard(self) -> None:
@@ -250,7 +247,7 @@ class App:
             self.notify("error", f"Impossible d'écrire config.json : {exc}")
 
     def _update_repo_items(self) -> None:
-        for tab in (self.mr_tab, self.commits_tab, self.stats_tab):
+        for tab in (self.mr_tab, self.stats_tab):
             tab.update_repo_items()
 
     def _tab_changed(self) -> None:

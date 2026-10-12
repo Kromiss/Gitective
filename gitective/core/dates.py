@@ -42,6 +42,18 @@ def end_of_day(day: date) -> datetime:
     return datetime.combine(day, time.max).astimezone()
 
 
+def business_days(start: datetime, end: datetime) -> float:
+    """Elapsed days between two datetimes, local Saturdays and Sundays excluded."""
+    cursor, end = to_local(start), to_local(end)
+    seconds = 0.0
+    while cursor < end:
+        segment_end = min(end, start_of_day(cursor.date() + timedelta(days=1)))
+        if cursor.weekday() < 5:
+            seconds += (segment_end - cursor).total_seconds()
+        cursor = segment_end
+    return seconds / 86400
+
+
 def day_range(start: date, end: date) -> Period:
     """Whole days, both included: start 00:00:00 to end 23:59:59."""
     if end < start:

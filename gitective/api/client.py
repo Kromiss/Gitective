@@ -10,6 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -22,7 +23,7 @@ from gitective.api.errors import (
     RateLimitError,
     SSLVerificationError,
 )
-from gitective.api.models import Commit, MergeRequest, Project, User
+from gitective.api.models import Commit, MergeRequest, Project, ProtectedBranch, User
 
 Opener = Callable[..., Any]
 
@@ -152,6 +153,24 @@ class GitLabClient:
             yield from json.loads(body or b"[]")
             page = headers.get("x-next-page") or None
 
+    def _paginate_parallel(self, path: str, params: dict[str, Any], workers: int) -> list[dict[str, Any]]:
+        """Fetch page 1, then every other page concurrently, keeping GitLab's order."""
+        query = {**params, "per_page": PER_PAGE, "page": 1}
+        body, headers = self._send(self._build_url(path, query))
+        items: list[dict[str, Any]] = json.loads(body or b"[]")
+        pages = int(headers.get("x-total-pages") or 0)
+        if not pages and headers.get("x-next-page"):
+            # shortcut: GitLab hides the page count above 10,000 items, so read sequentially (page 1 twice).
+            return list(self._paginate(path, params))
+
+        def fetch(page: int) -> list[dict[str, Any]]:
+            return json.loads(self._send(self._build_url(path, {**query, "page": page}))[0] or b"[]")
+
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            for page_items in pool.map(fetch, range(2, pages + 1)):
+                items.extend(page_items)
+        return items
+
     # --------------------------------------------------------------- Methods
 
     def current_user(self) -> User:
@@ -166,10 +185,13 @@ class GitLabClient:
         """Search users by name, username or public e-mail."""
         return [User.from_json(u) for u in self._paginate("users", {"search": query})]
 
-    def list_projects(self, membership: bool = True) -> list[Project]:
-        """List projects visible to the token (member projects by default)."""
+    def list_projects(self, membership: bool = True, workers: int = 1) -> list[Project]:
+        """List projects visible to the token (member projects by default).
+
+        workers > 1 fetches the pages concurrently.
+        """
         params = {"membership": "true" if membership else None, "simple": "true", "order_by": "path", "sort": "asc"}
-        return [Project.from_json(p) for p in self._paginate("projects", params)]
+        return [Project.from_json(p) for p in self._paginate_parallel("projects", params, workers)]
 
     def get_project(self, project_id: int | str) -> Project:
         """Return one project by ID or URL-encoded path."""
@@ -229,6 +251,15 @@ class GitLabClient:
         """List merge requests associated with a commit."""
         data = self._get(f"projects/{project_id}/repository/commits/{sha}/merge_requests")
         return [MergeRequest.from_json(m) for m in data or []]
+
+    def list_project_members(self, project_id: int) -> list[tuple[User, int]]:
+        """List project members with their access level, group memberships included."""
+        return [(User.from_json(m), int(m.get("access_level") or 0))
+                for m in self._paginate(f"projects/{project_id}/members/all")]
+
+    def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
+        """List the branch protection rules of a project."""
+        return [ProtectedBranch.from_json(b) for b in self._paginate(f"projects/{project_id}/protected_branches")]
 
     def download(self, url: str) -> bytes:
         """Download a raw file (e.g. an avatar).

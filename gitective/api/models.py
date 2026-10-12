@@ -141,3 +141,22 @@ class Commit:
             web_url=data.get("web_url", ""),
             parent_ids=tuple(data.get("parent_ids") or ()),
         )
+
+
+@dataclass(frozen=True)
+class ProtectedBranch:
+    """A branch protection rule; `name` may contain wildcards (e.g. "release/*")."""
+
+    name: str
+    merge_levels: tuple[int, ...] = ()  # roles allowed to merge; 0 means no one
+    merge_user_ids: tuple[int, ...] = ()  # individual users allowed (Premium / Ultimate)
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> ProtectedBranch:
+        rules = data.get("merge_access_levels") or []
+        return cls(
+            name=data.get("name", ""),
+            merge_levels=tuple(int(r["access_level"]) for r in rules if r.get("access_level") is not None
+                               and not r.get("user_id") and not r.get("group_id")),
+            merge_user_ids=tuple(int(r["user_id"]) for r in rules if r.get("user_id")),
+        )

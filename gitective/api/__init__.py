@@ -10,7 +10,7 @@ from gitective.api.errors import (
     RateLimitError,
     SSLVerificationError,
 )
-from gitective.api.models import Commit, MergeRequest, Project, User
+from gitective.api.models import Commit, MergeRequest, Project, ProtectedBranch, User
 
 __all__ = [
     "GitLabClient",
@@ -25,4 +25,5 @@ __all__ = [
     "MergeRequest",
     "Commit",
     "User",
+    "ProtectedBranch",
 ]
