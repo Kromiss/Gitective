@@ -160,34 +160,53 @@ class MultiSelect(ttk.Button):
 
 
 class ProjectPicker(ttk.Frame):
-    """Searchable checklist of GitLab projects (SD-02)."""
+    """Searchable checklist of GitLab projects (SD-02).
+
+    A Treeview row per project instead of one Checkbutton widget each, so
+    thousands of projects display and filter instantly. Ticked projects are
+    listed first.
+    """
 
     def __init__(self, master: tk.Misc, get_theme: ThemeGetter) -> None:
         super().__init__(master, style="Surface.TFrame")
-        self._get_theme = get_theme
         self._search = tk.StringVar()
         self._search.trace_add("write", lambda *_: self._render())
         ttk.Label(self, text="Rechercher", style="BarMuted.TLabel").pack(anchor="w")
         ttk.Entry(self, textvariable=self._search).pack(fill="x", pady=(2, 6))
-        self._list = ScrollableFrame(self, style="Surface.TFrame")
-        self._list.set_background(get_theme().surface)
-        self._list.pack(fill="both", expand=True)
+        self._tree = ttk.Treeview(self, show="tree", selectmode="browse")
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=scrollbar.set)
+        self._tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        self._tree.bind("<Button-1>", lambda e: self._toggle(self._tree.identify_row(e.y)))
+        self._tree.bind("<space>", lambda e: self._toggle(self._tree.focus()))
         self._projects: list[tuple[int, str]] = []
-        self._vars: dict[int, tk.BooleanVar] = {}
+        self._checked: set[int] = set()
 
     def set_projects(self, projects: Sequence[tuple[int, str]], checked: Sequence[int]) -> None:
         """Show (id, path) projects; checked IDs are ticked."""
         self._projects = sorted(projects, key=lambda p: p[1].casefold())
-        self._vars = {pid: tk.BooleanVar(value=pid in checked) for pid, _ in self._projects}
+        self._checked = set(checked) & {pid for pid, _ in self._projects}
         self._render()
 
     def checked(self) -> list[int]:
-        return [pid for pid, var in self._vars.items() if var.get()]
+        return list(self._checked)
 
     def _render(self) -> None:
-        for child in self._list.inner.winfo_children():
-            child.destroy()
+        self._tree.delete(*self._tree.get_children())
         needle = self._search.get().casefold()
-        for pid, path in self._projects:
-            if needle in path.casefold():
-                ttk.Checkbutton(self._list.inner, text=path, variable=self._vars[pid]).pack(anchor="w", pady=2)
+        rows = [p for p in self._projects if needle in p[1].casefold()]
+        rows.sort(key=lambda p: p[0] not in self._checked)  # stable: ticked first, then by path
+        for pid, path in rows:
+            self._tree.insert("", "end", iid=str(pid), text=self._label(pid, path))
+
+    def _toggle(self, iid: str) -> None:
+        if not iid:
+            return
+        pid = int(iid)
+        self._checked ^= {pid}
+        path = next(p for i, p in self._projects if i == pid)
+        self._tree.item(iid, text=self._label(pid, path))
+
+    def _label(self, pid: int, path: str) -> str:
+        return f"{'☑' if pid in self._checked else '☐'}  {path}"

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from gitective.api.client import GitLabClient
 from gitective.api.models import Project, User
 from gitective.config.settings import TrackedProject
+from gitective.core.project_list import save_cached
 from gitective.ui.notifications import describe_error
 from gitective.ui.widgets import ProjectPicker
 
@@ -108,7 +109,14 @@ class Wizard(tk.Toplevel):
                 self._projects = projects
                 self._picker.set_projects([(p.id, p.path_with_namespace) for p in projects], checked)
 
-        self.app.runner.run("wizard-projects", lambda _p: self._client().list_projects(), loaded, self._error)
+        client, workers = self._client(), self.app.settings.parallel_requests
+
+        def task(_progress: object) -> list[Project]:
+            projects = client.list_projects(workers=workers)
+            save_cached(client.base_url, projects)  # the Config picker then opens instantly
+            return projects
+
+        self.app.runner.run("wizard-projects", task, loaded, self._error)
 
     def _client(self) -> GitLabClient:
         return GitLabClient(self.url.get().strip(), self.token.get().strip(), verify_ssl=self.verify_ssl.get())

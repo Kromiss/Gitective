@@ -140,6 +140,7 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     style.configure("Horizontal.TProgressbar", background=theme.highlight, troughcolor=theme.header, bordercolor=theme.border)
     style.configure("Vertical.TScrollbar", background=theme.header, troughcolor=theme.bg, arrowcolor=theme.text)
     style.configure("TSeparator", background=theme.border)
+    style.configure("Treeview", background=theme.surface, fieldbackground=theme.surface, foreground=theme.text)
 
     root.configure(background=theme.bg)
     root.option_add("*Font", theme.font)

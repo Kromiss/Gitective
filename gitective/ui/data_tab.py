@@ -1,4 +1,4 @@
-"""Base class of the data tabs (Merge Requests, Commits without MR, Statistics)."""
+"""Base class of the data views (Merge Requests, direct commits, Statistics)."""
 
 from __future__ import annotations
 
@@ -37,9 +37,10 @@ class DataTab(ttk.Frame):
 
     # ------------------------------------------------------------- Widgets
 
-    def make_grid(self, columns: Sequence[Column], empty_text: str, links: bool = False) -> DataGrid:
+    def make_grid(self, columns: Sequence[Column], empty_text: str, links: bool = False,
+                  master: tk.Misc | None = None) -> DataGrid:
         """Sortable grid whose column widths are saved under `table`."""
-        grid = DataGrid(self, columns, self.app.get_theme, on_sort=self._sort_by,
+        grid = DataGrid(master or self, columns, self.app.get_theme, on_sort=self._sort_by,
                         on_link=self.app.open_url if links else None, empty_text=empty_text,
                         widths=self.app.column_widths(self.table),
                         on_widths_changed=lambda w: self.app.save_column_widths(self.table, w))

@@ -97,6 +97,25 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(opener.query(0)["state"], ["merged"])
         self.assertEqual(mrs[0].source_branch, "feature/PROJ-1-thing")
 
+    def test_projects_pages_fetched_concurrently_in_order(self) -> None:
+        def opener(request: Any, timeout: float) -> FakeResponse:
+            page = int(urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)["page"][0])
+            project = {"id": page, "name": f"p{page}", "path_with_namespace": f"g/p{page}", "web_url": ""}
+            return FakeResponse([project], {"X-Total-Pages": "4", "X-Next-Page": str(page + 1) if page < 4 else ""})
+
+        client = GitLabClient("https://gitlab.test", "secret", opener=opener)
+        self.assertEqual([p.id for p in client.list_projects(workers=3)], [1, 2, 3, 4])
+
+    def test_projects_without_page_count_read_sequentially(self) -> None:
+        project = {"id": 1, "name": "p", "path_with_namespace": "g/p", "web_url": ""}
+        opener = FakeOpener(
+            FakeResponse([project], {"X-Next-Page": "2"}),
+            FakeResponse([project], {"X-Next-Page": "2"}),
+            FakeResponse([{**project, "id": 2}], {"X-Next-Page": ""}),
+        )
+        client, _ = make_client(opener)
+        self.assertEqual([p.id for p in client.list_projects(workers=4)], [1, 2])
+
     def test_http_errors_are_mapped(self) -> None:
         for code, error in ((401, AuthenticationError), (403, PermissionDeniedError), (404, NotFoundError)):
             client, _ = make_client(FakeOpener(http_error(code, "nope")))

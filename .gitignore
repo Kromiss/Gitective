@@ -7,3 +7,6 @@ avatars/
 __pycache__/
 *.py[cod]
 .venv/
+# Cached list of the projects visible to the token
+projects_cache.json
+projects_cache.json.tmp

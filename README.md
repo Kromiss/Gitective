@@ -99,12 +99,12 @@ The score is the weighted share of passing rules among the applicable ones.
 
 **Merge Requests tab**
 
-- Filter by state (Merged, Open or Closed), merge dates (`DD/MM/YYYY`), "Since
-  yesterday", repositories and authors.
+- Filter by state (Merged, Open, Closed or Direct commits), dates
+  (`DD/MM/YYYY`), "Since yesterday", repositories, authors and, for merged
+  MRs, mergers.
 - Type in **Search** to filter as you type, case-insensitive. It looks in the
-  title, description, author, merger, repository and branches. The Commits
-  without MR tab has the same field, which looks in the message, SHA, author
-  and repository.
+  title, description, author, merger, repository and branches. In the Direct
+  commits state, it looks in the message, SHA, author and repository.
 - Click a title to open the MR in your browser.
 - Hover a red **KO** cell to see why the rule failed.
 - Click a column header to sort the whole list.
@@ -112,10 +112,16 @@ The score is the weighted share of passing rules among the applicable ones.
   resize a column and double-click the border to fit it again. Widths are
   saved in `config.json`; this works in every table.
 
-**Commits without MR tab**
+**Direct commits** (a state of the Merge Requests tab)
 
 Lists the commits on each watched branch that are not linked to any MR, for
-the same dates as the Merge Requests tab.
+the chosen dates.
+
+**Choosing repositories**
+
+The list of projects visible to your token is saved in `projects_cache.json`,
+so the picker opens instantly. Click **Recharger la liste** to read it again from
+GitLab. Ticked repositories are listed first.
 
 **Statistics tab**
 

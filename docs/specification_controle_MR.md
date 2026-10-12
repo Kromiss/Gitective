@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.5 (brouillon) — 08/10/2026
+Version : 1.6 (brouillon) — 12/10/2026
 
 ## 1. Objet
 
@@ -40,7 +40,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Correspondances personnes ↔ comptes | aucune |
 | Requêtes GitLab simultanées (1 à 16) | 6 |
 | Thème | Clair |
-| Derniers filtres utilisés (état, dates, auteurs, dépôts, taille de page) | Mergées « Depuis hier », 20 |
+| Derniers filtres utilisés (état, dates, auteurs, mergeurs, dépôts, taille de page) | Mergées « Depuis hier », 20 |
 | Largeurs de colonnes modifiées | aucune (ajustement au titre) |
 
 ## 4. Sélection des dépôts
@@ -50,6 +50,10 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | SD-01 | L'IHM récupère depuis GitLab la liste des projets accessibles avec le token. |
 | SD-02 | L'utilisateur coche les dépôts à contrôler. |
 | SD-03 | La sélection est sauvegardée dans `config.json`. |
+| SD-04 | La liste des projets accessibles est mise en cache dans `projects_cache.json`, à côté de l'application, avec sa date de lecture. Si le cache existe pour l'instance configurée, la fenêtre de sélection s'ouvre instantanément depuis le cache. |
+| SD-05 | Bouton « Recharger la liste » : relit la liste depuis GitLab et met le cache à jour. Les coches en cours sont conservées. |
+| SD-06 | Lecture GitLab : 100 projets par page, réponse allégée (`simple=true`), pages 2 à N lues en parallèle selon le réglage de requêtes simultanées (CH-06). |
+| SD-07 | Recherche instantanée dans la liste ; les dépôts cochés sont affichés en tête. Liste affichable pour plusieurs milliers de dépôts sans ralentissement. |
 
 ## 5. Onglet Config, thèmes et identité
 
@@ -128,7 +132,7 @@ Une même personne peut posséder plusieurs comptes GitLab (changements de compt
 
 | Réf. | Exigence |
 |---|---|
-| FI-01 | Filtre d'état exclusif (un seul à la fois) : **Mergées**, **Ouvertes**, **Fermées**. |
+| FI-01 | Filtre d'état exclusif (un seul à la fois) : **Mergées**, **Ouvertes**, **Fermées**, **Commits directs** (voir section 9). |
 | FI-02 | **Mergées** : filtre entre deux dates, appliqué sur la date de merge. |
 | FI-03 | Saisie des dates au format `JJ/MM/AAAA`, journées entières : date de début 00:00:00 → date de fin 23:59:59 incluses. |
 | FI-04 | **Mergées** : raccourci « Depuis hier » = hier 00:00 → maintenant. |
@@ -136,10 +140,11 @@ Une même personne peut posséder plusieurs comptes GitLab (changements de compt
 | FI-06 | Les derniers filtres sont mémorisés dans `config.json` et restaurés au lancement. |
 | FI-07 | Sans filtre mémorisé, la vue de lancement est **Mergées « Depuis hier »**. |
 | FI-08 | Les MR en brouillon (Draft) sont exclues : ni affichées, ni comptées. |
-| FI-09 | Filtre par auteur, sélection multiple (tous par défaut). S'applique aussi à l'onglet Commits hors MR. |
+| FI-09 | Filtre par auteur, sélection multiple (tous par défaut). S'applique aussi à l'état Commits directs et à l'onglet Statistiques. |
 | FI-10 | Raccourci **F5** = Rafraîchir. |
-| FI-11 | Filtre par dépôt, sélection multiple parmi les dépôts suivis (tous par défaut). S'applique aussi à l'onglet Commits hors MR. Mémorisé comme les autres filtres (FI-06). |
-| FI-12 | Recherche texte instantanée, insensible à la casse : onglet MR (titre, description, auteur, mergeur, dépôt, branches) et onglet Commits hors MR (message, SHA, auteur, dépôt). Non mémorisée. |
+| FI-11 | Filtre par dépôt, sélection multiple parmi les dépôts suivis (tous par défaut). S'applique aussi à l'état Commits directs. Mémorisé comme les autres filtres (FI-06). |
+| FI-12 | Recherche texte instantanée, insensible à la casse : MR (titre, description, auteur, mergeur, dépôt, branches) et état Commits directs (message, SHA, auteur, dépôt). Non mémorisée. |
+| FI-13 | Filtre par mergeur, sélection multiple regroupée par personne (toutes par défaut), parmi les mergeurs des MR chargées. Actif uniquement pour l'état **Mergées** (grisé sinon). Se combine avec le filtre auteur (ET). Mémorisé (FI-06). |
 
 ### 6.2 Tableau
 
@@ -163,7 +168,7 @@ Grille personnalisée (cellules colorées individuellement). Colonnes :
 | TA-01 | Survol d'une cellule KO : infobulle affichant le détail de l'erreur (ex. « PROJ-12 (titre) ≠ PROJ-21 (lien) »). |
 | TA-02 | Clic sur un en-tête de colonne : tri sur toute la liste filtrée (croissant / décroissant), puis repagination. |
 | TA-03 | Score moyen affiché en en-tête, calculé sur toute la liste filtrée. |
-| TA-04 | Largeur des colonnes : à l'ouverture, chaque colonne s'ajuste pour afficher son titre en entier sur une ligne. L'utilisateur peut la modifier en glissant la bordure de l'en-tête ; un double-clic sur la bordure revient à l'ajustement automatique. Les largeurs modifiées sont mémorisées dans `config.json`, par tableau (MR, Commits, Statistiques). S'applique aux trois tableaux. |
+| TA-04 | Largeur des colonnes : à l'ouverture, chaque colonne s'ajuste pour afficher son titre en entier sur une ligne. L'utilisateur peut la modifier en glissant la bordure de l'en-tête ; un double-clic sur la bordure revient à l'ajustement automatique. Les largeurs modifiées sont mémorisées dans `config.json`, par tableau (MR, Commits directs, Statistiques). S'applique aux trois tableaux. |
 
 ### 6.3 Pagination
 
@@ -216,21 +221,21 @@ Les regex du lien et du n° de ticket de RC-03 sont dans un bloc dédié « Corr
 | ST-09 | Courbe d'évolution du score moyen par semaine, dessinée en `Canvas` : une courbe globale + une courbe par personne sélectionnée dans le filtre auteurs. |
 | ST-10 | Semaine d'une MR déterminée par sa date de création ; la courbe suit les filtres de l'onglet (période, dépôts, auteurs) et les couleurs du thème. |
 
-## 9. Commits hors MR
+## 9. Commits directs (état de l'onglet Merge Requests)
 
 Objectif : détecter les commits poussés directement sur une branche, sans passer par une MR.
 
 | Réf. | Exigence |
 |---|---|
-| CO-01 | Onglet séparé « Commits hors MR ». |
+| CO-01 | État « Commits directs » du filtre d'état de l'onglet Merge Requests (FI-01) ; il n'y a plus d'onglet séparé. Le tableau affiche alors les colonnes ci-dessous ; filtre mergeur, score et score moyen sont masqués. |
 | CO-02 | Branche contrôlée : une par dépôt, définie dans `config.json`. |
-| CO-03 | Période : mêmes dates que le filtre MR. Si l'état Ouvertes / Fermées est actif, les dernières dates saisies s'appliquent. |
+| CO-03 | Période : champs de dates et raccourci « Depuis hier » du filtre (communs avec l'état Mergées). |
 | CO-04 | Date utilisée : date de commit (heure locale). |
 | CO-05 | Un commit est « hors MR » s'il n'est associé à aucune MR dans GitLab. Les commits de merge générés par une MR ne sont pas signalés. |
-| CO-06 | Colonnes : Dépôt, SHA court, Message, Auteur, Date de commit. |
+| CO-06 | Colonnes : Dépôt, Branche, SHA court, Message, Auteur, Date de commit. |
 | CO-07 | Clic sur un commit : ouverture de sa page GitLab dans le navigateur. |
 | CO-08 | La détection interroge GitLab commit par commit : une barre de progression est affichée. Les longues périodes sont acceptées. |
-| CO-09 | Pagination identique à l'onglet MR (20 / 50 / 100 par page). |
+| CO-09 | Pagination identique aux MR (20 / 50 / 100 par page, taille commune). |
 
 ## 10. Chargement, cache et rafraîchissement
 
@@ -274,6 +279,7 @@ gitective/
 ├── README.md               # Installation and usage (English)
 ├── config.json             # Created on first launch
 ├── avatars/                # Avatar disk cache
+├── projects_cache.json     # Accessible projects cache (SD-04)
 ├── gitective/
 │   ├── assets/
 │   │   ├── logo.svg        # Logo source
@@ -286,6 +292,7 @@ gitective/
 │   ├── core/
 │   │   ├── rules.py        # Custom rules, RC-03, RC-04 and score
 │   │   ├── orphan_commits.py # Commits-without-MR detection
+│   │   ├── project_list.py # Disk cache of the accessible projects
 │   │   ├── cache.py        # Session cache
 │   │   ├── stats.py        # Per-author statistics, lead time, weekly scores
 │   │   ├── merge_requests.py # MR loading and evaluation
@@ -300,7 +307,7 @@ gitective/
 │       ├── app.py          # Main window, tabs
 │       ├── data_tab.py     # Base class of the MR, Commits and Statistics tabs
 │       ├── mr_tab.py       # Merge Requests tab
-│       ├── commits_tab.py  # Commits without MR tab
+│       ├── commits_view.py # Direct commits view of the MR tab
 │       ├── settings_tab.py # Config tab, connection test, rule tester
 │       ├── dialogs.py      # Rule, repository and person dialogs
 │       ├── stats_tab.py    # Per-author statistics
@@ -314,7 +321,8 @@ gitective/
 │       └── worker.py       # Background tasks and progress
 └── tests/
     ├── test_rules.py
-    └── test_client.py
+    ├── test_client.py
+    └── test_project_list.py
 ```
 
 ### 12.3 Classe API GitLab
@@ -339,4 +347,6 @@ Classe `GitLabClient`, générique et réutilisable, indépendante de l'applicat
 
 ## 14. Points ouverts
 
-Aucun.
+| Point | Statut |
+|---|---|
+| Onglet Statistiques réservé à un mode admin | Reporté à une version ultérieure, mode d'implémentation à définir. |
