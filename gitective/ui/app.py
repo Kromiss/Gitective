@@ -21,6 +21,7 @@ from gitective.core.rules import RuleSet
 from gitective.ui.filters import FilterState
 from gitective.ui.mr_tab import MrTab
 from gitective.ui.notifications import Banner, describe_error
+from gitective.ui.overview_tab import OverviewTab
 from gitective.ui.settings_tab import SettingsTab
 from gitective.ui.stats_tab import StatsTab
 from gitective.ui.themes import Theme, apply_theme, get_theme
@@ -57,6 +58,7 @@ class App:
         self.runner = BackgroundRunner(root, self._set_busy)
         self._build_layout()
         root.bind_all("<F5>", lambda e: self.refresh())
+        root.bind_all("<F11>", lambda e: self.toggle_fullscreen())
         self.root.after(50, lambda: self._start(first_launch))
 
     # -------------------------------------------------------------- Setup
@@ -96,9 +98,12 @@ class App:
         self.notebook = ttk.Notebook(self.root)
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
         self.notebook.pack(side="top", fill="both", expand=True)
+        self.overview_tab = OverviewTab(self.notebook, self)
         self.mr_tab = MrTab(self.notebook, self)
         self.stats_tab = StatsTab(self.notebook, self)
         self.settings_tab = SettingsTab(self.notebook, self)
+        # The overview is the first tab, shown at launch (VE-01).
+        self.notebook.add(self.overview_tab, text="Vue d'ensemble")
         self.notebook.add(self.mr_tab, text="Merge Requests")
         self.notebook.add(self.stats_tab, text="Statistiques")
         self.notebook.add(self.settings_tab, text="Config")
@@ -201,7 +206,7 @@ class App:
         self.cache.clear()
         self.avatars.clear()
         self.stats_tab.forget_avatars()
-        for tab in (self.mr_tab, self.stats_tab):
+        for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
             tab.dirty = True
         self.banner.hide()
         self._tab_changed()
@@ -224,7 +229,7 @@ class App:
             self.theme = get_theme(new.theme)
             apply_theme(self.root, self.theme)
             self.banner.restyle()
-            for tab in (self.mr_tab, self.stats_tab):
+            for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
                 tab.restyle()
         self.mr_tab.update_columns()
         self.stats_tab.update_columns()
@@ -232,6 +237,11 @@ class App:
         self.settings_tab.reset()
         for tab in (self.mr_tab, self.stats_tab):
             tab.dirty = True
+        self.overview_tab.settings_changed()
+
+    def toggle_fullscreen(self) -> None:
+        """F11: full screen on / off, for a permanent display of the overview (VE-02)."""
+        self.root.attributes("-fullscreen", not bool(self.root.attributes("-fullscreen")))
 
     def open_wizard(self) -> None:
         from gitective.ui.wizard import Wizard  # local import: wizard imports App types

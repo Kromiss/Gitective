@@ -17,7 +17,8 @@ AVATAR_DIR = APP_DIR / "avatars"
 
 # Fixed criteria (RC-03, RC-04); custom rules are identified by their own id.
 FIXED_CRITERIA = ("ticket", "self_merge")
-THEMES = ("light", "dark", "win95", "matrix")
+THEMES = ("default", "light", "dark", "win95", "matrix")
+REFRESH_RANGE = (1, 120)  # Overview auto-refresh, in minutes (VE-03)
 PAGE_SIZES = (20, 50, 100)
 PARALLEL_RANGE = (1, 16)
 
@@ -105,7 +106,9 @@ class Settings:
     green_threshold: float = 100.0
     orange_threshold: float = 50.0
     people: list[Person] = dc_field(default_factory=list)
-    theme: str = "light"
+    theme: str = "default"
+    # Auto-refresh period of the Overview tab, in minutes (VE-03).
+    overview_refresh: int = 5
     # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
     parallel_requests: int = 6
     filters: Filters = dc_field(default_factory=Filters)
@@ -137,6 +140,7 @@ class Settings:
             theme=theme if theme in THEMES else base.theme,
             filters=Filters(**_pick(data.get("filters") or {}, Filters)),
             parallel_requests=clamp_parallel(data.get("parallel_requests", base.parallel_requests)),
+            overview_refresh=clamp_refresh(data.get("overview_refresh", base.overview_refresh)),
             column_widths=_column_widths(data.get("column_widths")),
         )
 
@@ -157,6 +161,15 @@ def clamp_parallel(value: Any) -> int:
     except (TypeError, ValueError):
         number = Settings.parallel_requests
     return max(PARALLEL_RANGE[0], min(PARALLEL_RANGE[1], number))
+
+
+def clamp_refresh(value: Any) -> int:
+    """Overview refresh period in minutes, forced into REFRESH_RANGE."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = Settings.overview_refresh
+    return max(REFRESH_RANGE[0], min(REFRESH_RANGE[1], number))
 
 
 def _column_widths(data: Any) -> dict[str, dict[str, int]]:
