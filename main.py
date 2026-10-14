@@ -6,7 +6,7 @@ import tkinter as tk
 if sys.version_info < (3, 11):
     sys.exit("Gitective requires Python 3.11 or newer.")
 
-from gitective.config.settings import config_exists  # noqa: E402
+from gitective.settings.config_file import config_exists  # noqa: E402
 from gitective.ui.app import App  # noqa: E402
 
 

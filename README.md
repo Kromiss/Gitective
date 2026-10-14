@@ -205,13 +205,19 @@ are retried automatically after 2, 4 and 8 seconds before an error is shown.
 ## Project layout
 
 ```
-main.py / main.pyw     entry points
-gitective/api          ForgeClient interface, its GitLab implementation (GitLabClient), models, errors
-gitective/core         local database, synchronisation, rules, statistics, people mapping, dates
-gitective/config       config.json loading and saving
-gitective/ui           Tkinter interface (one module per tab or widget)
-gitective/assets       logo (svg, png, ico)
-tests                  unit tests
+main.py / main.pyw            entry points
+gitective/forge               GitLab requests, isolated: ForgeClient interface, GitLabClient, models, errors
+gitective/database            local SQLite store, synchronisation, accessible projects list
+gitective/review              MR control: rules and score, MR evaluation, direct commits, merge rights
+gitective/reporting           statistics and Overview figures
+gitective/shared              dates, people mapping, text search, parallel requests, avatars
+gitective/settings            config.json loading and saving
+gitective/ui                  Tkinter window, themes, background tasks, first-launch wizard
+gitective/ui/tabs             one module per tab
+gitective/ui/components       grid, pagination, chart, filter bar, dialogs, small widgets
+gitective/ui/alerts           error banner
+gitective/assets              logo (svg, png, ico)
+tests                         unit tests, same folders as gitective/
 ```
 
 Run the tests with:
