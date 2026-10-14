@@ -12,24 +12,24 @@ from pathlib import Path
 from tkinter import ttk
 
 from gitective import APP_NAME, __version__
-from gitective.api.client import GitLabClient
-from gitective.api.models import User
-from gitective.config import settings as config
-from gitective.config.settings import Settings, TrackedProject
-from gitective.core.avatars import AvatarStore
-from gitective.core.dates import format_datetime
-from gitective.core.people import PersonDirectory
-from gitective.core.rules import RuleSet
-from gitective.core.storage import Store, StoreError
-from gitective.core.sync import ForgeData
-from gitective.ui.filters import FilterState
-from gitective.ui.mr_tab import MrTab
-from gitective.ui.notifications import Banner, describe_error
-from gitective.ui.overview_tab import OverviewTab
-from gitective.ui.settings_tab import SettingsTab
-from gitective.ui.stats_tab import StatsTab
+from gitective.forge.gitlab_client import GitLabClient
+from gitective.forge.models import User
+from gitective.settings import config_file as config
+from gitective.settings.config_file import Settings, TrackedProject
+from gitective.shared.avatars import AvatarStore
+from gitective.shared.dates import format_datetime
+from gitective.shared.people import PersonDirectory
+from gitective.review.rules import RuleSet
+from gitective.database.store import Store, StoreError
+from gitective.database.sync import ForgeData
+from gitective.ui.components.filter_bar import FilterState
+from gitective.ui.tabs.merge_requests import MrTab
+from gitective.ui.alerts.error_banner import Banner, describe_error
+from gitective.ui.tabs.overview import OverviewTab
+from gitective.ui.tabs.config import SettingsTab
+from gitective.ui.tabs.statistics import StatsTab
 from gitective.ui.themes import Theme, apply_theme, get_theme
-from gitective.ui.worker import BackgroundRunner
+from gitective.ui.background import BackgroundRunner
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
@@ -300,7 +300,7 @@ class App:
         self.root.attributes("-fullscreen", not bool(self.root.attributes("-fullscreen")))
 
     def open_wizard(self) -> None:
-        from gitective.ui.wizard import Wizard  # local import: wizard imports App types
+        from gitective.ui.first_launch_wizard import Wizard  # local import: wizard imports App types
 
         Wizard(self)
 
