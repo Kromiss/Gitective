@@ -172,7 +172,9 @@ class App:
         self._badge_reviewer.pack(side="left")
         self._busy = ttk.Progressbar(header, mode="indeterminate", length=140)
         self._busy_label = ttk.Label(header, text="Chargement…", style="BarMuted.TLabel")
-        self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests)
+        logo = ASSETS / "logo.png"
+        self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
+        self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests, self._toast_logo)
 
         self.notebook = ttk.Notebook(self.root)
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
