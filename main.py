@@ -7,6 +7,7 @@ if sys.version_info < (3, 11):
     sys.exit("Gitective requires Python 3.11 or newer.")
 
 from gitective.settings.config_file import config_exists  # noqa: E402
+from gitective.shared.autostart import MINIMIZED  # noqa: E402
 from gitective.ui.app import App  # noqa: E402
 
 
@@ -21,6 +22,8 @@ def main() -> None:
         pass
     root = tk.Tk()
     App(root, first_launch)
+    if MINIMIZED in sys.argv[1:]:
+        root.iconify()  # started with Windows: stays in the taskbar, notifications still appear (OC-12)
     root.mainloop()
 
 

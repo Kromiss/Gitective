@@ -88,6 +88,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | OC-08 | Gestion des correspondances personnes ↔ comptes (voir 5.4). |
 | OC-10 | Bloc « Livraison » : nom de branche par mode (LI-25), validé selon les règles Git avant enregistrement ; protocole de clone ; chemin de `git` avec bouton « Tester » (affiche la version de Git). |
 | OC-11 | Affichage en lecture seule de l'utilisateur du token et du profil détecté (Développeur / Mergeur, avec la liste des dépôts où il peut merger). Bloc « Notifications » (deux cases, NO-01), visible en profil Mergeur uniquement. |
+| OC-12 | Case « Lancer Gitective au démarrage de Windows (réduit) » : ajoute ou retire une entrée dans la clé de registre de l'utilisateur `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (module `winreg`, sans droits administrateur), qui lance `pythonw main.pyw --minimized`. L'application démarre réduite dans la barre des tâches, synchronisation et notifications actives. Réglage lu dans le registre, pas dans `config.json` ; case grisée hors Windows. |
 | OC-09 | Bouton « Vider la base locale » : supprime toutes les données de `gitective.db` après confirmation (voir CH-10). |
 
 ### 5.2 Thèmes (DA)
@@ -378,7 +379,7 @@ Onglet de supervision, purement graphique, pensé pour un affichage permanent : 
 | VE-02 | Tient sans défilement sur un écran 1920 × 1080. Raccourci **F11** : plein écran activé / désactivé. |
 | VE-03 | Redessinée après chaque synchronisation automatique (CH-13). En-tête : heure de la dernière synchronisation et délai avant la prochaine. |
 | VE-04 | Disposition : colonne de gauche (≈ un tiers) = fil des derniers merges, puis merges par jour ; à droite, trois niveaux : score moyen + qualité par semaine / classement des dépôts / règles enfreintes + MR créées et mergées. |
-| VE-05 | **Derniers merges**, élément principal : 20 dernières MR mergées, de la plus récente à la plus ancienne, groupées par jour. Ligne : heure de merge, titre, dépôt, auteur → mergeur, pastille de score colorée. Groupe « Aujourd'hui » mis en évidence ; nombre de merges du jour en grand dans l'en-tête. Les plus anciennes sont coupées si la place manque. |
+| VE-05 | **Derniers merges**, élément principal : jusqu'à 40 dernières MR mergées, de la plus récente à la plus ancienne, groupées par jour. Ligne : heure de merge, titre, dépôt, auteur → mergeur, pastille de score colorée. Dès que les merges du jour ne tiennent pas sur deux lignes chacun, chaque merge passe sur une seule ligne, pour voir d'un coup une journée chargée (10 à 15 merges) ; le titre est coupé (45 caractères au plus, avec « … ») pour que le dépôt et les personnes restent toujours visibles. Groupe « Aujourd'hui » mis en évidence ; nombre de merges du jour en grand dans l'en-tête. Les plus anciennes sont coupées si la place manque. |
 | VE-06 | **Merges par jour** : semaine en cours et semaine précédente, lundi → dimanche. Chaque case affiche le nombre de merges, teintée selon l'intensité ; total par semaine. Jours à venir en pointillés. |
 | VE-07 | **Score moyen** : MR mergées des 30 derniers jours, couleur selon les seuils, écart en points avec les 30 jours précédents, barre 0 – 100. |
 | VE-08 | **Qualité des MR mergées** : 12 dernières semaines complètes, barres empilées du nombre de MR à 100 %, 50 – 99 % et < 50 %. |

@@ -53,6 +53,7 @@ next to `main.py`.
 | Automatic synchronisation | How often Gitective updates its database from GitLab, in minutes (default 5), even when minimized. |
 | Desktop notifications | Merger profile only: new merges on the tracked repositories, and MRs assigned to you or awaiting your review. |
 | Merged by the assignee | Tick to count the RC-06 rule (see below) in the score; off by default. |
+| Start with Windows | Starts Gitective minimized when you log in to Windows, so the synchronisation and notifications run all day. Stored in your user's registry (`HKCU\...\Run`), no admin rights needed. |
 
 ### Custom rules
 
@@ -118,9 +119,10 @@ The score is the weighted share of passing rules among the applicable ones.
 The first tab, shown at launch. It is a read-only dashboard of every tracked
 repository, designed to stay on screen; it fits a 1920 × 1080 display.
 
-- **Latest merges**: the 20 most recent merged MRs, grouped by day, with
-  their repository, author → merger and score. Today's merges are
-  highlighted.
+- **Latest merges**: the most recent merged MRs, grouped by day, with their
+  repository, author → merger and score. Today's merges are highlighted. On
+  a busy day, each merge takes one line so the whole day fits; long titles
+  are cut so the repository and people stay visible.
 - **Merges per day**: this week and last week, Monday to Sunday.
 - **Average score** of the MRs merged in the last 30 days, with the change
   from the 30 days before.

@@ -19,6 +19,8 @@ from gitective.settings.config_file import (
     Settings,
     TrackedProject,
 )
+from gitective.settings import config_file as config
+from gitective.shared import autostart
 from gitective.shared.avatars import badge_color, initials
 from gitective.review.rules import FIXED_LABELS, MrFields, RuleSet, validate_regex
 from gitective.review.settings_form import NumberFields, apply_numbers
@@ -142,6 +144,13 @@ class SettingsTab(ttk.Frame):
         self.theme = tk.StringVar()
         for key, theme in THEMES.items():
             ttk.Radiobutton(box, text=theme.label, value=key, variable=self.theme).pack(anchor="w", pady=2)
+        # Start with Windows (OC-12): stored in the registry, not in config.json.
+        self.autostart = tk.BooleanVar()
+        self._autostart_box = ttk.Checkbutton(box, text="Lancer Gitective au démarrage de Windows (réduit)",
+                                              variable=self.autostart)
+        self._autostart_box.pack(anchor="w", pady=(10, 0))
+        if not autostart.supported():
+            self._autostart_box.state(["disabled"])
         ttk.Button(box, text="Relancer l'assistant de démarrage", command=self.app.open_wizard).pack(anchor="w", pady=(10, 0))
         ttk.Button(box, text="Vider la base locale", command=self._clear_store).pack(anchor="w", pady=(6, 0))
 
@@ -237,6 +246,7 @@ class SettingsTab(ttk.Frame):
         self.parallel.set(str(d.parallel_requests))
         self.theme.set(d.theme)
         self.sync_minutes.set(str(d.sync_minutes))
+        self.autostart.set(autostart.is_enabled(self._registry()))
         self.assignee_rule.set(d.assignee_rule)
         self.notify_merges.set(d.notify_merges)
         self.notify_assigned.set(d.notify_assigned)
@@ -286,9 +296,23 @@ class SettingsTab(ttk.Frame):
                                        "L'URL de l'instance change : la base locale va être vidée et les données "
                                        "seront relues depuis la nouvelle instance.\n\nContinuer ?", parent=self):
                 return
+        registry = self._registry()
+        if autostart.supported() and self.autostart.get() != autostart.is_enabled(registry):
+            try:
+                autostart.set_enabled(registry, self.autostart.get(), config.APP_DIR)
+            except OSError as exc:
+                self.app.notify("error", f"Démarrage avec Windows impossible à régler : {exc}")
+                return
         self.app.apply_settings(settings)
         self.draft = copy.deepcopy(settings)
         self.app.notify("success", "Configuration enregistrée.")
+
+    @staticmethod
+    def _registry() -> autostart.Registry | None:
+        try:
+            return autostart.default_registry()
+        except OSError:
+            return None
 
     def _clear_store(self) -> None:
         """OC-09: delete every stored row after confirmation."""

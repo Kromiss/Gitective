@@ -13,7 +13,16 @@ from typing import TYPE_CHECKING
 from gitective.forge.errors import ForgeError
 from gitective.shared.dates import now_local, to_local
 from gitective.review.mr_evaluation import evaluate_all, load_all_states, load_merge_requests, load_pairs
-from gitective.reporting.overview_figures import SCORE_DAYS, WEEKS, OverviewData, build_overview, load_start
+from gitective.reporting.overview_figures import (
+    GROUP_H,
+    SCORE_DAYS,
+    WEEKS,
+    OverviewData,
+    build_overview,
+    feed_row_height,
+    load_start,
+    short_title,
+)
 from gitective.review.rules import Evaluation, score_level
 
 if TYPE_CHECKING:
@@ -21,7 +30,6 @@ if TYPE_CHECKING:
 
 PAD, GAP, INNER = 20, 16, 22
 STATUS_H, DAILY_H = 26, 150
-GROUP_H, ROW_H = 28, 58
 TICK_MS = 30_000
 
 DAY_NAMES = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
@@ -297,13 +305,15 @@ class OverviewTab(ttk.Frame):
         today = now_local().date()
         cursor, bottom = y + 86, y + h - 10
         current: date | None = None
-        title_x, pill_w = x + INNER + 62, 70
+        row_h = feed_row_height(data.today_count, bottom - cursor)
+        compact = row_h < 58
+        title_x, pill_w = x + INNER + (54 if compact else 62), 58 if compact else 70
         for ev in data.feed:
             merged = to_local(ev.mr.merged_at)  # type: ignore[arg-type]
             day = merged.date()
             is_today = day == today
             band = theme.info[0] if is_today else fill
-            needed = ROW_H + (GROUP_H if day != current else 0)
+            needed = row_h + (GROUP_H if day != current else 0)
             if cursor + needed > bottom:
                 break
             if day != current:
@@ -314,16 +324,28 @@ class OverviewTab(ttk.Frame):
                            theme.accent if is_today else theme.muted, "bold", anchor="sw")
                 cursor += GROUP_H
             if is_today:
-                self.canvas.create_rectangle(x + 1, cursor, x + w - 1, cursor + ROW_H, fill=band, outline="")
-            middle = cursor + ROW_H / 2
-            self._text(x + INNER, middle, f"{merged:%H:%M}", 14, theme.muted, "bold", anchor="w")
+                self.canvas.create_rectangle(x + 1, cursor, x + w - 1, cursor + row_h, fill=band, outline="")
+            middle = cursor + row_h / 2
             text_w = w - (title_x - x) - INNER - pill_w - 14
-            self._text(title_x, middle - 10, ev.mr.title, 15, weight="bold", anchor="w", width=text_w)
             who = ev.author.name + (f" → {ev.merger.name}" if ev.merger else "")
-            self._text(title_x, middle + 11, f"{ev.project_path.split('/')[-1]} · {who}", 12, theme.muted,
-                       anchor="w", width=text_w)
-            self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 15, pill_w)
-            cursor += ROW_H
+            meta = f"{ev.project_path.split('/')[-1]} · {who}"
+            if compact:
+                # One line: time, title, then repository and people as far as room allows.
+                # One line: time, title, then repository and people, which always keep their room.
+                self._text(x + INNER, middle, f"{merged:%H:%M}", 12, theme.muted, "bold", anchor="w")
+                title = short_title(ev.mr.title)
+                meta_w = min(self._font(11).measure(meta), text_w * 0.55)
+                title_w = min(self._font(13, "bold").measure(title), text_w - meta_w - 12)
+                self._text(title_x, middle, title, 13, weight="bold", anchor="w", width=title_w)
+                self._text(title_x + title_w + 12, middle, meta, 11, theme.muted, anchor="w", width=meta_w)
+                self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 12, pill_w)
+            else:
+                self._text(x + INNER, middle, f"{merged:%H:%M}", 14, theme.muted, "bold", anchor="w")
+                self._text(title_x, middle - 10, short_title(ev.mr.title), 15, weight="bold", anchor="w",
+                           width=text_w)
+                self._text(title_x, middle + 11, meta, 12, theme.muted, anchor="w", width=text_w)
+                self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 15, pill_w)
+            cursor += row_h
             self.canvas.create_line(x + INNER, cursor, x + w - INNER, cursor,
                                     fill=blend(band, theme.border, 0.6) if theme.relief != "raised" else "#A0A0A0")
 

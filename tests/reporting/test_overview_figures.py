@@ -6,7 +6,18 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from gitective.forge.models import MergeRequest
-from gitective.reporting.overview_figures import FEED_SIZE, WEEKS, build_overview, load_start, week_start
+from gitective.reporting.overview_figures import (
+    COMPACT_ROW_H,
+    FEED_SIZE,
+    GROUP_H,
+    ROW_H,
+    WEEKS,
+    build_overview,
+    feed_row_height,
+    load_start,
+    short_title,
+    week_start,
+)
 from gitective.shared.people import PersonDirectory
 from gitective.review.rules import Evaluation
 from tests.factories import mr_json, user_json
@@ -88,3 +99,28 @@ class WeeklyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FeedDensityTests(unittest.TestCase):
+    """A busy day must fit in the latest merges feed (VE-05)."""
+
+    def test_two_line_rows_while_today_fits_then_compact(self) -> None:
+        room = 560.0
+        self.assertEqual(feed_row_height(5, room), ROW_H)
+        self.assertEqual(feed_row_height(15, room), COMPACT_ROW_H)
+        self.assertLessEqual(GROUP_H + 15 * COMPACT_ROW_H, room)  # 15 merges of the day all visible
+        self.assertGreaterEqual(FEED_SIZE, 30)  # the feed keeps enough merges to fill the column
+
+
+class ShortTitleTests(unittest.TestCase):
+    def test_long_titles_are_cut_on_a_word_with_an_ellipsis(self) -> None:
+        title = "PROJ-142 Calcul des remises par lot pour les clients grands comptes et les revendeurs"
+        short = short_title(title)
+        self.assertLessEqual(len(short), 45)
+        self.assertTrue(short.endswith("…"))
+        self.assertTrue(title.startswith(short[:-1]))
+        self.assertNotIn("  ", short)
+
+    def test_short_titles_and_long_words(self) -> None:
+        self.assertEqual(short_title("PROJ-1  Fix\tlogin"), "PROJ-1 Fix login")
+        self.assertEqual(short_title("x" * 60, 10), "x" * 9 + "…")
