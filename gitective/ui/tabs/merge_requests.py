@@ -1,4 +1,4 @@
-"""Merge Requests tab: filters, colored grid, average score, pagination, direct commits."""
+"""Merge Requests tab: filters, colored grid, average score, pagination, detail panel, direct commits."""
 
 from __future__ import annotations
 
@@ -7,38 +7,53 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
-from gitective.shared.dates import format_datetime
-from gitective.review.mr_evaluation import evaluate_all, load_merge_requests, load_pairs
-from gitective.review.rules import Evaluation, score_level
 from gitective.reporting.statistics import average
-from gitective.ui.tabs.direct_commits import CommitsView
-from gitective.ui.tabs.data_tab import DataTab
-from gitective.ui.components.filter_bar import MrFilterBar
+from gitective.review.mr_evaluation import Pair, evaluate_all, load_merge_requests, load_pairs
+from gitective.review.rules import Evaluation, score_level
+from gitective.settings.config_file import TrackedProject
+from gitective.shared.dates import format_datetime
+from gitective.shared.people import PersonRef
+from gitective.shared.search import matches
+from gitective.ui.components.filter_bar import DRAFT_STATES, PEOPLE_STATES, MrFilterBar
 from gitective.ui.components.grid import Column, sort_rows
 from gitective.ui.components.pagination import Pager
-from gitective.shared.search import matches
 from gitective.ui.components.widgets import search_box
+from gitective.ui.tabs.data_tab import DataTab
+from gitective.ui.tabs.direct_commits import CommitsView
+from gitective.ui.tabs.mr_detail_panel import MrDetailPanel
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
 
 STATE_WORDS = {"merged": "mergée(s)", "opened": "ouverte(s)", "closed": "fermée(s)", "direct": ""}
 STATUS_ORDER = {"ok": 0, "na": 1, "ko": 2}
+NOBODY = "none"  # filter entry for MRs without assignee / reviewer (FI-14, FI-15)
+NOT_TRACKED = " (non suivi)"
 
+NEW_COLUMN = Column("new", "Nouvelle", 30, kind="dot", align="center")
 BASE_COLUMNS = [
     Column("repo", "Dépôt", 120),
     Column("title", "Titre", 260, kind="link", stretch=True),
     Column("author", "Auteur", 115),
-    Column("merger", "Mergeur", 115),
+    Column("assignees", "Assignés", 120, kind="people"),
+    Column("reviewers", "Relecteurs", 120, kind="people"),
+    Column("merger", "Mergeur", 115, kind="flag"),
     Column("created", "Créée", 142, kind="mono"),
     Column("merged", "Mergée", 142, kind="mono"),
 ]
 SCORE_COLUMN = Column("score", "Score", 66, kind="score", align="center")
 
+
+def _names(people: tuple[PersonRef, ...]) -> str:
+    return ", ".join(p.name for p in people)
+
+
 BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
     "repo": lambda e: e.project_path.casefold(),
     "title": lambda e: e.mr.title.casefold(),
     "author": lambda e: e.author.name.casefold(),
+    "assignees": lambda e: _names(e.assignees).casefold() or None,
+    "reviewers": lambda e: _names(e.reviewers).casefold() or None,
     "merger": lambda e: e.merger.name.casefold() if e.merger else None,
     "created": lambda e: e.mr.created_at,
     "merged": lambda e: e.mr.merged_at,
@@ -46,6 +61,18 @@ BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
 }
 
 Loaded = tuple[list[Evaluation], list[Exception]]
+Key = tuple[int, int]
+
+
+def _key(ev: Evaluation) -> Key:
+    return ev.mr.project_id, ev.mr.iid
+
+
+def people_filter(people: tuple[PersonRef, ...], wanted: set[str]) -> bool:
+    """Empty selection keeps everything; NOBODY keeps MRs without anyone in that role."""
+    if not wanted:
+        return True
+    return any(p.key in wanted for p in people) or (NOBODY in wanted and not people)
 
 
 class MrTab(DataTab):
@@ -57,6 +84,9 @@ class MrTab(DataTab):
         super().__init__(master, app, sort_key="merged", ascending=False)
         self._evaluations: list[Evaluation] = []
         self._visible_rows: list[Evaluation] = []
+        self._tracked: set[int] = set()
+        self._selected: Key | None = None
+        self._soft = False  # reload after a synchronisation: keep page and selection
 
         self.bar = MrFilterBar(self, app.filters, app.get_theme, app.refresh, lambda m: app.notify("error", m))
         self.bar.pack(fill="x")
@@ -74,14 +104,26 @@ class MrTab(DataTab):
         self._progress_text = ttk.Label(summary, style="Muted.TLabel")
         self._progress_text.pack(side="left", padx=(18, 0))
         self._search = search_box(summary, lambda: self._apply_view(reset_page=True))
-        ttk.Label(summary, text="Clic sur un titre : ouvre la MR dans le navigateur",
+        ttk.Label(summary, text="Clic sur un titre : ouvre GitLab · sur la ligne : détail",
                   style="Muted.TLabel").pack(side="right")
 
+        # Table on the left, detail panel on the right when a row is selected (DE-02).
+        self._split = ttk.PanedWindow(self._mr_view, orient="horizontal")
+        self._split.pack(fill="both", expand=True, padx=16)
+        left = ttk.Frame(self._split)
+        self._split.add(left, weight=1)
         self.grid_view = self.make_grid(BASE_COLUMNS, "Aucune merge request pour ces filtres", links=True,
-                                        master=self._mr_view)
-        self.grid_view.pack(fill="both", expand=True, padx=16)
-        self.pager = Pager(self._mr_view, self._page_changed, page_size=app.filters.page_size)
-        self.pager.pack(fill="x", padx=16, pady=10)
+                                        master=left, on_select=self._row_selected)
+        self.grid_view.pack(fill="both", expand=True)
+        self.pager = Pager(left, self._page_changed, page_size=app.filters.page_size)
+        self.pager.pack(fill="x", pady=10)
+        self.panel = MrDetailPanel(self._split, app, self.close_detail)
+        self._split.bind("<ButtonRelease-1>", lambda e: self._panel_resized())
+        body = self.grid_view.body
+        body.bind("<Up>", lambda e: self._move(-1))
+        body.bind("<Down>", lambda e: self._move(1))
+        body.bind("<Escape>", lambda e: self.close_detail())
+
         self.update_columns()
         app.filters.subscribe(self._filters_changed)
         self._show_view()
@@ -90,6 +132,10 @@ class MrTab(DataTab):
     @property
     def _direct(self) -> bool:
         return self.app.filters.state == "direct"
+
+    @property
+    def _panel_open(self) -> bool:
+        return str(self.panel) in {str(p) for p in self._split.panes()}
 
     def _show_view(self) -> None:
         """Show the commits view for the "Commits directs" state, the MR view otherwise."""
@@ -100,37 +146,65 @@ class MrTab(DataTab):
     # ------------------------------------------------------------ Columns
 
     def update_columns(self) -> None:
-        """One status column per active rule, then the fixed criteria (RP-06)."""
+        """One status column per active rule, then the fixed criteria (RP-06).
+
+        The rule columns step aside while the detail panel shows them (DE-03);
+        the "Nouvelle" column exists for the Merger's open MRs (AM-04).
+        """
         rules = self.app.rules
         criteria = rules.criteria if rules else []
-        columns = [*BASE_COLUMNS,
-                   *(Column(f"c:{c.id}", c.label, 60, kind="status", align="center") for c in criteria),
-                   SCORE_COLUMN]
         self._criteria_ids = [c.id for c in criteria]
+        shown = [] if self._panel_open else criteria
+        new = [NEW_COLUMN] if self._shows_new else []
+        columns = [*new, *BASE_COLUMNS,
+                   *(Column(f"c:{c.id}", c.label, 60, kind="status", align="center") for c in shown),
+                   SCORE_COLUMN]
         if self._sort_key not in self._sort_keys():
             self._sort_key, self._ascending = "merged", False
         self.grid_view.set_columns(columns)
         self.grid_view.set_sort(self._sort_key, self._ascending)
 
+    @property
+    def _shows_new(self) -> bool:
+        return self.app.profile.merger and self.app.filters.state == "opened"
+
     def _sort_keys(self) -> dict[str, Callable[[Evaluation], Any]]:
         keys = dict(BASE_SORT)
+        new = self.app.new_mr_keys()
+        keys["new"] = lambda e: 0 if _key(e) in new else 1
         for cid in self._criteria_ids:
             keys[f"c:{cid}"] = lambda e, c=cid: STATUS_ORDER[e.results[c].status] if c in e.results else None
         return keys
+
+    def update_repo_items(self) -> None:
+        """Tracked repositories, plus the untracked ones holding the Merger's open MRs (AM-08)."""
+        items = [(str(p.id), p.path) for p in self.app.settings.projects]
+        tracked = {p.id for p in self.app.settings.projects}
+        if self.app.profile.merger:
+            extra = {mr.project_id: mr.project_path for mr, _ in self.app.my_mrs if mr.project_id not in tracked}
+            items += [(str(pid), path + NOT_TRACKED) for pid, path in extra.items()]
+        self.repos.set_items(items)
 
     # ------------------------------------------------------------- Loading
 
     def _filters_changed(self, what: str) -> None:
         self.app.persist_filters()
-        if what == "state":
+        if what in ("state", "badge"):
             self._show_view()
-        if what in ("authors", "mergers"):
+            self.update_columns()
+        if what in ("authors", "mergers", "assignees", "reviewers", "drafts"):
             (self.commits if self._direct else self)._apply_view(reset_page=True)
         else:
             self.request_reload()
 
+    def soft_reload(self) -> None:
+        """Reload after a synchronisation without losing the page or the selected MR."""
+        self._soft = True
+        self.request_reload()
+
     def reload(self) -> None:
         self.dirty = False
+        soft, self._soft = self._soft, False
         if self._direct:
             self.commits.reload()
             return
@@ -143,17 +217,24 @@ class MrTab(DataTab):
             self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA.")
             return
         projects = self.app.selected_projects()
+        tracked_ids = {p.id for p in self.app.settings.projects}
+        # The Merger's open MRs of untracked repositories join the open MRs (AM-08).
+        wanted = set(self.app.filters.repos)
+        extra: list[Pair] = []
+        if state == "opened" and self.app.profile.merger:
+            extra = [(TrackedProject(id=mr.project_id, path=mr.project_path), mr) for mr, _ in self.app.my_mrs
+                     if mr.project_id not in tracked_ids and (not wanted or mr.project_id in wanted)]
         data, rules, people = self.app.data, self.app.rules, self.app.people
         assert rules is not None
         self._progress_text.configure(text="Chargement…")
-
         workers = self.app.settings.parallel_requests
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
             pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data, p, state, period))
-            return evaluate_all(data, pairs, rules, people, progress, workers), list(errors)
+            return evaluate_all(data, [*pairs, *extra], rules, people, progress, workers), list(errors)
 
-        self.app.runner.run("mr", task, self._loaded, self._failed, on_progress=self._on_progress)
+        self.app.runner.run("mr", task, lambda r: self._loaded(r, tracked_ids, soft), self._failed,
+                            on_progress=self._on_progress)
 
     def _on_progress(self, done: int, total: int) -> None:
         self._progress_text.configure(text=f"Lecture des commits des MR : {done} / {total}")
@@ -162,37 +243,69 @@ class MrTab(DataTab):
         self._progress_text.configure(text="")
         self.app.report_error(exc)
 
-    def _loaded(self, result: Loaded) -> None:
+    def _loaded(self, result: Loaded, tracked: set[int], soft: bool) -> None:
         evaluations, errors = result
         self._progress_text.configure(text="")
         self.absorb(evaluations, errors)
+        self.app.register_people((p.key, p.name) for e in evaluations for p in (*e.assignees, *e.reviewers))
+        self._tracked = tracked
         self.bar.mergers.set_items(sorted({(e.merger.key, e.merger.name) for e in evaluations if e.merger}))
+        self._set_people_items(evaluations)
         self._evaluations = evaluations
-        self._apply_view(reset_page=True)
+        self.update_columns()
+        self._apply_view(reset_page=not soft)
+        if self._panel_open and self._selected is not None:
+            current = next((e for e in evaluations if _key(e) == self._selected), None)
+            if current is not None:
+                self.panel.show(current, _key(current) in self.app.new_mr_keys())
+
+    def _set_people_items(self, evaluations: list[Evaluation]) -> None:
+        """Assignee and reviewer choices: the user first as "Moi", then everyone seen, then nobody."""
+        me = self.app.me_key()
+        for widget, role, nobody in ((self.bar.assignees, "assignees", "Non assignée"),
+                                     (self.bar.reviewers, "reviewers", "Sans relecteur")):
+            seen = {p.key: p.name for e in evaluations for p in getattr(e, role)}
+            items = []
+            if me:
+                items.append((me, f"Moi ({self.app.me_name()})"))
+                seen.pop(me, None)
+            items += sorted(seen.items(), key=lambda i: i[1].casefold())
+            items.append((NOBODY, nobody))
+            widget.set_items(items, keep_order=True)
 
     # ---------------------------------------------------------------- View
 
     def _apply_view(self, reset_page: bool = False) -> None:
-        authors = set(self.app.filters.authors)
+        filters = self.app.filters
+        state = filters.state
+        authors = set(filters.authors)
         # The merger filter only exists for merged MRs (FI-13).
-        mergers = set(self.app.filters.mergers) if self.app.filters.state == "merged" else set()
+        mergers = set(filters.mergers) if state == "merged" else set()
+        assignees = set(filters.assignees) if state in PEOPLE_STATES else set()
+        reviewers = set(filters.reviewers) if state in PEOPLE_STATES else set()
+        drafts = filters.drafts if state in DRAFT_STATES else "all"
         needle = self._search.get().strip().casefold()
         rows = [e for e in self._evaluations
                 if (not authors or e.author.key in authors)
                 and (not mergers or (e.merger is not None and e.merger.key in mergers))
+                and people_filter(e.assignees, assignees) and people_filter(e.reviewers, reviewers)
+                and (drafts == "all" or e.mr.draft == (drafts == "only"))
                 and matches(needle, e.mr.title, e.mr.description, e.author.name, e.merger.name if e.merger else None,
-                            e.project_path, e.mr.source_branch, e.mr.target_branch)]
+                            e.project_path, e.mr.source_branch, e.mr.target_branch, _names(e.assignees),
+                            _names(e.reviewers))]
         self._visible_rows = sort_rows(rows, self._sort_keys()[self._sort_key], self._ascending)
         self.pager.update_total(len(self._visible_rows), reset=reset_page)
         self._show_summary()
-        self._render_page()
+        self._render_page(keep_scroll=not reset_page)
 
     def _show_summary(self) -> None:
         theme = self.app.get_theme()
         count = len(self._visible_rows)
         self._count.configure(text=f"{count} MR {STATE_WORDS[self.app.filters.state]}")
-        if count:
-            avg = average(e.score for e in self._visible_rows)
+        # Drafts are shown but never counted in the average (FI-08).
+        scores = [e.score for e in self._visible_rows if not e.mr.draft]
+        if scores:
+            avg = average(scores)
             bg, fg = theme.level_colors(score_level(round(avg, 6), self.app.settings.green_threshold,
                                                     self.app.settings.orange_threshold))
             self._avg.configure(text=f"{avg:.0f} %", background=bg, foreground=fg,
@@ -200,26 +313,44 @@ class MrTab(DataTab):
         else:
             self._avg.configure(text="—", background=theme.bg, foreground=theme.muted, font=theme.font)
 
-    def _render_page(self) -> None:
+    def _page_rows(self) -> list[Evaluation]:
+        return self._visible_rows[self.pager.slice()]
+
+    def _render_page(self, keep_scroll: bool = False) -> None:
         settings = self.app.settings
+        me = self.app.me_key()
+        new = self.app.new_mr_keys() if self._shows_new else set()
         rows = []
-        for ev in self._visible_rows[self.pager.slice()]:
+        for ev in self._page_rows():
             mr = ev.mr
+            repo = ev.project_path.split("/")[-1] + ("" if mr.project_id in self._tracked else NOT_TRACKED)
             row: dict[str, Any] = {
-                "repo": ev.project_path.split("/")[-1],
+                "new": _key(ev) in new or None,
+                "repo": repo,
                 "title": (mr.title, mr.web_url),
                 "author": ev.author.name,
-                "merger": ev.merger.name if ev.merger else "",
+                "assignees": self._people_cell(ev.assignees, me),
+                "reviewers": self._people_cell(ev.reviewers, me),
+                "merger": (ev.merger.name, ev.merger_not_assignee) if ev.merger else "",
                 "created": format_datetime(mr.created_at),
                 "merged": format_datetime(mr.merged_at),
                 "score": (f"{ev.score:.0f} %", score_level(ev.score, settings.green_threshold, settings.orange_threshold)),
+                "_selected": _key(ev) == self._selected,
             }
+            if mr.draft:
+                row["_muted"], row["_tag"] = True, "BROUILLON"
             for cid in self._criteria_ids:
                 result = ev.results.get(cid)
                 if result:
                     row[f"c:{cid}"] = (result.status, result.detail)
             rows.append(row)
-        self.grid_view.set_rows(rows)
+        self.grid_view.set_rows(rows, keep_scroll=keep_scroll)
+
+    @staticmethod
+    def _people_cell(people: tuple[PersonRef, ...], me: str | None) -> tuple[bool, str] | str:
+        if not people:
+            return ""
+        return any(p.key == me for p in people), _names(tuple(p for p in people if p.key != me))
 
     def _page_changed(self, _page: int, size: int) -> None:
         if size != self.app.filters.page_size:
@@ -227,7 +358,60 @@ class MrTab(DataTab):
             self.app.persist_filters()
         self._render_page()
 
+    # ---------------------------------------------------------- Detail panel
+
+    def _row_selected(self, index: int) -> None:
+        rows = self._page_rows()
+        if 0 <= index < len(rows):
+            self.open_detail(rows[index])
+
+    def open_detail(self, ev: Evaluation) -> None:
+        """Select an MR and show it in the side panel (DE-01)."""
+        self._selected = _key(ev)
+        if not self._panel_open:
+            self._split.add(self.panel, weight=0)
+            self.update_columns()
+            self._place_sash()
+        self._render_page(keep_scroll=True)
+        self.panel.show(ev, _key(ev) in self.app.new_mr_keys())
+
+    def close_detail(self) -> None:
+        if self._panel_open:
+            self._split.forget(self.panel)
+        self._selected = None
+        self.update_columns()
+        self._render_page(keep_scroll=True)
+
+    def _place_sash(self) -> None:
+        """Give the panel its saved width; the table keeps the rest."""
+        self._split.update_idletasks()
+        total = self._split.winfo_width()
+        if self._panel_open and total > 1:
+            self._split.sashpos(0, max(300, total - self.app.settings.detail_width))
+
+    def _panel_resized(self) -> None:
+        if self._panel_open:
+            self.app.save_detail_width(self.panel.winfo_width())
+
+    def _move(self, step: int) -> None:
+        """Arrow keys: previous / next MR of the filtered list, changing page when needed."""
+        if self._selected is None or not self._visible_rows:
+            return
+        keys = [_key(e) for e in self._visible_rows]
+        if self._selected not in keys:
+            return
+        index = max(0, min(len(keys) - 1, keys.index(self._selected) + step))
+        size = self.pager.page_size
+        page = index // size + 1
+        if page != self.pager.page:
+            self.pager.page = page
+            self.pager.update_total(len(keys))
+        self.open_detail(self._visible_rows[index])
+        self.grid_view.see(index % size)
+
     def restyle(self) -> None:
         self._show_summary()
         self.commits.restyle()
+        if self._panel_open:
+            self.panel.render()
         super().restyle()

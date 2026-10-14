@@ -50,10 +50,24 @@ MIGRATIONS: tuple[tuple[str, ...], ...] = (
         "CREATE TABLE project_access (project_id INTEGER PRIMARY KEY, members TEXT NOT NULL, protections TEXT NOT NULL)",
         "CREATE TABLE avatars (user_id INTEGER PRIMARY KEY, content BLOB NOT NULL)",
     ),
+    (
+        # MRs now carry assignees, reviewers and project path: read them all again.
+        "DELETE FROM sync WHERE key LIKE 'mr:%'",
+        """CREATE TABLE my_mrs (
+            project_id INTEGER NOT NULL, iid INTEGER NOT NULL, roles TEXT NOT NULL, data TEXT NOT NULL,
+            PRIMARY KEY (project_id, iid))""",
+        """CREATE TABLE seen_roles (
+            project_id INTEGER NOT NULL, iid INTEGER NOT NULL, role TEXT NOT NULL,
+            PRIMARY KEY (project_id, iid, role))""",
+        """CREATE TABLE mr_details (
+            project_id INTEGER NOT NULL, iid INTEGER NOT NULL, mr_updated_at REAL, data TEXT NOT NULL,
+            PRIMARY KEY (project_id, iid))""",
+    ),
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 DATA_TABLES = ("meta", "sync", "projects", "merge_requests", "mr_commits", "mr_statuses",
-               "branch_commits", "commit_mr", "project_access", "avatars")
+               "branch_commits", "commit_mr", "project_access", "avatars", "my_mrs", "seen_roles", "mr_details")
+RoleKey = tuple[int, int, str]  # (project_id, iid, "assignee" | "reviewer")
 
 
 class StoreError(Exception):
@@ -233,6 +247,16 @@ class Store:
         rows = self.conn.execute("SELECT data FROM merge_requests WHERE project_id = ?", (project_id,))
         return [decode(MergeRequest, json.loads(d)) for (d,) in rows]
 
+    def merged_keys(self, project_ids: Iterable[int]) -> set[tuple[int, int]]:
+        """(project_id, iid) of every stored merged MR of these projects (NO-04)."""
+        ids = list(project_ids)
+        if not ids:
+            return set()
+        marks = ",".join("?" * len(ids))
+        rows = self.conn.execute(
+            f"SELECT project_id, iid FROM merge_requests WHERE state = 'merged' AND project_id IN ({marks})", ids)
+        return {(pid, iid) for pid, iid in rows}
+
     def get_mr_commits(self, project_id: int, iid: int) -> tuple[float | None, list[Commit]] | None:
         row = self.conn.execute("SELECT mr_updated_at, data FROM mr_commits WHERE project_id = ? AND iid = ?",
                                 (project_id, iid)).fetchone()
@@ -299,3 +323,35 @@ class Store:
     def put_avatar(self, user_id: int, content: bytes) -> None:
         with self.transaction() as tx:
             tx.execute("INSERT OR REPLACE INTO avatars VALUES (?, ?)", (user_id, content))
+
+    # ------------------------------------------------------------ Token owner's open MRs (6.4)
+
+    def put_my_mrs(self, items: Sequence[tuple[MergeRequest, frozenset[str]]]) -> None:
+        """Replace the open MRs where the token owner is assignee or reviewer."""
+        rows = [(m.project_id, m.iid, ",".join(sorted(roles)), dumps(m)) for m, roles in items]
+        with self.transaction() as tx:
+            tx.execute("DELETE FROM my_mrs")
+            tx.executemany("INSERT INTO my_mrs VALUES (?, ?, ?, ?)", rows)
+
+    def my_mrs(self) -> list[tuple[MergeRequest, frozenset[str]]]:
+        rows = self.conn.execute("SELECT roles, data FROM my_mrs")
+        return [(decode(MergeRequest, json.loads(d)), frozenset(r.split(","))) for r, d in rows]
+
+    def seen_roles(self) -> set[RoleKey]:
+        return {(p, i, r) for p, i, r in self.conn.execute("SELECT project_id, iid, role FROM seen_roles")}
+
+    def mark_seen(self, keys: Iterable[RoleKey]) -> None:
+        with self.transaction() as tx:
+            tx.executemany("INSERT OR IGNORE INTO seen_roles VALUES (?, ?, ?)", list(keys))
+
+    # ------------------------------------------------------------ MR detail panel (6.6)
+
+    def get_mr_detail(self, project_id: int, iid: int, cls: type[T]) -> tuple[float | None, T] | None:
+        row = self.conn.execute("SELECT mr_updated_at, data FROM mr_details WHERE project_id = ? AND iid = ?",
+                                (project_id, iid)).fetchone()
+        return (row[0], decode(cls, json.loads(row[1]))) if row else None
+
+    def put_mr_detail(self, project_id: int, iid: int, mr_updated_at: float | None, detail: Any) -> None:
+        with self.transaction() as tx:
+            tx.execute("INSERT OR REPLACE INTO mr_details VALUES (?, ?, ?, ?)",
+                       (project_id, iid, mr_updated_at, dumps(detail)))

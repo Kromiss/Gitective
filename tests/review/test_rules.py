@@ -5,7 +5,19 @@ import unittest
 from gitective.forge.models import Commit, MergeRequest, User
 from gitective.settings.config_file import CustomRule, Person, Settings
 from gitective.shared.people import PersonDirectory
-from gitective.review.rules import KO, NA, OK, PIPELINE, SELF_MERGE, TICKET, MrFields, RuleSet, score_level, validate_regex
+from gitective.review.rules import (
+    ASSIGNEE,
+    KO,
+    NA,
+    OK,
+    PIPELINE,
+    SELF_MERGE,
+    TICKET,
+    MrFields,
+    RuleSet,
+    score_level,
+    validate_regex,
+)
 from gitective.reporting.statistics import format_days, per_person, weekly_scores
 from tests.factories import commit_json, mr_json, user_json
 
@@ -165,12 +177,50 @@ class PeopleAndStatsTests(unittest.TestCase):
         self.assertEqual(format_days(2.25), "2,2 j")
 
 
+class AssigneeRuleTests(unittest.TestCase):
+    """RC-06 and the merger-is-not-the-assignee flag (TA-05)."""
+
+    def evaluate(self, active: bool, assignees: list[dict], merger_id: int = 2, people: list[Person] | None = None):
+        data = mr_json(merger=user_json(merger_id, "merger"))
+        data["assignees"] = assignees
+        rules = RuleSet([TITLE, LINK], LINK_REGEX, TICKET_REGEX, {**WEIGHTS, ASSIGNEE: 25.0}, assignee_rule=active)
+        return rules, rules.evaluate(MergeRequest.from_json(data), "group/repo", PersonDirectory(people or []))
+
+    def test_inactive_rule_adds_no_column_but_keeps_the_flag(self) -> None:
+        rules, ev = self.evaluate(False, [user_json(3, "carol")])
+        self.assertNotIn(ASSIGNEE, ev.results)
+        self.assertNotIn(ASSIGNEE, [c.id for c in rules.criteria])
+        self.assertEqual(ev.merger_not_assignee, "Mergée par Merger, assignée à Carol")
+
+    def test_active_rule_counts_in_the_score(self) -> None:
+        rules, ev = self.evaluate(True, [user_json(3, "carol")])
+        self.assertIn(ASSIGNEE, [c.id for c in rules.criteria])
+        self.assertEqual(ev.results[ASSIGNEE].status, KO)
+        _, ok = self.evaluate(True, [user_json(2, "merger"), user_json(3, "carol")])
+        self.assertEqual(ok.results[ASSIGNEE].status, OK)
+        self.assertGreater(ok.score, ev.score)
+
+    def test_same_person_other_account_and_missing_assignee(self) -> None:
+        people = [Person(name="Carol", account_ids=[3, 30])]
+        _, same = self.evaluate(True, [user_json(3, "carol")], merger_id=30, people=people)
+        self.assertEqual((same.results[ASSIGNEE].status, same.merger_not_assignee), (OK, ""))
+        _, none = self.evaluate(True, [])
+        self.assertEqual(none.results[ASSIGNEE].status, NA)
+
+
 class SettingsTests(unittest.TestCase):
     def test_missing_keys_use_defaults(self) -> None:
         settings = Settings.from_dict({"parallel_requests": 99, "weights": {"ticket": 5}})
         self.assertEqual([r.id for r in settings.rules], ["r_title", "r_link"])
         self.assertEqual(settings.parallel_requests, 16)
-        self.assertEqual(settings.weights, {"ticket": 5.0, "self_merge": 25.0, "pipeline": 25.0})
+        self.assertEqual(settings.weights, {"ticket": 5.0, "self_merge": 25.0, "pipeline": 25.0, "assignee": 25.0})
+        self.assertFalse(settings.assignee_rule)
+        self.assertEqual(settings.filters.drafts, "all")
+
+    def test_former_overview_refresh_key_and_bad_drafts_value(self) -> None:
+        settings = Settings.from_dict({"overview_refresh": 12, "filters": {"drafts": "maybe", "assignees": ["u:7"]}})
+        self.assertEqual(settings.sync_minutes, 12)
+        self.assertEqual((settings.filters.drafts, settings.filters.assignees), ("all", ["u:7"]))
 
     def test_round_trip(self) -> None:
         settings = Settings()

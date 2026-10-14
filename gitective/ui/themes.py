@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import base64
 import tkinter as tk
 from dataclasses import dataclass
 from tkinter import ttk
+
+from gitective.ui.rounded import blend, rounded_png
+
+CONTROL_RADIUS = 7  # corner radius of buttons and fields in the rounded themes
+ROUNDED_STYLES = ("TButton", "Accent.TButton", "Active.TButton", "Toolbutton", "TEntry", "TMenubutton",
+                  "Active.TMenubutton", "TNotebook.Tab")
+# Images must outlive the elements using them: kept per theme, created once.
+_IMAGES: dict[str, dict[str, tk.PhotoImage]] = {}
+_CLAM_LAYOUTS: dict[str, object] = {}
 
 
 @dataclass(frozen=True)
@@ -39,6 +49,16 @@ class Theme:
     radius: int = 0  # corner radius of the Overview cards
     feature: str = ""  # background of the Overview's highlighted card (latest merges); surface when empty
     chart: tuple[str, ...] = ("#2B3A5C", "#C9622F", "#2F8F8A", "#5B4A8A", "#2F7A57", "#8A3D5C", "#7A5A1F")
+    accent2: str = ""  # secondary accent: reviewer badge (5.2); accent when empty
+    selection: str = ""  # background of the selected grid row; header when empty
+
+    @property
+    def second(self) -> str:
+        return self.accent2 or self.accent
+
+    @property
+    def selected_row(self) -> str:
+        return self.selection or self.header
 
     def status_colors(self, status: str) -> tuple[str, str]:
         """(background, foreground) of an OK / KO / N/A cell."""
@@ -58,7 +78,7 @@ THEMES: dict[str, Theme] = {
         error=("#3D1E22", "#FFD0CC"), success=("#163A2E", "#C8F5DD"), info=("#173040", "#BFEFE9"),
         tooltip=("#EEF1F8", "#0B1020"), font=("Segoe UI", 10), mono=("Consolas", 10),
         chart=("#5ED3C6", "#F5B95C", "#8FA8FF", "#FF7D74", "#5FD99E", "#D7A6FF", "#7C87A0"),
-        radius=16, feature="#172139",
+        radius=16, feature="#172139", accent2="#9FB4FF", selection="#22395A",
     ),
     "light": Theme(
         key="light", label="Clair", bg="#F5F5F2", surface="#FFFFFF", text="#1C2230", muted="#5E6676",
@@ -67,6 +87,7 @@ THEMES: dict[str, Theme] = {
         green=("#E3F3E9", "#17643A"), orange=("#FDF0DC", "#8A4205"), red=("#FCE8E6", "#A8201A"),
         error=("#FCE8E6", "#7A1712"), success=("#E3F3E9", "#12502E"), info=("#E6ECF7", "#1F3157"),
         tooltip=("#1C2230", "#FFFFFF"), font=("Segoe UI", 10), mono=("Consolas", 10), radius=12,
+        accent2="#6B4FB8", selection="#E4E9F4",
     ),
     "dark": Theme(
         key="dark", label="Sombre", bg="#16191F", surface="#1F232B", text="#E6E8EC", muted="#9AA1AE",
@@ -76,6 +97,7 @@ THEMES: dict[str, Theme] = {
         error=("#4A1E1C", "#FFD3CF"), success=("#183A27", "#C6F0D6"), info=("#1E2A44", "#C9D7F5"),
         tooltip=("#E6E8EC", "#16191F"), font=("Segoe UI", 10), mono=("Consolas", 10),
         chart=("#8FB0F5", "#E08A54", "#5CC6BF", "#B39DEB", "#7FD8A2", "#F08FB5", "#E6C36A"), radius=12,
+        accent2="#B39DEB", selection="#2B3550",
     ),
     "win95": Theme(
         key="win95", label="Windows 95", bg="#C0C0C0", surface="#FFFFFF", text="#000000", muted="#404040",
@@ -85,6 +107,7 @@ THEMES: dict[str, Theme] = {
         error=("#FFFFE1", "#800000"), success=("#FFFFE1", "#004000"), info=("#FFFFE1", "#000080"),
         tooltip=("#FFFFE1", "#000000"), font=("MS Sans Serif", 9), mono=("Courier New", 9), relief="raised",
         chart=("#000080", "#800000", "#008080", "#800080", "#008000", "#808000", "#000000"),
+        accent2="#008080", selection="#C8D0F0",
     ),
     "matrix": Theme(
         key="matrix", label="Matrix", bg="#000000", surface="#030A03", text="#33FF66", muted="#1E9C40",
@@ -94,6 +117,7 @@ THEMES: dict[str, Theme] = {
         error=("#0B200B", "#B6FFC8"), success=("#0B3A16", "#66FF8A"), info=("#061406", "#33FF66"),
         tooltip=("#33FF66", "#000000"), font=("Consolas", 10), mono=("Consolas", 10),
         chart=("#33FF66", "#B6FFC8", "#1E9C40", "#7CFF9E", "#0F7A2E", "#D8FFE2", "#5ACC77"),
+        accent2="#B6FFC8", selection="#0B3A16",
     ),
 }
 
@@ -144,15 +168,26 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
                     arrowcolor=theme.text)
     style.map("TCombobox", fieldbackground=[("readonly", theme.surface)], foreground=[("readonly", theme.text)])
     style.configure("TNotebook", background=theme.bg, borderwidth=0, tabmargins=(12, 6, 12, 0))
-    style.configure("TNotebook.Tab", background=theme.header, foreground=theme.muted, padding=(16, 6), borderwidth=border)
+    style.configure("TNotebook.Tab", background=theme.header, foreground=theme.muted, padding=(16, 6), borderwidth=border,
+                    font=theme.font)
     style.map("TNotebook.Tab", background=[("selected", theme.surface)], foreground=[("selected", theme.text)])
     style.configure("TLabelframe", background=theme.surface, bordercolor=theme.border)
     style.configure("TLabelframe.Label", background=theme.bg, foreground=theme.text,
                     font=(theme.font[0], theme.font[1] + 1, "bold"))
     style.configure("Horizontal.TProgressbar", background=theme.highlight, troughcolor=theme.header, bordercolor=theme.border)
-    style.configure("Vertical.TScrollbar", background=theme.header, troughcolor=theme.bg, arrowcolor=theme.text)
+    for scrollbar in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
+        style.configure(scrollbar, background=theme.header, troughcolor=theme.bg, arrowcolor=theme.muted,
+                        bordercolor=theme.bg, lightcolor=theme.header, darkcolor=theme.header)
     style.configure("TSeparator", background=theme.border)
     style.configure("Treeview", background=theme.surface, fieldbackground=theme.surface, foreground=theme.text)
+    style.configure("Active.TButton", foreground=theme.accent, bordercolor=theme.accent)
+    style.configure("TMenubutton", background=theme.surface, foreground=theme.text, padding=(10, 4),
+                    arrowcolor=theme.text)
+    style.map("TMenubutton", background=[("active", theme.header), ("disabled", theme.bg)],
+              foreground=[("disabled", theme.muted)])
+    style.configure("Active.TMenubutton", foreground=theme.accent, bordercolor=theme.accent)
+    style.map("TNotebook.Tab", lightcolor=[("selected", theme.accent)])
+    _rounded_controls(root, style, theme)
 
     root.configure(background=theme.bg)
     root.option_add("*Font", theme.font)
@@ -173,3 +208,105 @@ def _recolor_tree(widget: tk.Misc, theme: Theme) -> None:
         elif isinstance(child, tk.Toplevel):
             child.configure(background=theme.bg)
         _recolor_tree(child, theme)
+
+
+def _rounded_controls(root: tk.Tk, style: ttk.Style, theme: Theme) -> None:
+    """Rounded, anti-aliased buttons, segments and fields with hover / pressed states.
+
+    Only for the flat themes with rounded corners; Windows 95 keeps its bevels
+    and Matrix its square terminal look (5.2).
+    """
+    for name in ROUNDED_STYLES:
+        if name not in _CLAM_LAYOUTS:
+            try:
+                _CLAM_LAYOUTS[name] = style.layout(name)
+            except tk.TclError:  # derived style (e.g. Accent.TButton) without a layout of its own
+                _CLAM_LAYOUTS[name] = style.layout(name.split(".", 1)[1])
+    if theme.relief == "raised" or not theme.radius:
+        for name, layout in _CLAM_LAYOUTS.items():
+            style.layout(name, layout)  # type: ignore[arg-type]
+        return
+    images = _IMAGES.get(theme.key)
+    if images is None:
+        images = _IMAGES[theme.key] = _make_images(root, theme)
+        _create_elements(style, theme.key, images)
+    key = theme.key
+    pad = (12, 5)
+
+    def button(element: str) -> list[tuple[str, dict[str, object]]]:
+        return [(f"{key}.{element}", {"sticky": "nsew", "children": [
+            ("Button.padding", {"sticky": "nsew", "children": [("Button.label", {"sticky": "nsew"})]})]})]
+
+    style.layout("TButton", button("button"))
+    style.layout("Accent.TButton", button("accent"))
+    style.layout("Active.TButton", button("active"))
+    style.layout("Toolbutton", [(f"{key}.segment", {"sticky": "nsew", "children": [
+        ("Toolbutton.padding", {"sticky": "nsew", "children": [("Toolbutton.label", {"sticky": "nsew"})]})]})])
+    style.layout("TEntry", [(f"{key}.field", {"sticky": "nsew", "children": [
+        ("Entry.padding", {"sticky": "nsew", "children": [("Entry.textarea", {"sticky": "nsew"})]})]})])
+    for name, element in (("TMenubutton", "button"), ("Active.TMenubutton", "active")):
+        style.layout(name, [(f"{key}.{element}", {"sticky": "nsew", "children": [
+            ("Menubutton.padding", {"sticky": "nsew", "children": [("Menubutton.label", {"sticky": "w"})]})]})])
+    for name in ("TButton", "Active.TButton", "Toolbutton", "TMenubutton", "Active.TMenubutton"):
+        style.configure(name, padding=pad, background=theme.header)
+    style.configure("Accent.TButton", padding=pad, background=theme.accent)
+    style.map("TButton", background=[], foreground=[("disabled", theme.muted)])
+    style.map("Accent.TButton", background=[], foreground=[("disabled", theme.muted)])
+    style.map("Toolbutton", background=[], foreground=[("selected", theme.text), ("disabled", theme.muted)])
+    style.map("TMenubutton", background=[], foreground=[("disabled", theme.muted)])
+    style.configure("TEntry", fieldbackground=theme.bg, padding=(8, 4))
+    # Main tabs: quiet text, a soft hover, the selected one lifted with an accent bar underneath.
+    style.layout("TNotebook.Tab", [(f"{key}.tab", {"sticky": "nsew", "children": [
+        ("Notebook.padding", {"side": "top", "sticky": "nsew", "children": [
+            ("Notebook.label", {"side": "top", "sticky": ""})]})]})])
+    style.configure("TNotebook", background=theme.bg, bordercolor=theme.bg, lightcolor=theme.bg,
+                    darkcolor=theme.bg, tabmargins=(12, 8, 12, 0))
+    style.configure("TNotebook.Tab", padding=(18, 8), foreground=theme.muted,
+                    font=(theme.font[0], theme.font[1] + 1))
+    style.map("TNotebook.Tab", foreground=[("selected", theme.text), ("active", theme.text)],
+              background=[], lightcolor=[], expand=[])
+
+
+def _make_images(root: tk.Tk, theme: Theme) -> dict[str, tk.PhotoImage]:
+    """Every state of every rounded control of a theme, as PhotoImages."""
+    size, r = 2 * CONTROL_RADIUS + 6, CONTROL_RADIUS
+    plain, hover = theme.header, blend(theme.header, theme.accent, 0.14)
+    pressed = blend(theme.header, theme.accent, 0.28)
+    specs = {
+        "button": (plain, theme.border, None),
+        "button.hover": (hover, blend(theme.border, theme.accent, 0.5), None),
+        "button.pressed": (pressed, theme.accent, None),
+        "button.disabled": (theme.bg, theme.border, None),
+        "accent": (theme.accent, theme.accent, None),
+        "accent.hover": (theme.highlight, theme.highlight, None),
+        "accent.pressed": (blend(theme.accent, theme.bg, 0.25), blend(theme.accent, theme.bg, 0.25), None),
+        "active": (plain, theme.accent, None),
+        "active.hover": (hover, theme.accent, None),
+        "segment": (theme.bg, theme.border, None),
+        "segment.hover": (plain, theme.border, None),
+        "segment.selected": (plain, theme.border, theme.accent),
+        "tab": (theme.bg, theme.bg, None),
+        "tab.hover": (theme.header, theme.header, None),
+        "tab.selected": (theme.surface, theme.border, theme.accent),
+        "field": (theme.bg, theme.border, None),
+        "field.focus": (theme.bg, theme.accent, None),
+    }
+    return {name: tk.PhotoImage(master=root, data=base64.b64encode(rounded_png(size, r, fill, line, underline=under)))
+            for name, (fill, line, under) in specs.items()}
+
+
+def _create_elements(style: ttk.Style, key: str, images: dict[str, tk.PhotoImage]) -> None:
+    border = CONTROL_RADIUS + 2
+    # border = slices kept intact when stretched; padding = room inside, the style adds its own.
+    options = {"border": border, "padding": (4, 2), "sticky": "nsew"}
+    style.element_create(f"{key}.button", "image", images["button"], ("pressed", images["button.pressed"]),
+                         ("active", images["button.hover"]), ("disabled", images["button.disabled"]), **options)
+    style.element_create(f"{key}.accent", "image", images["accent"], ("pressed", images["accent.pressed"]),
+                         ("active", images["accent.hover"]), ("disabled", images["button.disabled"]), **options)
+    style.element_create(f"{key}.active", "image", images["active"], ("pressed", images["button.pressed"]),
+                         ("active", images["active.hover"]), ("disabled", images["button.disabled"]), **options)
+    style.element_create(f"{key}.segment", "image", images["segment"], ("selected", images["segment.selected"]),
+                         ("active", images["segment.hover"]), ("disabled", images["button.disabled"]), **options)
+    style.element_create(f"{key}.field", "image", images["field"], ("focus", images["field.focus"]), **options)
+    style.element_create(f"{key}.tab", "image", images["tab"], ("selected", images["tab.selected"]),
+                         ("active", images["tab.hover"]), **options)

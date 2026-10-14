@@ -10,7 +10,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol
 
-from gitective.forge.models import Commit, CommitStatus, MergeRequest, Project, ProtectedBranch, User
+from gitective.forge.models import (
+    Approvals,
+    ChangedFile,
+    Commit,
+    CommitStatus,
+    Discussion,
+    Job,
+    MergeRequest,
+    MergeState,
+    Project,
+    ProtectedBranch,
+    User,
+)
 
 
 class ForgeClient(Protocol):
@@ -67,6 +79,29 @@ class ForgeClient(Protocol):
         ...
 
     def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
+        ...
+
+    def list_my_open_merge_requests(self, user_id: int, role: str) -> list[MergeRequest]:
+        """Open MRs of every visible project where the user is "assignee" or "reviewer" (AM-02)."""
+        ...
+
+    def get_merge_state(self, project_id: int, mr_iid: int) -> MergeState:
+        ...
+
+    def get_approvals(self, project_id: int, mr_iid: int) -> Approvals:
+        ...
+
+    def list_discussions(self, project_id: int, mr_iid: int) -> list[Discussion]:
+        """Resolvable discussion threads."""
+        ...
+
+    def list_changed_files(self, project_id: int, mr_iid: int) -> list[ChangedFile]:
+        ...
+
+    def list_pipeline_jobs(self, project_id: int, pipeline_id: int) -> list[Job]:
+        ...
+
+    def job_log(self, project_id: int, job_id: int) -> str:
         ...
 
     def download(self, url: str) -> bytes:
