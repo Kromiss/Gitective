@@ -11,7 +11,7 @@ from gitective.ui.rounded import blend, rounded_png
 
 CONTROL_RADIUS = 7  # corner radius of buttons and fields in the rounded themes
 ROUNDED_STYLES = ("TButton", "Accent.TButton", "Active.TButton", "Toolbutton", "TEntry", "TMenubutton",
-                  "Active.TMenubutton")
+                  "Active.TMenubutton", "TNotebook.Tab")
 # Images must outlive the elements using them: kept per theme, created once.
 _IMAGES: dict[str, dict[str, tk.PhotoImage]] = {}
 _CLAM_LAYOUTS: dict[str, object] = {}
@@ -168,7 +168,8 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
                     arrowcolor=theme.text)
     style.map("TCombobox", fieldbackground=[("readonly", theme.surface)], foreground=[("readonly", theme.text)])
     style.configure("TNotebook", background=theme.bg, borderwidth=0, tabmargins=(12, 6, 12, 0))
-    style.configure("TNotebook.Tab", background=theme.header, foreground=theme.muted, padding=(16, 6), borderwidth=border)
+    style.configure("TNotebook.Tab", background=theme.header, foreground=theme.muted, padding=(16, 6), borderwidth=border,
+                    font=theme.font)
     style.map("TNotebook.Tab", background=[("selected", theme.surface)], foreground=[("selected", theme.text)])
     style.configure("TLabelframe", background=theme.surface, bordercolor=theme.border)
     style.configure("TLabelframe.Label", background=theme.bg, foreground=theme.text,
@@ -254,6 +255,16 @@ def _rounded_controls(root: tk.Tk, style: ttk.Style, theme: Theme) -> None:
     style.map("Toolbutton", background=[], foreground=[("selected", theme.text), ("disabled", theme.muted)])
     style.map("TMenubutton", background=[], foreground=[("disabled", theme.muted)])
     style.configure("TEntry", fieldbackground=theme.bg, padding=(8, 4))
+    # Main tabs: quiet text, a soft hover, the selected one lifted with an accent bar underneath.
+    style.layout("TNotebook.Tab", [(f"{key}.tab", {"sticky": "nsew", "children": [
+        ("Notebook.padding", {"side": "top", "sticky": "nsew", "children": [
+            ("Notebook.label", {"side": "top", "sticky": ""})]})]})])
+    style.configure("TNotebook", background=theme.bg, bordercolor=theme.bg, lightcolor=theme.bg,
+                    darkcolor=theme.bg, tabmargins=(12, 8, 12, 0))
+    style.configure("TNotebook.Tab", padding=(18, 8), foreground=theme.muted,
+                    font=(theme.font[0], theme.font[1] + 1))
+    style.map("TNotebook.Tab", foreground=[("selected", theme.text), ("active", theme.text)],
+              background=[], lightcolor=[], expand=[])
 
 
 def _make_images(root: tk.Tk, theme: Theme) -> dict[str, tk.PhotoImage]:
@@ -274,6 +285,9 @@ def _make_images(root: tk.Tk, theme: Theme) -> dict[str, tk.PhotoImage]:
         "segment": (theme.bg, theme.border, None),
         "segment.hover": (plain, theme.border, None),
         "segment.selected": (plain, theme.border, theme.accent),
+        "tab": (theme.bg, theme.bg, None),
+        "tab.hover": (theme.header, theme.header, None),
+        "tab.selected": (theme.surface, theme.border, theme.accent),
         "field": (theme.bg, theme.border, None),
         "field.focus": (theme.bg, theme.accent, None),
     }
@@ -294,3 +308,5 @@ def _create_elements(style: ttk.Style, key: str, images: dict[str, tk.PhotoImage
     style.element_create(f"{key}.segment", "image", images["segment"], ("selected", images["segment.selected"]),
                          ("active", images["segment.hover"]), ("disabled", images["button.disabled"]), **options)
     style.element_create(f"{key}.field", "image", images["field"], ("focus", images["field.focus"]), **options)
+    style.element_create(f"{key}.tab", "image", images["tab"], ("selected", images["tab.selected"]),
+                         ("active", images["tab.hover"]), **options)
