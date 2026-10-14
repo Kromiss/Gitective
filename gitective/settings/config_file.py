@@ -160,7 +160,7 @@ class Settings:
             sync_minutes=clamp_refresh(data.get("sync_minutes", data.get("overview_refresh", base.sync_minutes))),
             notify_merges=bool(data.get("notify_merges", True)),
             notify_assigned=bool(data.get("notify_assigned", True)),
-            detail_width=max(280, min(900, int(data.get("detail_width") or base.detail_width))),
+            detail_width=clamp_width(data.get("detail_width", base.detail_width)),
             stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
             column_widths=_column_widths(data.get("column_widths")),
         )
@@ -182,6 +182,15 @@ def clamp_parallel(value: Any) -> int:
     except (TypeError, ValueError):
         number = Settings.parallel_requests
     return max(PARALLEL_RANGE[0], min(PARALLEL_RANGE[1], number))
+
+
+def clamp_width(value: Any) -> int:
+    """Detail panel width in pixels, between 280 and 900; the default when unreadable."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = Settings.detail_width
+    return max(280, min(900, number))
 
 
 def clamp_refresh(value: Any) -> int:

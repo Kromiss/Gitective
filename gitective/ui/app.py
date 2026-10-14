@@ -8,40 +8,35 @@ import tkinter as tk
 import webbrowser
 from tkinter import messagebox
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import ttk
 
 from gitective import APP_NAME, __version__
-from gitective.forge.errors import ForgeError
 from gitective.forge.gitlab_client import GitLabClient
-from gitective.forge.models import MergeRequest, User
+from gitective.forge.models import User
 from gitective.settings import config_file as config
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.avatars import AvatarStore
 from gitective.shared.dates import format_datetime, now_local
 from gitective.shared.people import PersonDirectory
+from gitective.review.auto_sync import SyncOutcome, synchronise
 from gitective.review.profile import (
     ASSIGNEE,
     REVIEWER,
     MyMr,
-    Notice,
     Profile,
     badge_counts,
-    compute_profile,
+    badge_tip,
     load_profile,
-    merge_notices,
     new_count,
-    role_keys,
-    role_notices,
-    save_profile,
+    seen_on_click,
     unseen_keys,
 )
 from gitective.review.rules import RuleSet
 from gitective.database.store import Store, StoreError
 from gitective.database.sync import ForgeData
-from gitective.ui.components.filter_bar import FilterState
+from gitective.settings.filter_state import FilterState
 from gitective.ui.tabs.merge_requests import MrTab
 from gitective.ui.alerts.badges import Badge
 from gitective.ui.alerts.desktop_toast import Toasts, flash_taskbar
@@ -54,16 +49,6 @@ from gitective.ui.background import BackgroundRunner
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 WINDOW_TITLE = f"{APP_NAME} — contrôle des merge requests"
-
-
-@dataclass
-class SyncOutcome:
-    """What a synchronisation brings back to the interface (CH-13)."""
-
-    profile: Profile
-    my_mrs: list[MyMr] = field(default_factory=list)
-    notices: list[Notice] = field(default_factory=list)
-    errors: list[ForgeError] = field(default_factory=list)
 
 
 class App:
@@ -348,45 +333,7 @@ class App:
         previous = self.profile
 
         def task(_progress: Callable[[int, int], None]) -> SyncOutcome:
-            known = [p for p in projects if store.sync_state(f"mr:{p.id}") is not None]
-            before = store.merged_keys(p.id for p in known)
-            first = store.get_meta("notified_once") is None
-            had_mine = store.get_meta("my_mrs_synced") is not None
-            previous_roles = role_keys(store.my_mrs())
-            data.new_session()
-            errors: list[ForgeError] = []
-            fresh: list[tuple[TrackedProject, MergeRequest]] = []
-            for project in projects:
-                try:
-                    mrs = data.merge_requests(project.id, now_local())
-                except ForgeError as exc:
-                    errors.append(exc)
-                    continue
-                if project in known:
-                    fresh += [(project, mr) for mr in mrs]
-            profile = previous
-            try:
-                user = data.client.current_user() if data.client else None
-                if user is not None:
-                    profile = compute_profile(data, user, projects, settings.parallel_requests)
-                    save_profile(store, profile)
-            except ForgeError as exc:
-                errors.append(exc)
-            mine: list[MyMr] = []
-            if profile.merger and profile.user is not None:
-                try:
-                    mine = data.my_open_mrs(profile.user.id)
-                except ForgeError as exc:
-                    errors.append(exc)
-                    mine = store.my_mrs()
-            notices: list[Notice] = []
-            if profile.merger and not first:
-                if settings.notify_merges:
-                    notices += merge_notices(before, fresh, profile.user, people)
-                if settings.notify_assigned and had_mine:
-                    notices += role_notices(previous_roles, mine, people)
-            store.set_meta("notified_once", "1")
-            return SyncOutcome(profile, mine, notices, errors)
+            return synchronise(data, store, projects, settings, people, previous)
 
         def done(outcome: SyncOutcome) -> None:
             self._syncing = False
@@ -447,12 +394,7 @@ class App:
         reviewing = badge_counts(self.my_mrs, self._seen, REVIEWER)
         for badge, counts, word in ((self._badge_assignee, assigned, "assignée(s)"),
                                     (self._badge_reviewer, reviewing, "en relecture")):
-            tip = f"{counts.total} {word}"
-            if counts.new:
-                tip += f", dont {counts.new} nouvelle(s)"
-            if counts.drafts:
-                tip += f" ; {counts.drafts} brouillon(s)"
-            badge.update_counts(counts, tip + "\nClic : voir ces MR ouvertes")
+            badge.update_counts(counts, badge_tip(counts, word))
         new = new_count(self.my_mrs, self._seen)
         self.root.title(f"{APP_NAME} ({new})" if new else WINDOW_TITLE)
 
@@ -461,7 +403,7 @@ class App:
         me = self.me_key()
         if me is None:
             return
-        keys = {k for k in unseen_keys(self.my_mrs, self._seen) if k[2] == role}
+        keys = seen_on_click(self.my_mrs, self._seen, role)
         self._new_at_click = {(p, i) for p, i, _ in keys}
         self.store.mark_seen(keys)
         self._seen |= keys

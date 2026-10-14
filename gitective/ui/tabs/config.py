@@ -21,6 +21,7 @@ from gitective.settings.config_file import (
 )
 from gitective.shared.avatars import badge_color, initials
 from gitective.review.rules import FIXED_LABELS, MrFields, RuleSet, validate_regex
+from gitective.review.settings_form import NumberFields, apply_numbers
 from gitective.ui.themes import THEMES
 from gitective.ui.components.dialogs import PersonDialog, ProjectsDialog, RuleDialog
 from gitective.ui.components.widgets import ScrollableFrame
@@ -263,32 +264,11 @@ class SettingsTab(ttk.Frame):
         d.assignee_rule = self.assignee_rule.get()
         d.notify_merges = self.notify_merges.get()
         d.notify_assigned = self.notify_assigned.get()
-        checks = [(f"de la règle « {r.name} »", r.pattern) for r in d.rules]
-        checks += [("du lien ticket", d.link_regex), ("du n° de ticket", d.ticket_regex)]
-        for label, pattern in checks:
-            error = validate_regex(pattern)
-            if error:
-                return None, f"Regex {label} invalide : {error}. Enregistrement annulé."
-        try:
-            d.weights = {c: float(v.get().replace(",", ".")) for c, v in self.weights.items()}
-            d.green_threshold = float(self.green.get().replace(",", "."))
-            d.orange_threshold = float(self.orange.get().replace(",", "."))
-        except ValueError:
-            return None, "Pondérations et seuils : saisissez des nombres."
-        counted = {c: w for c, w in d.weights.items() if c != "assignee" or d.assignee_rule}
-        all_weights = [*counted.values(), *(r.weight for r in d.active_rules)]
-        if any(w < 0 for w in all_weights) or sum(all_weights) <= 0:
-            return None, "Pondérations : valeurs positives avec un total supérieur à 0."
-        if not 0 <= d.orange_threshold <= d.green_threshold <= 100:
-            return None, "Seuils : il faut 0 ≤ orange ≤ vert ≤ 100."
-        low, high = PARALLEL_RANGE
-        if not self.parallel.get().strip().isdigit() or not low <= int(self.parallel.get()) <= high:
-            return None, f"Requêtes simultanées : un nombre entier entre {low} et {high}."
-        d.parallel_requests = int(self.parallel.get())
-        low, high = REFRESH_RANGE
-        if not self.sync_minutes.get().strip().isdigit() or not low <= int(self.sync_minutes.get()) <= high:
-            return None, f"Synchronisation automatique : un nombre de minutes entre {low} et {high}."
-        d.sync_minutes = int(self.sync_minutes.get())
+        error = apply_numbers(d, NumberFields(
+            weights={c: v.get() for c, v in self.weights.items()}, green=self.green.get(),
+            orange=self.orange.get(), parallel=self.parallel.get(), sync_minutes=self.sync_minutes.get()))
+        if error:
+            return None, error
         for project in d.projects:
             project.branch = self._branch_vars[project.id].get().strip() if project.id in self._branch_vars else project.branch
             project.ci_expected = self._ci_vars[project.id].get() if project.id in self._ci_vars else project.ci_expected

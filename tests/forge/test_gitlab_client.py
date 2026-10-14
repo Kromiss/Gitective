@@ -13,6 +13,7 @@ from io import BytesIO
 from typing import Any
 
 from gitective.forge.gitlab_client import GitLabClient
+from gitective.forge.models import ChangedFile, User
 from gitective.forge.errors import (
     AuthenticationError,
     NetworkError,
@@ -185,6 +186,35 @@ class ClientTests(unittest.TestCase):
         response._body = b"line 1\nFAIL"
         client, _ = make_client(FakeOpener(response))
         self.assertEqual(client.job_log(10, 12), "line 1\nFAIL")
+
+
+    def test_discussions_and_jobs_follow_pagination(self) -> None:
+        thread = {"notes": [{"resolvable": True, "resolved": False, "author": user_json(2, "bob"), "body": "?"}]}
+        system = {"notes": [{"resolvable": False, "author": user_json(2, "bob"), "body": "added 1 commit"}]}
+        opener = FakeOpener(
+            FakeResponse([thread, system], {"X-Next-Page": "2"}), FakeResponse([thread]),
+            FakeResponse([{"id": 1, "name": "lint", "status": "success"}], {"X-Next-Page": "2"}),
+            FakeResponse([{"id": 2, "name": "tests", "status": "failed", "duration": 61.5}]),
+        )
+        client, _ = make_client(opener)
+        self.assertEqual(len(client.list_discussions(10, 5)), 2)  # system notes left out, both pages read
+        self.assertEqual(opener.query(1)["page"], ["2"])
+        jobs = client.list_pipeline_jobs(10, 500)
+        self.assertEqual([(j.name, j.status, j.duration) for j in jobs],
+                         [("lint", "success", None), ("tests", "failed", 61.5)])
+        self.assertIn("/pipelines/500/jobs", opener.requests[2].full_url)
+
+    def test_diff_line_counts_ignore_headers_and_markers(self) -> None:
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,2 @@\n-old\n+new\n context\n\\ No newline at end of file\n"
+        changed = ChangedFile.from_json({"old_path": "x.py", "new_path": "x.py", "diff": diff})
+        self.assertEqual((changed.path, changed.added, changed.removed), ("x.py", 1, 1))
+        renamed = ChangedFile.from_json({"old_path": "old.py", "new_path": "", "diff": ""})
+        self.assertEqual((renamed.path, renamed.added, renamed.removed), ("old.py", 0, 0))
+
+    def test_token_owner_admin_flag(self) -> None:
+        client, _ = make_client(FakeOpener(FakeResponse({**user_json(7, "me"), "is_admin": True})))
+        self.assertTrue(client.current_user().is_admin)
+        self.assertFalse(User.from_json(user_json(8, "other")).is_admin)
 
 
 class OrphanCommitTests(unittest.TestCase):
