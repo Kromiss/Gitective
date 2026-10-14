@@ -19,8 +19,11 @@ from gitective.settings.config_file import (
     Settings,
     TrackedProject,
 )
+from gitective.settings import config_file as config
+from gitective.shared import autostart
 from gitective.shared.avatars import badge_color, initials
 from gitective.review.rules import FIXED_LABELS, MrFields, RuleSet, validate_regex
+from gitective.review.settings_form import NumberFields, apply_numbers
 from gitective.ui.themes import THEMES
 from gitective.ui.components.dialogs import PersonDialog, ProjectsDialog, RuleDialog
 from gitective.ui.components.widgets import ScrollableFrame
@@ -141,6 +144,13 @@ class SettingsTab(ttk.Frame):
         self.theme = tk.StringVar()
         for key, theme in THEMES.items():
             ttk.Radiobutton(box, text=theme.label, value=key, variable=self.theme).pack(anchor="w", pady=2)
+        # Start with Windows (OC-12): stored in the registry, not in config.json.
+        self.autostart = tk.BooleanVar()
+        self._autostart_box = ttk.Checkbutton(box, text="Lancer Gitective au démarrage de Windows (réduit)",
+                                              variable=self.autostart)
+        self._autostart_box.pack(anchor="w", pady=(10, 0))
+        if not autostart.supported():
+            self._autostart_box.state(["disabled"])
         ttk.Button(box, text="Relancer l'assistant de démarrage", command=self.app.open_wizard).pack(anchor="w", pady=(10, 0))
         ttk.Button(box, text="Vider la base locale", command=self._clear_store).pack(anchor="w", pady=(6, 0))
 
@@ -236,6 +246,7 @@ class SettingsTab(ttk.Frame):
         self.parallel.set(str(d.parallel_requests))
         self.theme.set(d.theme)
         self.sync_minutes.set(str(d.sync_minutes))
+        self.autostart.set(autostart.is_enabled(self._registry()))
         self.assignee_rule.set(d.assignee_rule)
         self.notify_merges.set(d.notify_merges)
         self.notify_assigned.set(d.notify_assigned)
@@ -263,32 +274,11 @@ class SettingsTab(ttk.Frame):
         d.assignee_rule = self.assignee_rule.get()
         d.notify_merges = self.notify_merges.get()
         d.notify_assigned = self.notify_assigned.get()
-        checks = [(f"de la règle « {r.name} »", r.pattern) for r in d.rules]
-        checks += [("du lien ticket", d.link_regex), ("du n° de ticket", d.ticket_regex)]
-        for label, pattern in checks:
-            error = validate_regex(pattern)
-            if error:
-                return None, f"Regex {label} invalide : {error}. Enregistrement annulé."
-        try:
-            d.weights = {c: float(v.get().replace(",", ".")) for c, v in self.weights.items()}
-            d.green_threshold = float(self.green.get().replace(",", "."))
-            d.orange_threshold = float(self.orange.get().replace(",", "."))
-        except ValueError:
-            return None, "Pondérations et seuils : saisissez des nombres."
-        counted = {c: w for c, w in d.weights.items() if c != "assignee" or d.assignee_rule}
-        all_weights = [*counted.values(), *(r.weight for r in d.active_rules)]
-        if any(w < 0 for w in all_weights) or sum(all_weights) <= 0:
-            return None, "Pondérations : valeurs positives avec un total supérieur à 0."
-        if not 0 <= d.orange_threshold <= d.green_threshold <= 100:
-            return None, "Seuils : il faut 0 ≤ orange ≤ vert ≤ 100."
-        low, high = PARALLEL_RANGE
-        if not self.parallel.get().strip().isdigit() or not low <= int(self.parallel.get()) <= high:
-            return None, f"Requêtes simultanées : un nombre entier entre {low} et {high}."
-        d.parallel_requests = int(self.parallel.get())
-        low, high = REFRESH_RANGE
-        if not self.sync_minutes.get().strip().isdigit() or not low <= int(self.sync_minutes.get()) <= high:
-            return None, f"Synchronisation automatique : un nombre de minutes entre {low} et {high}."
-        d.sync_minutes = int(self.sync_minutes.get())
+        error = apply_numbers(d, NumberFields(
+            weights={c: v.get() for c, v in self.weights.items()}, green=self.green.get(),
+            orange=self.orange.get(), parallel=self.parallel.get(), sync_minutes=self.sync_minutes.get()))
+        if error:
+            return None, error
         for project in d.projects:
             project.branch = self._branch_vars[project.id].get().strip() if project.id in self._branch_vars else project.branch
             project.ci_expected = self._ci_vars[project.id].get() if project.id in self._ci_vars else project.ci_expected
@@ -306,9 +296,23 @@ class SettingsTab(ttk.Frame):
                                        "L'URL de l'instance change : la base locale va être vidée et les données "
                                        "seront relues depuis la nouvelle instance.\n\nContinuer ?", parent=self):
                 return
+        registry = self._registry()
+        if autostart.supported() and self.autostart.get() != autostart.is_enabled(registry):
+            try:
+                autostart.set_enabled(registry, self.autostart.get(), config.APP_DIR)
+            except OSError as exc:
+                self.app.notify("error", f"Démarrage avec Windows impossible à régler : {exc}")
+                return
         self.app.apply_settings(settings)
         self.draft = copy.deepcopy(settings)
         self.app.notify("success", "Configuration enregistrée.")
+
+    @staticmethod
+    def _registry() -> autostart.Registry | None:
+        try:
+            return autostart.default_registry()
+        except OSError:
+            return None
 
     def _clear_store(self) -> None:
         """OC-09: delete every stored row after confirmation."""

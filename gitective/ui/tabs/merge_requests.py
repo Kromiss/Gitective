@@ -9,12 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from gitective.reporting.statistics import average
 from gitective.review.mr_evaluation import Pair, evaluate_all, load_merge_requests, load_pairs
+from gitective.review.mr_filters import names, people_cell, people_choices, step_selection, visible
 from gitective.review.rules import Evaluation, score_level
 from gitective.settings.config_file import TrackedProject
 from gitective.shared.dates import format_datetime
-from gitective.shared.people import PersonRef
-from gitective.shared.search import matches
-from gitective.ui.components.filter_bar import DRAFT_STATES, PEOPLE_STATES, MrFilterBar
+from gitective.ui.components.filter_bar import MrFilterBar
 from gitective.ui.components.grid import Column, sort_rows
 from gitective.ui.components.pagination import Pager
 from gitective.ui.components.widgets import search_box
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 
 STATE_WORDS = {"merged": "mergée(s)", "opened": "ouverte(s)", "closed": "fermée(s)", "direct": ""}
 STATUS_ORDER = {"ok": 0, "na": 1, "ko": 2}
-NOBODY = "none"  # filter entry for MRs without assignee / reviewer (FI-14, FI-15)
 NOT_TRACKED = " (non suivi)"
 
 NEW_COLUMN = Column("new", "Nouvelle", 30, kind="dot", align="center")
@@ -44,16 +42,12 @@ BASE_COLUMNS = [
 SCORE_COLUMN = Column("score", "Score", 66, kind="score", align="center")
 
 
-def _names(people: tuple[PersonRef, ...]) -> str:
-    return ", ".join(p.name for p in people)
-
-
 BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
     "repo": lambda e: e.project_path.casefold(),
     "title": lambda e: e.mr.title.casefold(),
     "author": lambda e: e.author.name.casefold(),
-    "assignees": lambda e: _names(e.assignees).casefold() or None,
-    "reviewers": lambda e: _names(e.reviewers).casefold() or None,
+    "assignees": lambda e: names(e.assignees).casefold() or None,
+    "reviewers": lambda e: names(e.reviewers).casefold() or None,
     "merger": lambda e: e.merger.name.casefold() if e.merger else None,
     "created": lambda e: e.mr.created_at,
     "merged": lambda e: e.mr.merged_at,
@@ -66,13 +60,6 @@ Key = tuple[int, int]
 
 def _key(ev: Evaluation) -> Key:
     return ev.mr.project_id, ev.mr.iid
-
-
-def people_filter(people: tuple[PersonRef, ...], wanted: set[str]) -> bool:
-    """Empty selection keeps everything; NOBODY keeps MRs without anyone in that role."""
-    if not wanted:
-        return True
-    return any(p.key in wanted for p in people) or (NOBODY in wanted and not people)
 
 
 class MrTab(DataTab):
@@ -261,38 +248,14 @@ class MrTab(DataTab):
 
     def _set_people_items(self, evaluations: list[Evaluation]) -> None:
         """Assignee and reviewer choices: the user first as "Moi", then everyone seen, then nobody."""
-        me = self.app.me_key()
-        for widget, role, nobody in ((self.bar.assignees, "assignees", "Non assignée"),
-                                     (self.bar.reviewers, "reviewers", "Sans relecteur")):
-            seen = {p.key: p.name for e in evaluations for p in getattr(e, role)}
-            items = []
-            if me:
-                items.append((me, f"Moi ({self.app.me_name()})"))
-                seen.pop(me, None)
-            items += sorted(seen.items(), key=lambda i: i[1].casefold())
-            items.append((NOBODY, nobody))
-            widget.set_items(items, keep_order=True)
+        me, name = self.app.me_key(), self.app.me_name()
+        self.bar.assignees.set_items(people_choices(evaluations, "assignees", me, name), keep_order=True)
+        self.bar.reviewers.set_items(people_choices(evaluations, "reviewers", me, name), keep_order=True)
 
     # ---------------------------------------------------------------- View
 
     def _apply_view(self, reset_page: bool = False) -> None:
-        filters = self.app.filters
-        state = filters.state
-        authors = set(filters.authors)
-        # The merger filter only exists for merged MRs (FI-13).
-        mergers = set(filters.mergers) if state == "merged" else set()
-        assignees = set(filters.assignees) if state in PEOPLE_STATES else set()
-        reviewers = set(filters.reviewers) if state in PEOPLE_STATES else set()
-        drafts = filters.drafts if state in DRAFT_STATES else "all"
-        needle = self._search.get().strip().casefold()
-        rows = [e for e in self._evaluations
-                if (not authors or e.author.key in authors)
-                and (not mergers or (e.merger is not None and e.merger.key in mergers))
-                and people_filter(e.assignees, assignees) and people_filter(e.reviewers, reviewers)
-                and (drafts == "all" or e.mr.draft == (drafts == "only"))
-                and matches(needle, e.mr.title, e.mr.description, e.author.name, e.merger.name if e.merger else None,
-                            e.project_path, e.mr.source_branch, e.mr.target_branch, _names(e.assignees),
-                            _names(e.reviewers))]
+        rows = visible(self._evaluations, self.app.filters, self._search.get())
         self._visible_rows = sort_rows(rows, self._sort_keys()[self._sort_key], self._ascending)
         self.pager.update_total(len(self._visible_rows), reset=reset_page)
         self._show_summary()
@@ -329,8 +292,8 @@ class MrTab(DataTab):
                 "repo": repo,
                 "title": (mr.title, mr.web_url),
                 "author": ev.author.name,
-                "assignees": self._people_cell(ev.assignees, me),
-                "reviewers": self._people_cell(ev.reviewers, me),
+                "assignees": people_cell(ev.assignees, me),
+                "reviewers": people_cell(ev.reviewers, me),
                 "merger": (ev.merger.name, ev.merger_not_assignee) if ev.merger else "",
                 "created": format_datetime(mr.created_at),
                 "merged": format_datetime(mr.merged_at),
@@ -345,12 +308,6 @@ class MrTab(DataTab):
                     row[f"c:{cid}"] = (result.status, result.detail)
             rows.append(row)
         self.grid_view.set_rows(rows, keep_scroll=keep_scroll)
-
-    @staticmethod
-    def _people_cell(people: tuple[PersonRef, ...], me: str | None) -> tuple[bool, str] | str:
-        if not people:
-            return ""
-        return any(p.key == me for p in people), _names(tuple(p for p in people if p.key != me))
 
     def _page_changed(self, _page: int, size: int) -> None:
         if size != self.app.filters.page_size:
@@ -395,17 +352,14 @@ class MrTab(DataTab):
 
     def _move(self, step: int) -> None:
         """Arrow keys: previous / next MR of the filtered list, changing page when needed."""
-        if self._selected is None or not self._visible_rows:
-            return
-        keys = [_key(e) for e in self._visible_rows]
-        if self._selected not in keys:
-            return
-        index = max(0, min(len(keys) - 1, keys.index(self._selected) + step))
         size = self.pager.page_size
-        page = index // size + 1
+        target = step_selection([_key(e) for e in self._visible_rows], self._selected, step, size)
+        if target is None:
+            return
+        index, page = target
         if page != self.pager.page:
             self.pager.page = page
-            self.pager.update_total(len(keys))
+            self.pager.update_total(len(self._visible_rows))
         self.open_detail(self._visible_rows[index])
         self.grid_view.see(index % size)
 

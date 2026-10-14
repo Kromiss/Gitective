@@ -13,7 +13,9 @@ from gitective.review.profile import (
     ASSIGNEE,
     REVIEWER,
     Profile,
+    BadgeCounts,
     badge_counts,
+    badge_tip,
     compute_profile,
     load_profile,
     merge_notices,
@@ -21,6 +23,7 @@ from gitective.review.profile import (
     role_notices,
     role_title,
     save_profile,
+    seen_on_click,
 )
 from gitective.settings.config_file import Person, TrackedProject
 from gitective.shared.people import PersonDirectory
@@ -128,6 +131,17 @@ class MyMrTests(unittest.TestCase):
         self.assertEqual((reviewing.total, reviewing.new, reviewing.drafts), (1, 1, 0))
         # A role added on an MR already seen makes it new; each MR counts once in the title.
         self.assertEqual(new_count(items, seen), 1)
+
+    def test_badge_click_marks_only_its_role(self) -> None:
+        items = [(open_mr(1), frozenset({ASSIGNEE, REVIEWER})), (open_mr(2), frozenset({REVIEWER})),
+                 (open_mr(3, draft=True), frozenset({ASSIGNEE}))]
+        self.assertEqual(seen_on_click(items, set(), ASSIGNEE), {(10, 1, ASSIGNEE)})  # drafts stay new
+        self.assertEqual(seen_on_click(items, {(10, 2, REVIEWER)}, REVIEWER), {(10, 1, REVIEWER)})
+
+    def test_badge_tooltip(self) -> None:
+        self.assertEqual(badge_tip(BadgeCounts(3, 1, 1), "assignée(s)"),
+                         "3 assignée(s), dont 1 nouvelle(s) ; 1 brouillon(s)\nClic : voir ces MR ouvertes")
+        self.assertEqual(badge_tip(BadgeCounts(0, 0, 0), "en relecture").splitlines()[0], "0 en relecture")
 
     def test_seen_roles_are_stored(self) -> None:
         store = Store(MEMORY)

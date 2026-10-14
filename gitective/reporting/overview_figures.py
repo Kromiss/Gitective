@@ -12,7 +12,10 @@ from gitective.shared.dates import start_of_day, to_local, week_key, week_label
 from gitective.review.rules import KO, Criterion, Evaluation, score_level
 from gitective.reporting.statistics import average
 
-FEED_SIZE = 20
+FEED_SIZE = 40  # enough for a busy day (10 to 15 merges) plus the previous ones
+# Latest merges rows (VE-05): two lines per merge, or one line when today's merges would not all fit.
+GROUP_H, ROW_H, COMPACT_ROW_H = 28, 58, 30
+TITLE_MAX = 45  # characters of an MR title in the feed, so the repository and people always show
 SCORE_DAYS = 30
 WEEKS = 12
 
@@ -116,3 +119,20 @@ def build_overview(
     data.merged = [levels[w].total() for w in weeks]
     data.created = [created_per_week[w] for w in weeks]
     return data
+
+
+def feed_row_height(today_count: int, room: float) -> int:
+    """Row height of the latest merges feed: compact as soon as two-line rows would hide some of today's merges."""
+    return ROW_H if GROUP_H + today_count * ROW_H <= room else COMPACT_ROW_H
+
+
+def short_title(title: str, limit: int = TITLE_MAX) -> str:
+    """MR title cut to `limit` characters with an ellipsis, on a word boundary when one is close."""
+    title = " ".join(title.split())
+    if len(title) <= limit:
+        return title
+    cut = title[: limit - 1]
+    space = cut.rfind(" ")
+    if space >= limit * 0.6:
+        cut = cut[:space]
+    return cut.rstrip(" -:·") + "…"

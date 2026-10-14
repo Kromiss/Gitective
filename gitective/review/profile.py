@@ -85,6 +85,21 @@ def unseen_keys(items: Sequence[MyMr], seen: set[RoleKey]) -> set[RoleKey]:
     return role_keys(items) - seen
 
 
+def badge_tip(counts: BadgeCounts, word: str) -> str:
+    """Badge tooltip, e.g. "3 assignée(s), dont 1 nouvelle(s) ; 1 brouillon(s)" (BA-01)."""
+    tip = f"{counts.total} {word}"
+    if counts.new:
+        tip += f", dont {counts.new} nouvelle(s)"
+    if counts.drafts:
+        tip += f" ; {counts.drafts} brouillon(s)"
+    return tip + "\nClic : voir ces MR ouvertes"
+
+
+def seen_on_click(items: Sequence[MyMr], seen: set[RoleKey], role: str) -> set[RoleKey]:
+    """Role keys a badge click marks as seen: the unseen ones of that role only (AM-04)."""
+    return {key for key in unseen_keys(items, seen) if key[2] == role}
+
+
 def new_count(items: Sequence[MyMr], seen: set[RoleKey]) -> int:
     """MRs with at least one new role, counted once (BA-03)."""
     return len({(p, i) for p, i, _ in unseen_keys(items, seen)})
