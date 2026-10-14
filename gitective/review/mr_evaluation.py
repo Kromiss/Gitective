@@ -23,17 +23,18 @@ def load_merge_requests(
     state: str,
     period: Period | None,
 ) -> list[MergeRequest]:
-    """MRs of one project in a given state, drafts excluded (FI-08).
+    """MRs of one project in a given state.
 
     Merged MRs are filtered on their merge date; open and closed MRs are the
-    complete lists (FI-05). A merge always updates the MR, so the MRs updated
-    since the start of the period include every MR merged in it.
+    complete lists (FI-05), drafts included: the tab marks and filters them
+    (FI-08, FI-16). A merge always updates the MR, so the MRs updated since
+    the start of the period include every MR merged in it.
     """
     since = period[0] if state == "merged" and period else now_local()
     mrs = data.merge_requests(project.id, since)
     if state == "merged":
         return [m for m in mrs if m.state == "merged" and not m.draft and in_period(m.merged_at, period)]
-    return [m for m in mrs if m.state == state and not m.draft]
+    return [m for m in mrs if m.state == state]
 
 
 def load_all_states(

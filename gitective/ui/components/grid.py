@@ -30,7 +30,13 @@ class Column:
     kind: 'text', 'mono', 'link' (value = (text, url)), 'status'
     (value = (status, detail)), 'score' (value = (text, level)),
     'tip' (value = (text, tooltip shown on hover)),
-    'avatar' (value = (PhotoImage | None, initials, color, name)).
+    'avatar' (value = (PhotoImage | None, initials, color, name)),
+    'people' (value = (includes the user, other names): "Moi" first, in the accent color),
+    'flag' (value = (text, warning): warning color and "≠" when the warning is set, tooltip = warning),
+    'dot' (value = True: small accent dot, e.g. a new MR).
+
+    Row keys starting with "_" style the whole row: "_muted" (dimmed text),
+    "_tag" (label drawn before the link text, e.g. BROUILLON), "_selected".
     """
 
     key: str
@@ -55,8 +61,10 @@ class DataGrid(ttk.Frame):
         empty_text: str = "Aucune donnée",
         widths: dict[str, int] | None = None,
         on_widths_changed: Callable[[dict[str, int]], None] | None = None,
+        on_select: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(master)
+        self._on_select = on_select
         self.columns = list(columns)
         self._get_theme = get_theme
         self._on_sort = on_sort
@@ -105,10 +113,21 @@ class DataGrid(ttk.Frame):
         self.columns = list(columns)
         self.redraw()
 
-    def set_rows(self, rows: Sequence[Row]) -> None:
+    def set_rows(self, rows: Sequence[Row], keep_scroll: bool = False) -> None:
         self._rows = list(rows)
-        self.body.yview_moveto(0)
+        if not keep_scroll:
+            self.body.yview_moveto(0)
         self.redraw()
+
+    def see(self, index: int) -> None:
+        """Scroll so that a row is visible (keyboard navigation)."""
+        total = max(1, len(self._rows) * ROW_HEIGHT)
+        top, bottom = self.body.yview()
+        y0, y1 = index * ROW_HEIGHT / total, (index + 1) * ROW_HEIGHT / total
+        if y0 < top:
+            self.body.yview_moveto(y0)
+        elif y1 > bottom:
+            self.body.yview_moveto(max(0.0, y1 - (bottom - top)))
 
     def set_sort(self, key: str | None, ascending: bool) -> None:
         """Show the sort arrow on a column header."""
@@ -179,28 +198,65 @@ class DataGrid(ttk.Frame):
             return
         for index, row in enumerate(self._rows):
             top = index * ROW_HEIGHT
+            if row.get("_selected"):
+                self.body.create_rectangle(0, top, width, top + ROW_HEIGHT - 1, fill=theme.selected_row, outline="")
+                self.body.create_rectangle(0, top, 3, top + ROW_HEIGHT - 1, fill=theme.accent, outline="")
             for col, (x0, x1) in zip(self.columns, self._x):
-                self._draw_cell(col, row.get(col.key), x0, x1, top + ROW_HEIGHT / 2, theme, fonts)
+                self._draw_cell(col, row.get(col.key), x0, x1, top + ROW_HEIGHT / 2, theme, fonts, row)
             self.body.create_line(0, top + ROW_HEIGHT - 1, width, top + ROW_HEIGHT - 1, fill=theme.header)
         self.body.configure(scrollregion=(0, 0, width, len(self._rows) * ROW_HEIGHT))
 
     def _draw_cell(self, col: Column, value: Any, x0: int, x1: int, mid: float, theme: Theme,
-                   fonts: tuple[tkfont.Font, tkfont.Font, tkfont.Font]) -> None:
+                   fonts: tuple[tkfont.Font, tkfont.Font, tkfont.Font], row: Row | None = None) -> None:
         font, bold, mono = fonts
         if value in (None, ""):
+            return
+        row = row or {}
+        text_color = theme.muted if row.get("_muted") else theme.text
+        if col.kind == "link" and row.get("_tag"):
+            tag = row["_tag"]
+            small = tkfont.Font(font=(theme.font[0], max(7, theme.font[1] - 2), "bold"))
+            w = small.measure(tag) + 10
+            self.body.create_rectangle(x0, mid - 9, x0 + w, mid + 9, fill=theme.na[0], outline=theme.na[0])
+            self.body.create_text(x0 + w / 2, mid, text=tag, fill=theme.na[1], font=small)
+            self._text(self.body, x0 + w + 6, x1, mid, value[0], font, theme.muted, col.align, underline=True)
+            return
+        if col.kind == "people":
+            includes_me, others = value
+            x = x0
+            if includes_me:
+                item = self.body.create_text(x, mid, text="Moi", fill=theme.accent, font=bold, anchor="w")
+                bbox = self.body.bbox(item)
+                x = (bbox[2] if bbox else x + 30)
+                if others:
+                    self._text(self.body, x, x1, mid, ", " + others, font, text_color, "w")
+            else:
+                self._text(self.body, x0, x1, mid, others, font, text_color, col.align)
+            return
+        if col.kind == "flag":
+            text, warning = value
+            if warning:
+                self._text(self.body, x0, x1, mid, "≠ " + text, bold, theme.orange[1], col.align)
+            else:
+                self._text(self.body, x0, x1, mid, text, font, text_color, col.align)
+            return
+        if col.kind == "dot":
+            cx = (x0 + x1 - 8) / 2 if col.align == "center" else x0 + 6
+            self.body.create_oval(cx - 5, mid - 5, cx + 5, mid + 5, fill=theme.second, outline="")
             return
         if col.kind == "status":
             self._pill(x0, x1, mid, STATUS_TEXT.get(value[0], value[0]), theme.status_colors(value[0]), bold)
         elif col.kind == "score":
             self._pill(x0, x1, mid, value[0], theme.level_colors(value[1]), bold, minimum=52)
         elif col.kind == "link":
-            self._text(self.body, x0, x1, mid, value[0], font, theme.link, col.align, underline=True)
+            self._text(self.body, x0, x1, mid, value[0], font, theme.muted if row.get("_muted") else theme.link,
+                       col.align, underline=True)
         elif col.kind == "avatar":
             self._avatar(x0, x1, mid, value, font, bold, theme)
         elif col.kind == "tip":
-            self._text(self.body, x0, x1, mid, value[0], font, theme.text, col.align)
+            self._text(self.body, x0, x1, mid, value[0], font, text_color, col.align)
         else:
-            self._text(self.body, x0, x1, mid, str(value), mono if col.kind == "mono" else font, theme.text, col.align)
+            self._text(self.body, x0, x1, mid, str(value), mono if col.kind == "mono" else font, text_color, col.align)
 
     # ------------------------------------------------------- Horizontal scroll
 
@@ -250,10 +306,13 @@ class DataGrid(ttk.Frame):
 
     # ---------------------------------------------------------------- Events
 
+    def _row_at(self, event: tk.Event) -> int | None:
+        index = int(self.body.canvasy(event.y) // ROW_HEIGHT)
+        return index if 0 <= index < len(self._rows) else None
+
     def _hit(self, event: tk.Event) -> tuple[Row, Column] | None:
-        y = self.body.canvasy(event.y)
-        index = int(y // ROW_HEIGHT)
-        if not 0 <= index < len(self._rows):
+        index = self._row_at(event)
+        if index is None:
             return None
         x = self.body.canvasx(event.x)
         for col, (x0, x1) in zip(self.columns, self._x):
@@ -262,11 +321,17 @@ class DataGrid(ttk.Frame):
         return None
 
     def _on_click(self, event: tk.Event) -> None:
+        """A click on a link opens it; anywhere else on a row selects the row (DE-01)."""
         hit = self._hit(event)
         if hit and hit[1].kind == "link" and self._on_link:
             value = hit[0].get(hit[1].key)
             if value and value[1]:
                 self._on_link(value[1])
+                return
+        index = self._row_at(event)
+        if index is not None and self._on_select:
+            self.body.focus_set()
+            self._on_select(index)
 
     def _on_motion(self, event: tk.Event) -> None:
         hit = self._hit(event)
@@ -279,7 +344,7 @@ class DataGrid(ttk.Frame):
                 cursor = "hand2"
             if col.kind == "status" and value and value[0] in ("ko", "na") and value[1]:
                 tip = value[1]
-            if col.kind == "tip" and value and value[1]:
+            if col.kind in ("tip", "flag") and value and value[1]:
                 tip = value[1]
         self.body.configure(cursor=cursor)
         if tip:

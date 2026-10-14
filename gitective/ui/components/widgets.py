@@ -104,9 +104,9 @@ class MultiSelect(ttk.Button):
         """Selected keys; empty list means every item."""
         return list(self._selected)
 
-    def set_items(self, items: Sequence[tuple[str, str]]) -> None:
-        """Replace the (key, label) choices, keeping the current selection."""
-        self._items = sorted(items, key=lambda i: i[1].casefold())
+    def set_items(self, items: Sequence[tuple[str, str]], keep_order: bool = False) -> None:
+        """Replace the (key, label) choices, keeping the current selection; sorted by label unless keep_order."""
+        self._items = list(items) if keep_order else sorted(items, key=lambda i: i[1].casefold())
         self._refresh_text()
 
     def set_selected(self, keys: Sequence[str]) -> None:
@@ -116,9 +116,13 @@ class MultiSelect(ttk.Button):
     def _refresh_text(self) -> None:
         if not self._selected:
             text = f"{self._label} : {self._all_text} ({len(self._items)})"
+        elif len(self._selected) == 1:
+            labels = dict(self._items)
+            text = f"{self._label} : {labels.get(self._selected[0], '1 sélection')}"
         else:
             text = f"{self._label} : {len(self._selected)} sélection(s)"
-        self.configure(text=text + "  ▾")
+        # An active filter stands out (accent border and text).
+        self.configure(text=text + "  ▾", style="Active.TButton" if self._selected else "TButton")
 
     def _open(self) -> None:
         if self._popup is not None:

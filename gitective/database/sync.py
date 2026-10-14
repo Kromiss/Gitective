@@ -13,12 +13,24 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TypeVar
 
 from gitective.forge.errors import NetworkError
 from gitective.forge.protocol import ForgeClient
-from gitective.forge.models import Commit, CommitStatus, MergeRequest, ProtectedBranch, User
+from gitective.forge.models import (
+    Approvals,
+    ChangedFile,
+    Commit,
+    CommitStatus,
+    Discussion,
+    Job,
+    MergeRequest,
+    MergeState,
+    ProtectedBranch,
+    User,
+)
 from gitective.database.store import Store, ts
 
 T = TypeVar("T")
@@ -27,6 +39,26 @@ EPOCH = 0.0  # covered_from value meaning "the whole history"
 MR_OVERLAP = timedelta(minutes=5)  # re-read margin for clock differences
 # Commits are filtered by commit date, which can be older than the push: re-read a few days.
 COMMIT_OVERLAP = timedelta(days=3)
+
+
+ROLES = ("assignee", "reviewer")
+LOG_JOBS = 1  # failed jobs whose log tail is downloaded
+LOG_KEEP = 20_000  # characters of that log kept in the store
+
+
+@dataclass(frozen=True)
+class MrDetailData:
+    """Everything the detail panel shows beyond the MR itself (6.6), as read from the forge."""
+
+    fetched_at: datetime
+    state: MergeState | None = None  # open MRs only
+    approvals: Approvals | None = None
+    discussions: tuple[Discussion, ...] = ()
+    files: tuple[ChangedFile, ...] = ()
+    jobs: tuple[Job, ...] = ()
+    log_job_id: int | None = None
+    log: str = ""  # raw log of the first failed job
+    statuses: tuple[CommitStatus, ...] = ()  # head commit statuses, for CIs without a GitLab pipeline
 
 
 def _dt(value: float) -> datetime:
@@ -251,3 +283,72 @@ class ForgeData:
             return data
 
         return self._per_session(f"avatar:{user_id}", lambda: self.store.get_avatar(user_id), fetch)
+
+    # ------------------------------------------------------------ Token owner's open MRs (6.4)
+
+    def my_open_mrs(self, user_id: int) -> list[tuple[MergeRequest, frozenset[str]]]:
+        """Open MRs of every visible project where the user is assignee and/or reviewer, drafts included."""
+        try:
+            client = self._require_client()
+            roles: dict[tuple[int, int], set[str]] = {}
+            mrs: dict[tuple[int, int], MergeRequest] = {}
+            for role in ROLES:
+                for mr in client.list_my_open_merge_requests(user_id, role):
+                    mrs[(mr.project_id, mr.iid)] = mr
+                    roles.setdefault((mr.project_id, mr.iid), set()).add(role)
+        except NetworkError:
+            if self.store.get_meta("my_mrs_synced") is None:
+                raise
+            self._offline(None)
+            return self.store.my_mrs()
+        items = [(mr, frozenset(roles[key])) for key, mr in mrs.items()]
+        self.store.put_my_mrs(items)
+        self.store.set_meta("my_mrs_synced", _now().isoformat())
+        return items
+
+    # ------------------------------------------------------------ MR detail panel (6.6)
+
+    def stored_detail(self, project_id: int, mr: MergeRequest) -> MrDetailData | None:
+        stored = self.store.get_mr_detail(project_id, mr.iid, MrDetailData)
+        return stored[1] if stored else None
+
+    def mr_detail(self, project_id: int, mr: MergeRequest) -> MrDetailData:
+        """Detail of an MR: read once for a merged or closed MR, once per session for an open one (DE-12)."""
+        key = f"detail:{project_id}:{mr.iid}"
+        stored = self.store.get_mr_detail(project_id, mr.iid, MrDetailData)
+        final = mr.state != "opened" and stored is not None and stored[0] == ts(mr.updated_at)
+        if stored is not None and (final or key in self._fresh):
+            return stored[1]
+        try:
+            detail = self._fetch_detail(project_id, mr)
+        except NetworkError:
+            if stored is None:
+                raise
+            self._offline(None)
+            return stored[1]
+        self.store.put_mr_detail(project_id, mr.iid, ts(mr.updated_at), detail)
+        self._fresh.add(key)
+        return detail
+
+    def _fetch_detail(self, project_id: int, mr: MergeRequest) -> MrDetailData:
+        client = self._require_client()
+        state = client.get_merge_state(project_id, mr.iid) if mr.state == "opened" else None
+        jobs: list[Job] = []
+        log_job, log = None, ""
+        if state and state.pipeline:
+            jobs = client.list_pipeline_jobs(project_id, state.pipeline.id)
+            failed = [j for j in jobs if j.status == "failed"][:LOG_JOBS]
+            if failed:
+                log_job, log = failed[0].id, client.job_log(project_id, failed[0].id)[-LOG_KEEP:]
+        statuses = client.list_commit_statuses(project_id, mr.sha) if mr.sha and not (state and state.pipeline) else []
+        return MrDetailData(
+            fetched_at=_now(),
+            state=state,
+            approvals=client.get_approvals(project_id, mr.iid),
+            discussions=tuple(client.list_discussions(project_id, mr.iid)),
+            files=tuple(client.list_changed_files(project_id, mr.iid)),
+            jobs=tuple(jobs),
+            log_job_id=log_job,
+            log=log,
+            statuses=tuple(statuses),
+        )

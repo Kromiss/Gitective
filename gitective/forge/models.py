@@ -23,6 +23,7 @@ class User:
     name: str
     avatar_url: str | None = None
     web_url: str | None = None
+    is_admin: bool = False  # only reported for the token owner (PR-01)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> User:
@@ -32,6 +33,7 @@ class User:
             name=data.get("name", "") or data.get("username", ""),
             avatar_url=data.get("avatar_url"),
             web_url=data.get("web_url"),
+            is_admin=bool(data.get("is_admin", False)),
         )
 
 
@@ -79,6 +81,9 @@ class MergeRequest:
     merge_commit_sha: str | None = None
     squash_commit_sha: str | None = None
     sha: str | None = None  # head commit of the source branch (RC-05)
+    assignees: tuple[User, ...] = ()
+    reviewers: tuple[User, ...] = ()
+    project_path: str = ""  # "group/repo", known even for repositories that are not tracked
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> MergeRequest:
@@ -106,7 +111,14 @@ class MergeRequest:
             merge_commit_sha=data.get("merge_commit_sha"),
             squash_commit_sha=data.get("squash_commit_sha"),
             sha=data.get("sha"),
+            assignees=_users(data.get("assignees") or ([data["assignee"]] if data.get("assignee") else [])),
+            reviewers=_users(data.get("reviewers")),
+            project_path=((data.get("references") or {}).get("full") or "").rsplit("!", 1)[0],
         )
+
+
+def _users(items: Any) -> tuple[User, ...]:
+    return tuple(User.from_json(u) for u in items or [])
 
 
 @dataclass(frozen=True)
@@ -185,3 +197,127 @@ class CommitStatus:
             finished_at=parse_datetime(data.get("finished_at")),
             allow_failure=bool(data.get("allow_failure", False)),
         )
+
+
+# ---------------------------------------------------------------- MR detail panel (6.6)
+
+
+@dataclass(frozen=True)
+class PipelineRef:
+    """Latest pipeline of an MR head commit."""
+
+    id: int
+    status: str
+    updated_at: datetime | None = None
+    web_url: str = ""
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> PipelineRef:
+        return cls(id=int(data["id"]), status=data.get("status", ""),
+                   updated_at=parse_datetime(data.get("updated_at") or data.get("created_at")),
+                   web_url=data.get("web_url", "") or "")
+
+
+@dataclass(frozen=True)
+class MergeState:
+    """What the forge says about merging an open MR (DE-05)."""
+
+    merge_status: str  # GitLab detailed_merge_status: "mergeable", "conflict", "ci_must_pass", ...
+    has_conflicts: bool = False
+    behind_by: int | None = None  # commits of the target branch missing from the source branch
+    blocking_discussions_resolved: bool = True
+    pipeline: PipelineRef | None = None
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> MergeState:
+        pipeline = data.get("head_pipeline") or data.get("pipeline")
+        behind = data.get("diverged_commits_count")
+        return cls(
+            merge_status=data.get("detailed_merge_status") or data.get("merge_status") or "",
+            has_conflicts=bool(data.get("has_conflicts", False)),
+            behind_by=int(behind) if behind is not None else None,
+            blocking_discussions_resolved=bool(data.get("blocking_discussions_resolved", True)),
+            pipeline=PipelineRef.from_json(pipeline) if pipeline else None,
+        )
+
+
+@dataclass(frozen=True)
+class Approvals:
+    """Approvals of an MR; required is None when the forge edition does not tell (DE-13)."""
+
+    approved_by: tuple[User, ...] = ()
+    required: int | None = None
+    left: int | None = None
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Approvals:
+        required, left = data.get("approvals_required"), data.get("approvals_left")
+        return cls(
+            approved_by=tuple(User.from_json(a["user"]) for a in data.get("approved_by") or [] if a.get("user")),
+            required=int(required) if required is not None else None,
+            left=int(left) if left is not None else None,
+        )
+
+
+@dataclass(frozen=True)
+class Discussion:
+    """A resolvable discussion thread of an MR, summed up by its first note."""
+
+    author: User
+    body: str
+    resolved: bool
+    path: str = ""  # file of a code comment, empty for a general comment
+    line: int | None = None
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Discussion | None:
+        """None for threads that cannot be resolved (system notes, plain comments)."""
+        notes = [n for n in data.get("notes") or [] if n.get("resolvable")]
+        if not notes:
+            return None
+        first = notes[0]
+        position = first.get("position") or {}
+        line = position.get("new_line") or position.get("old_line")
+        return cls(
+            author=User.from_json(first["author"]),
+            body=first.get("body", "") or "",
+            resolved=all(n.get("resolved") for n in notes),
+            path=position.get("new_path") or position.get("old_path") or "",
+            line=int(line) if line is not None else None,
+        )
+
+
+@dataclass(frozen=True)
+class ChangedFile:
+    """A file changed by an MR, with its added and removed line counts."""
+
+    path: str
+    added: int
+    removed: int
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> ChangedFile:
+        added = removed = 0
+        for line in (data.get("diff") or "").splitlines():
+            if line.startswith("+") and not line.startswith("+++"):
+                added += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                removed += 1
+        return cls(path=data.get("new_path") or data.get("old_path") or "", added=added, removed=removed)
+
+
+@dataclass(frozen=True)
+class Job:
+    """A CI job of a pipeline."""
+
+    id: int
+    name: str
+    status: str
+    duration: float | None = None  # seconds
+    web_url: str = ""
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Job:
+        duration = data.get("duration")
+        return cls(id=int(data["id"]), name=data.get("name", ""), status=data.get("status", ""),
+                   duration=float(duration) if duration is not None else None, web_url=data.get("web_url", "") or "")

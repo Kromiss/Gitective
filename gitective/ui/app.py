@@ -1,4 +1,4 @@
-"""Main window: tabs, banner, busy indicator and shared application state."""
+"""Main window: tabs, banner, badges, busy indicator, synchronisation loop and shared state."""
 
 from __future__ import annotations
 
@@ -8,22 +8,43 @@ import tkinter as tk
 import webbrowser
 from tkinter import messagebox
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import ttk
 
 from gitective import APP_NAME, __version__
+from gitective.forge.errors import ForgeError
 from gitective.forge.gitlab_client import GitLabClient
-from gitective.forge.models import User
+from gitective.forge.models import MergeRequest, User
 from gitective.settings import config_file as config
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.avatars import AvatarStore
-from gitective.shared.dates import format_datetime
+from gitective.shared.dates import format_datetime, now_local
 from gitective.shared.people import PersonDirectory
+from gitective.review.profile import (
+    ASSIGNEE,
+    REVIEWER,
+    MyMr,
+    Notice,
+    Profile,
+    badge_counts,
+    compute_profile,
+    load_profile,
+    merge_notices,
+    new_count,
+    role_keys,
+    role_notices,
+    save_profile,
+    unseen_keys,
+)
 from gitective.review.rules import RuleSet
 from gitective.database.store import Store, StoreError
 from gitective.database.sync import ForgeData
 from gitective.ui.components.filter_bar import FilterState
 from gitective.ui.tabs.merge_requests import MrTab
+from gitective.ui.alerts.badges import Badge
+from gitective.ui.alerts.desktop_toast import Toasts, flash_taskbar
 from gitective.ui.alerts.error_banner import Banner, describe_error
 from gitective.ui.tabs.overview import OverviewTab
 from gitective.ui.tabs.config import SettingsTab
@@ -32,6 +53,17 @@ from gitective.ui.themes import Theme, apply_theme, get_theme
 from gitective.ui.background import BackgroundRunner
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
+WINDOW_TITLE = f"{APP_NAME} — contrôle des merge requests"
+
+
+@dataclass
+class SyncOutcome:
+    """What a synchronisation brings back to the interface (CH-13)."""
+
+    profile: Profile
+    my_mrs: list[MyMr] = field(default_factory=list)
+    notices: list[Notice] = field(default_factory=list)
+    errors: list[ForgeError] = field(default_factory=list)
 
 
 class App:
@@ -51,9 +83,18 @@ class App:
         self.known_users: dict[int, User] = {}
         self._known_people: dict[str, str] = {}
         self._people_listeners: list[Callable[[list[tuple[str, str]]], None]] = []
+        # Last known profile and own open MRs, so the interface is right even offline (PR-07).
+        self.profile: Profile = load_profile(self.store)
+        self.my_mrs: list[MyMr] = self.store.my_mrs()
+        self._seen = self.store.seen_roles()
+        self._new_at_click: set[tuple[int, int]] = set()  # MRs that were new when a badge was clicked
+        self.last_sync: datetime | None = None
+        self.next_sync: datetime | None = None
+        self._sync_timer: str | None = None
+        self._syncing = False
         self._build_services()
 
-        root.title(f"{APP_NAME} — contrôle des merge requests")
+        root.title(WINDOW_TITLE)
         root.geometry("1360x820")
         root.minsize(1000, 600)
         self.logo_small = self._load_logo(48)
@@ -121,8 +162,19 @@ class App:
         ttk.Label(header, text=APP_NAME, style="Bar.TLabel",
                   font=(self.theme.font[0], self.theme.font[1] + 4, "bold")).pack(side="left")
         ttk.Label(header, text=f"v{__version__}", style="BarMuted.TLabel").pack(side="left", padx=8)
+        # Merger badges, top right of every tab (BA-01); packed only for the Merger profile.
+        self._badges = ttk.Frame(header, style="Bar.TFrame")
+        self._badge_assignee = Badge(self._badges, ASSIGNEE, "Assigné", self.get_theme,
+                                     lambda: self.show_mine(ASSIGNEE))
+        self._badge_reviewer = Badge(self._badges, REVIEWER, "Relecteur", self.get_theme,
+                                     lambda: self.show_mine(REVIEWER))
+        self._badge_assignee.pack(side="left", padx=(0, 10))
+        self._badge_reviewer.pack(side="left")
         self._busy = ttk.Progressbar(header, mode="indeterminate", length=140)
         self._busy_label = ttk.Label(header, text="Chargement…", style="BarMuted.TLabel")
+        logo = ASSETS / "logo.png"
+        self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
+        self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests, self._toast_logo)
 
         self.notebook = ttk.Notebook(self.root)
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
@@ -138,6 +190,7 @@ class App:
         self.notebook.add(self.settings_tab, text="Config")
         self.notebook.bind("<<NotebookTabChanged>>", lambda e: self._tab_changed())
         self._update_repo_items()
+        self._apply_profile()
 
     def _start(self, first_launch: bool) -> None:
         if first_launch:
@@ -147,11 +200,25 @@ class App:
             self.notify("info", "Renseignez l'URL de l'instance GitLab et le token dans l'onglet Config.")
         else:
             self._tab_changed()
+            self.sync()
 
     # ------------------------------------------------------- Shared state
 
     def get_theme(self) -> Theme:
         return self.theme
+
+    def me_key(self) -> str | None:
+        """Person key of the token owner, to show "Moi" (AM-07)."""
+        return self.people.for_user(self.profile.user).key if self.profile.user else None
+
+    def me_name(self) -> str:
+        return self.people.for_user(self.profile.user).name if self.profile.user else ""
+
+    def new_mr_keys(self) -> set[tuple[int, int]]:
+        """Own open MRs to flag as new: unseen roles, and those that were new at the last badge click."""
+        if not self.profile.merger:
+            return set()
+        return {(p, i) for p, i, _ in unseen_keys(self.my_mrs, self._seen)} | self._new_at_click
 
     def notify(self, kind: str, message: str) -> None:
         """Show the banner (every error goes through it, ER-04)."""
@@ -201,6 +268,12 @@ class App:
         self.settings.stats_view = view
         self._save()
 
+    def save_detail_width(self, width: int) -> None:
+        """Remember the width of the MR detail panel (DE-02)."""
+        if width > 1 and abs(width - self.settings.detail_width) > 4:
+            self.settings.detail_width = max(280, min(900, width))
+            self._save()
+
     def column_widths(self, table: str) -> dict[str, int]:
         """Column widths the user set for a table."""
         return dict(self.settings.column_widths.get(table, {}))
@@ -247,12 +320,159 @@ class App:
 
     def refresh(self) -> None:
         """Bring the stored data up to date and reload the current tab (CH-05, AV-07)."""
-        self.data.new_session()
         self.stats_tab.forget_avatars()
+        self.banner.hide()
+        self.sync(manual=True)
+
+    # ------------------------------------------------------- Synchronisation
+
+    def _schedule_sync(self) -> None:
+        """Next automatic synchronisation in N minutes, even when the window is minimized (CH-13)."""
+        if self._sync_timer is not None:
+            self.root.after_cancel(self._sync_timer)
+        minutes = self.settings.sync_minutes
+        self.next_sync = now_local() + timedelta(minutes=minutes)
+        self._sync_timer = self.root.after(minutes * 60_000, lambda: self.sync())
+
+    def sync(self, manual: bool = False) -> None:
+        """Update the base incrementally, the profile and the own MRs, then the display (CH-05, CH-13)."""
+        self._schedule_sync()
+        if self.client is None or self._syncing:
+            if manual and self.client is None:
+                self._tab_changed()
+            return
+        self._syncing = True
+        data, store, people = self.data, self.store, self.people
+        settings = self.settings
+        projects = list(settings.projects)
+        previous = self.profile
+
+        def task(_progress: Callable[[int, int], None]) -> SyncOutcome:
+            known = [p for p in projects if store.sync_state(f"mr:{p.id}") is not None]
+            before = store.merged_keys(p.id for p in known)
+            first = store.get_meta("notified_once") is None
+            had_mine = store.get_meta("my_mrs_synced") is not None
+            previous_roles = role_keys(store.my_mrs())
+            data.new_session()
+            errors: list[ForgeError] = []
+            fresh: list[tuple[TrackedProject, MergeRequest]] = []
+            for project in projects:
+                try:
+                    mrs = data.merge_requests(project.id, now_local())
+                except ForgeError as exc:
+                    errors.append(exc)
+                    continue
+                if project in known:
+                    fresh += [(project, mr) for mr in mrs]
+            profile = previous
+            try:
+                user = data.client.current_user() if data.client else None
+                if user is not None:
+                    profile = compute_profile(data, user, projects, settings.parallel_requests)
+                    save_profile(store, profile)
+            except ForgeError as exc:
+                errors.append(exc)
+            mine: list[MyMr] = []
+            if profile.merger and profile.user is not None:
+                try:
+                    mine = data.my_open_mrs(profile.user.id)
+                except ForgeError as exc:
+                    errors.append(exc)
+                    mine = store.my_mrs()
+            notices: list[Notice] = []
+            if profile.merger and not first:
+                if settings.notify_merges:
+                    notices += merge_notices(before, fresh, profile.user, people)
+                if settings.notify_assigned and had_mine:
+                    notices += role_notices(previous_roles, mine, people)
+            store.set_meta("notified_once", "1")
+            return SyncOutcome(profile, mine, notices, errors)
+
+        def done(outcome: SyncOutcome) -> None:
+            self._syncing = False
+            self.last_sync = now_local()
+            self._synced(outcome, manual)
+
+        def failed(exc: BaseException) -> None:
+            self._syncing = False
+            self.report_error(exc)  # banner only, never a desktop notification (ER-04)
+
+        self.runner.run("sync", task, done, failed)
+
+    def _synced(self, outcome: SyncOutcome, manual: bool) -> None:
+        changed = outcome.profile.merger != self.profile.merger
+        self.profile = outcome.profile
+        self.my_mrs = outcome.my_mrs
+        self._seen = self.store.seen_roles()
+        if changed:
+            self._apply_profile()
+        else:
+            self._update_badges()
+            self.mr_tab.update_repo_items()
+        if outcome.errors:
+            self.report_error(outcome.errors[0], extra=len(outcome.errors) - 1)
+        elif manual:
+            self.report_offline()
+        if outcome.notices:
+            self.toasts.show(outcome.notices)
+            if any(n.kind == "role" for n in outcome.notices):
+                flash_taskbar(self.root)
+        self.settings_tab.show_profile()
         for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
             tab.dirty = True
-        self.banner.hide()
-        self._tab_changed()
+        current = self.notebook.nametowidget(self.notebook.select())
+        if current is self.mr_tab:
+            self.mr_tab.soft_reload()
+        else:
+            self._tab_changed()
+
+    # ------------------------------------------------------- Merger profile
+
+    def _apply_profile(self) -> None:
+        """Show or hide what belongs to the Merger profile, without restarting (PR-04..PR-06)."""
+        if self.profile.merger:
+            self._badges.pack(side="right", padx=(12, 0))
+        else:
+            self._badges.pack_forget()
+        self._update_badges()
+        self.mr_tab.update_repo_items()
+        self.mr_tab.update_columns()
+
+    def _update_badges(self) -> None:
+        """Counts, tooltips and the window title (BA-01, BA-03, BA-04)."""
+        if not self.profile.merger:
+            self.root.title(WINDOW_TITLE)
+            return
+        assigned = badge_counts(self.my_mrs, self._seen, ASSIGNEE)
+        reviewing = badge_counts(self.my_mrs, self._seen, REVIEWER)
+        for badge, counts, word in ((self._badge_assignee, assigned, "assignée(s)"),
+                                    (self._badge_reviewer, reviewing, "en relecture")):
+            tip = f"{counts.total} {word}"
+            if counts.new:
+                tip += f", dont {counts.new} nouvelle(s)"
+            if counts.drafts:
+                tip += f" ; {counts.drafts} brouillon(s)"
+            badge.update_counts(counts, tip + "\nClic : voir ces MR ouvertes")
+        new = new_count(self.my_mrs, self._seen)
+        self.root.title(f"{APP_NAME} ({new})" if new else WINDOW_TITLE)
+
+    def show_mine(self, role: str) -> None:
+        """Badge click: open MRs where the user has this role, which become seen (BA-02, AM-04)."""
+        me = self.me_key()
+        if me is None:
+            return
+        keys = {k for k in unseen_keys(self.my_mrs, self._seen) if k[2] == role}
+        self._new_at_click = {(p, i) for p, i, _ in keys}
+        self.store.mark_seen(keys)
+        self._seen |= keys
+        self._update_badges()
+        self.notebook.select(self.mr_tab)
+        self.filters.show_mine(role, me)
+
+    def _open_merge_requests(self) -> None:
+        self.root.deiconify()
+        self.root.lift()
+        self.notebook.select(self.mr_tab)
 
     def apply_settings(self, new: Settings) -> None:
         """Save new settings and rebuild whatever depends on them."""
@@ -271,12 +491,15 @@ class App:
         self._build_services()
         if connection_changed:
             self.data.new_session()
+            self._new_at_click.clear()
         valid = {p.id for p in new.projects}
         self.filters.repos = [r for r in self.filters.repos if r in valid]
         if theme_changed:
             self.theme = get_theme(new.theme)
             apply_theme(self.root, self.theme)
             self.banner.restyle()
+            self._badge_assignee.redraw()
+            self._badge_reviewer.redraw()
             for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
                 tab.restyle()
         self.mr_tab.update_columns()
@@ -286,12 +509,15 @@ class App:
         for tab in (self.mr_tab, self.stats_tab):
             tab.dirty = True
         self.overview_tab.settings_changed()
+        # Token, repositories or period may have changed: profile and own MRs again (PR-04).
+        self.sync()
 
     def clear_store(self) -> None:
         """Delete every stored row and reload from GitLab (OC-09)."""
         self.store.clear()
         if self.settings.gitlab_url:
             self.store.set_meta("instance_url", self.settings.gitlab_url.rstrip("/"))
+        self.my_mrs, self._seen = [], set()
         self.stats_tab.forget_avatars()
         self.refresh()
 

@@ -50,7 +50,9 @@ next to `main.py`.
 | Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR, and a **CI attendue** box for repositories that run a CI (see "Green pipeline"). |
 | People | Groups several GitLab accounts and Git identities under one person. |
 | Theme | Default, Light, Dark, Windows 95 or Matrix. Default is a dark navy theme with a turquoise accent. |
-| Overview refresh | How often the Overview tab reloads the data on its own, in minutes (default 5). |
+| Automatic synchronisation | How often Gitective updates its database from GitLab, in minutes (default 5), even when minimized. |
+| Desktop notifications | Merger profile only: new merges on the tracked repositories, and MRs assigned to you or awaiting your review. |
+| Merged by the assignee | Tick to count the RC-06 rule (see below) in the score; off by default. |
 
 ### Custom rules
 
@@ -102,6 +104,10 @@ before you save.
   ignored. A failed, canceled or still running status, or no status at all,
   is KO; hover the cell to see which one. The rule is N/A for MRs that are not
   merged and for repositories whose **CI attendue** box is not ticked.
+- **Merged by the assignee** (optional, ticked in the Config tab): the person
+  who merged is one of the assignees, whichever of their accounts they used.
+  N/A for MRs that are not merged or have no assignee. Even when the rule is
+  off, the merger cell shows **≠** in orange when someone else merged.
 
 The score is the weighted share of passing rules among the applicable ones.
 
@@ -124,15 +130,23 @@ repository, designed to stay on screen; it fits a 1920 × 1080 display.
 - **Broken rules**: KO count per rule over 30 days.
 - **Created / merged MRs per week** over the last 12 complete weeks.
 
-The tab reloads the data every few minutes (see Configuration). If another
-tab is open at that moment, the reload waits until you come back to the
-overview. Press **F11** to toggle full screen.
+The tab is redrawn after each automatic synchronisation (see Configuration).
+Press **F11** to toggle full screen.
 
 **Merge Requests tab**
 
 - Filter by state (Merged, Open, Closed or Direct commits), dates
-  (`DD/MM/YYYY`), "Since yesterday", repositories, authors and, for merged
-  MRs, mergers.
+  (`DD/MM/YYYY`), "Since yesterday", repositories, authors, assignees and
+  reviewers and, for merged MRs, mergers.
+- Drafts are shown for open and closed MRs with a **BROUILLON** label; the
+  **Brouillons** filter includes, excludes or shows only them. They never
+  count in the average score, the statistics or the overview.
+- Click a row (not its title) to open the **detail panel** on the right:
+  whether the MR is ready to merge (conflicts, pipeline, discussions,
+  approvals, commits behind the target), people, score with the reason of
+  each KO, failed jobs with the end of their log, open discussions and
+  changed files. Up / Down arrows move to the previous / next MR, Escape
+  closes the panel. Drag its border to resize it; the width is remembered.
 - Type in **Search** to filter as you type, case-insensitive. It looks in the
   title, description, author, merger, repository and branches. In the Direct
   commits state, it looks in the message, SHA, author and repository.
@@ -142,6 +156,26 @@ overview. Press **F11** to toggle full screen.
 - Columns fit their title when the window opens. Drag a header border to
   resize a column and double-click the border to fit it again. Widths are
   saved in `config.json`; this works in every table.
+
+**Developer and Merger profiles**
+
+Gitective reads who owns the token. You are a **Merger** when you can merge
+into the watched branch of at least one tracked repository (or are an
+instance administrator); otherwise a **Developer**. The Config tab shows the
+detected profile. It is checked again at each synchronisation.
+
+A Merger also gets:
+
+- two **badges** at the top right, **Assigné** and **Relecteur**: open MRs
+  where you have that role, drafts apart, with a red dot counting the new
+  ones. Click a badge to see those MRs in the Open state, from every
+  repository you can read, tracked or not ("(non suivi)"). The window title
+  shows the number of new MRs, e.g. "Gitective (3)";
+- a **Nouvelle** column on the open MRs;
+- **desktop notifications** in the bottom-right corner of the screen, even
+  when Gitective is minimized: new merges, and MRs assigned to you or
+  awaiting your review. Click one to open the MR. The taskbar button also
+  flashes. Notifications only appear while Gitective is running.
 
 **Direct commits** (a state of the Merge Requests tab)
 
@@ -181,9 +215,9 @@ Everything read from GitLab is kept in `gitective.db` (SQLite), next to
 `main.py`. Changing page, sort or filter reads the database; GitLab is only
 asked for what is missing.
 
-- At launch and with **F5** or the Refresh button, Gitective asks GitLab only
-  for what changed since the last synchronisation, and downloads the avatars
-  again.
+- At launch, every few minutes (automatic synchronisation) and with **F5** or
+  the Refresh button, Gitective asks GitLab only for what changed since the
+  last synchronisation. The Refresh button also downloads the avatars again.
 - Data that can no longer change is never read twice: the commits and CI
   statuses of merged MRs, and whether a commit belongs to an MR.
 - Changing a rule, a weight or a person mapping recomputes the display
@@ -215,7 +249,7 @@ gitective/settings            config.json loading and saving
 gitective/ui                  Tkinter window, themes, background tasks, first-launch wizard
 gitective/ui/tabs             one module per tab
 gitective/ui/components       grid, pagination, chart, filter bar, dialogs, small widgets
-gitective/ui/alerts           error banner
+gitective/ui/alerts           error banner, desktop notifications, badges
 gitective/assets              logo (svg, png, ico)
 tests                         unit tests, same folders as gitective/
 ```
