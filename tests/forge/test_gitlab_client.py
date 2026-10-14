@@ -160,6 +160,33 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(client._ssl_context.verify_mode, ssl.CERT_NONE)
 
 
+    def test_my_open_mrs_and_detail_endpoints(self) -> None:
+        opener = FakeOpener(
+            FakeResponse([mr_json(iid=5, state="opened")]),
+            FakeResponse({"detailed_merge_status": "mergeable", "diverged_commits_count": 0}),
+            http_error(404),
+            http_error(404),
+            FakeResponse({"changes": [{"new_path": "a.py", "diff": "+x\n"}]}),
+        )
+        client, _ = make_client(opener)
+        mine = client.list_my_open_merge_requests(7, "reviewer")
+        self.assertEqual([m.iid for m in mine], [5])
+        self.assertEqual(opener.query(0)["reviewer_id"], ["7"])
+        self.assertEqual(opener.query(0)["scope"], ["all"])
+        self.assertEqual(client.get_merge_state(10, 5).merge_status, "mergeable")
+        self.assertEqual(opener.query(1)["include_diverged_commits_count"], ["true"])
+        self.assertEqual(client.get_approvals(10, 5).approved_by, ())  # endpoint missing on the instance
+        files = client.list_changed_files(10, 5)  # /diffs missing: falls back to /changes
+        self.assertEqual([(f.path, f.added) for f in files], [("a.py", 1)])
+        self.assertTrue(opener.requests[4].full_url.endswith("/merge_requests/5/changes"))
+
+    def test_job_log_is_plain_text(self) -> None:
+        response = FakeResponse(None)
+        response._body = b"line 1\nFAIL"
+        client, _ = make_client(FakeOpener(response))
+        self.assertEqual(client.job_log(10, 12), "line 1\nFAIL")
+
+
 class OrphanCommitTests(unittest.TestCase):
     def test_commits_without_mr_are_reported(self) -> None:
         opener = FakeOpener(

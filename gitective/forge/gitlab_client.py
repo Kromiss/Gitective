@@ -23,7 +23,19 @@ from gitective.forge.errors import (
     RateLimitError,
     SSLVerificationError,
 )
-from gitective.forge.models import Commit, CommitStatus, MergeRequest, Project, ProtectedBranch, User
+from gitective.forge.models import (
+    Approvals,
+    ChangedFile,
+    Commit,
+    CommitStatus,
+    Discussion,
+    Job,
+    MergeRequest,
+    MergeState,
+    Project,
+    ProtectedBranch,
+    User,
+)
 
 Opener = Callable[..., Any]
 
@@ -265,6 +277,51 @@ class GitLabClient:
     def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
         """List the branch protection rules of a project."""
         return [ProtectedBranch.from_json(b) for b in self._paginate(f"projects/{project_id}/protected_branches")]
+
+    # ------------------------------------------------- Token owner's MRs (6.4)
+
+    def list_my_open_merge_requests(self, user_id: int, role: str) -> list[MergeRequest]:
+        """Open MRs of every project visible to the token where the user is "assignee" or "reviewer"."""
+        params = {"scope": "all", "state": "opened", f"{role}_id": user_id}
+        return [MergeRequest.from_json(m) for m in self._paginate("merge_requests", params)]
+
+    # ------------------------------------------------- MR detail panel (6.6)
+
+    def get_merge_state(self, project_id: int, mr_iid: int) -> MergeState:
+        """Mergeability of an MR: conflicts, commits behind the target, head pipeline."""
+        data = self._get(f"projects/{project_id}/merge_requests/{mr_iid}", {"include_diverged_commits_count": "true"})
+        return MergeState.from_json(data)
+
+    def get_approvals(self, project_id: int, mr_iid: int) -> Approvals:
+        """Approvals of an MR; empty when the endpoint does not exist on the instance."""
+        try:
+            return Approvals.from_json(self._get(f"projects/{project_id}/merge_requests/{mr_iid}/approvals"))
+        except NotFoundError:
+            return Approvals()
+
+    def list_discussions(self, project_id: int, mr_iid: int) -> list[Discussion]:
+        """Resolvable discussion threads of an MR."""
+        threads = (Discussion.from_json(d) for d in
+                   self._paginate(f"projects/{project_id}/merge_requests/{mr_iid}/discussions"))
+        return [t for t in threads if t is not None]
+
+    def list_changed_files(self, project_id: int, mr_iid: int) -> list[ChangedFile]:
+        """Files changed by an MR with their line counts (/diffs, or /changes before GitLab 15.7)."""
+        base = f"projects/{project_id}/merge_requests/{mr_iid}"
+        try:
+            return [ChangedFile.from_json(d) for d in self._paginate(f"{base}/diffs")]
+        except NotFoundError:
+            return [ChangedFile.from_json(d) for d in (self._get(f"{base}/changes") or {}).get("changes") or []]
+
+    def list_pipeline_jobs(self, project_id: int, pipeline_id: int) -> list[Job]:
+        """Jobs of a pipeline (latest attempt of each)."""
+        return [Job.from_json(j) for j in self._paginate(f"projects/{project_id}/pipelines/{pipeline_id}/jobs")]
+
+    def job_log(self, project_id: int, job_id: int) -> str:
+        """Raw log of a CI job."""
+        # shortcut: downloads the whole log to keep its last lines; ask for a byte range if logs get huge.
+        body, _ = self._send(self._build_url(f"projects/{project_id}/jobs/{job_id}/trace", None))
+        return body.decode("utf-8", errors="replace")
 
     def download(self, url: str) -> bytes:
         """Download a raw file (e.g. an avatar).

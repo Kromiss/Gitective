@@ -15,11 +15,12 @@ APP_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_DIR / "config.json"
 DB_PATH = APP_DIR / "gitective.db"
 
-# Fixed criteria (RC-03, RC-04, RC-05); custom rules are identified by their own id.
-FIXED_CRITERIA = ("ticket", "self_merge", "pipeline")
+# Fixed criteria (RC-03 to RC-06); custom rules are identified by their own id.
+FIXED_CRITERIA = ("ticket", "self_merge", "pipeline", "assignee")
 STATS_VIEWS = ("person", "repo")
 THEMES = ("default", "light", "dark", "win95", "matrix")
-REFRESH_RANGE = (1, 120)  # Overview auto-refresh, in minutes (VE-03)
+REFRESH_RANGE = (1, 120)  # automatic synchronisation period, in minutes (CH-13)
+DRAFT_MODES = ("all", "exclude", "only")  # drafts filter (FI-17)
 PAGE_SIZES = (20, 50, 100)
 PARALLEL_RANGE = (1, 16)
 
@@ -89,6 +90,9 @@ class Filters:
     date_to: str = ""
     authors: list[str] = dc_field(default_factory=list)
     mergers: list[str] = dc_field(default_factory=list)
+    assignees: list[str] = dc_field(default_factory=list)
+    reviewers: list[str] = dc_field(default_factory=list)
+    drafts: str = "all"
     repos: list[int] = dc_field(default_factory=list)
     page_size: int = 20
 
@@ -105,12 +109,19 @@ class Settings:
     link_regex: str = ""
     ticket_regex: str = ""
     weights: dict[str, float] = dc_field(default_factory=lambda: {c: 25.0 for c in FIXED_CRITERIA})
+    # RC-06 "merged by the assignee" counts only when checked in the Config tab.
+    assignee_rule: bool = False
     green_threshold: float = 100.0
     orange_threshold: float = 50.0
     people: list[Person] = dc_field(default_factory=list)
     theme: str = "default"
-    # Auto-refresh period of the Overview tab, in minutes (VE-03).
-    overview_refresh: int = 5
+    # Automatic synchronisation period of the local base, in minutes (CH-13).
+    sync_minutes: int = 5
+    # Desktop notifications of the Merger profile (NO-01).
+    notify_merges: bool = True
+    notify_assigned: bool = True
+    # Width of the MR detail panel, in pixels (DE-02).
+    detail_width: int = 420
     # View of the Statistics tab: "person" or "repo" (ST-01).
     stats_view: str = "person"
     # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
@@ -142,9 +153,14 @@ class Settings:
             orange_threshold=float(data.get("orange_threshold", base.orange_threshold)),
             people=[Person(**_pick(p, Person)) for p in data.get("people") or []],
             theme=theme if theme in THEMES else base.theme,
-            filters=Filters(**_pick(data.get("filters") or {}, Filters)),
+            assignee_rule=bool(data.get("assignee_rule", False)),
+            filters=_filters(data.get("filters")),
             parallel_requests=clamp_parallel(data.get("parallel_requests", base.parallel_requests)),
-            overview_refresh=clamp_refresh(data.get("overview_refresh", base.overview_refresh)),
+            # "overview_refresh" is the name used before the synchronisation covered every tab.
+            sync_minutes=clamp_refresh(data.get("sync_minutes", data.get("overview_refresh", base.sync_minutes))),
+            notify_merges=bool(data.get("notify_merges", True)),
+            notify_assigned=bool(data.get("notify_assigned", True)),
+            detail_width=max(280, min(900, int(data.get("detail_width") or base.detail_width))),
             stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
             column_widths=_column_widths(data.get("column_widths")),
         )
@@ -173,8 +189,15 @@ def clamp_refresh(value: Any) -> int:
     try:
         number = int(value)
     except (TypeError, ValueError):
-        number = Settings.overview_refresh
+        number = Settings.sync_minutes
     return max(REFRESH_RANGE[0], min(REFRESH_RANGE[1], number))
+
+
+def _filters(data: Any) -> Filters:
+    filters = Filters(**_pick(data if isinstance(data, dict) else {}, Filters))
+    if filters.drafts not in DRAFT_MODES:
+        filters.drafts = "all"
+    return filters
 
 
 def _column_widths(data: Any) -> dict[str, dict[str, int]]:

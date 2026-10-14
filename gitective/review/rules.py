@@ -1,4 +1,4 @@
-"""Process rules: custom regex rules, RC-03, RC-04, RC-05 and the weighted score."""
+"""Process rules: custom regex rules, RC-03 to RC-06 and the weighted score."""
 
 from __future__ import annotations
 
@@ -13,8 +13,9 @@ from gitective.shared.people import PersonDirectory, PersonRef
 
 OK, KO, NA = "ok", "ko", "na"
 
-TICKET, SELF_MERGE, PIPELINE = "ticket", "self_merge", "pipeline"
-FIXED_LABELS = {TICKET: "N° ticket", SELF_MERGE: "Mergeur ≠ auteur", PIPELINE: "Pipeline vert"}
+TICKET, SELF_MERGE, PIPELINE, ASSIGNEE = "ticket", "self_merge", "pipeline", "assignee"
+FIXED_LABELS = {TICKET: "N° ticket", SELF_MERGE: "Mergeur ≠ auteur", PIPELINE: "Pipeline vert",
+                ASSIGNEE: "Mergée par l'assigné"}
 SUCCESS = "success"
 RUNNING_STATES = {"running", "pending", "created", "waiting_for_resource", "preparing", "scheduled", "manual"}
 MAX_LISTED_COMMITS = 5
@@ -68,6 +69,10 @@ class Evaluation:
     results: dict[str, CheckResult] = field(default_factory=dict)
     score: float = 0.0
     last_commit_at: datetime | None = None  # known only when the MR commits were loaded
+    assignees: tuple[PersonRef, ...] = ()
+    reviewers: tuple[PersonRef, ...] = ()
+    # "Mergée par X, assignée à Y" when the merger is none of the assignees (TA-05), else "".
+    merger_not_assignee: str = ""
 
 
 def validate_regex(pattern: str) -> str | None:
@@ -98,8 +103,10 @@ class RuleSet:
         link_regex: str,
         ticket_regex: str,
         fixed_weights: dict[str, float],
+        assignee_rule: bool = False,
     ) -> None:
         self.rules = [r for r in rules if r.active]
+        self.assignee_rule = assignee_rule
         self._compiled = {r.id: re.compile(r.pattern) for r in self.rules if r.pattern}
         self.link = re.compile(link_regex) if link_regex else None
         self.ticket = re.compile(ticket_regex) if ticket_regex else None
@@ -107,15 +114,19 @@ class RuleSet:
         self.weights[TICKET] = float(fixed_weights.get(TICKET, 0.0))
         self.weights[SELF_MERGE] = float(fixed_weights.get(SELF_MERGE, 0.0))
         self.weights[PIPELINE] = float(fixed_weights.get(PIPELINE, 0.0))
+        if assignee_rule:
+            self.weights[ASSIGNEE] = float(fixed_weights.get(ASSIGNEE, 0.0))
 
     @classmethod
     def from_settings(cls, settings: Settings) -> RuleSet:
-        return cls(settings.rules, settings.link_regex, settings.ticket_regex, settings.weights)
+        return cls(settings.rules, settings.link_regex, settings.ticket_regex, settings.weights,
+                   settings.assignee_rule)
 
     @property
     def criteria(self) -> list[Criterion]:
-        """Grid columns, in display order."""
-        return [Criterion(r.id, r.name) for r in self.rules] + [Criterion(k, v) for k, v in FIXED_LABELS.items()]
+        """Grid columns, in display order; RC-06 only when checked in the Config tab."""
+        fixed = [Criterion(k, v) for k, v in FIXED_LABELS.items() if k != ASSIGNEE or self.assignee_rule]
+        return [Criterion(r.id, r.name) for r in self.rules] + fixed
 
     @property
     def needs_commits(self) -> bool:
@@ -200,9 +211,15 @@ class RuleSet:
         else:
             results[SELF_MERGE] = CheckResult(OK)
         results[PIPELINE] = check_pipeline(mr.merged_at, statuses, ci_expected)
+        assignees = tuple(people.for_user(u) for u in mr.assignees)
+        mismatch = check_assignee(merger, assignees)
+        if self.assignee_rule:
+            results[ASSIGNEE] = mismatch
         last_commit = max((c.committed_date for c in commits), default=None) if commits else None
         return Evaluation(mr=mr, project_path=project_path, author=author, merger=merger,
-                          results=results, score=self.score(results), last_commit_at=last_commit)
+                          results=results, score=self.score(results), last_commit_at=last_commit,
+                          assignees=assignees, reviewers=tuple(people.for_user(u) for u in mr.reviewers),
+                          merger_not_assignee=mismatch.detail if mismatch.status == KO else "")
 
 
 def score_level(score: float, green: float, orange: float) -> str:
@@ -212,6 +229,17 @@ def score_level(score: float, green: float, orange: float) -> str:
     if score >= orange:
         return "orange"
     return "red"
+
+
+def check_assignee(merger: PersonRef | None, assignees: Sequence[PersonRef]) -> CheckResult:
+    """RC-06: the MR was merged by one of its assignees, compared person to person (TA-05)."""
+    if merger is None:
+        return CheckResult(NA, "MR non mergée")
+    if not assignees:
+        return CheckResult(NA, "MR sans assigné")
+    if any(a.key == merger.key for a in assignees):
+        return CheckResult(OK)
+    return CheckResult(KO, f"Mergée par {merger.name}, assignée à {', '.join(a.name for a in assignees)}")
 
 
 def check_pipeline(
