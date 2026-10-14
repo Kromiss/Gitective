@@ -68,35 +68,15 @@ class OverviewTab(ttk.Frame):
         self._data: OverviewData | None = None
         self._message = "Chargement…"
         self._synced_at: datetime | None = None
-        self._next_refresh: datetime | None = None
-        self._refresh_due = False
-        self._timer: str | None = None
         self._fonts: dict[tuple[str, int, str], tkfont.Font] = {}
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
         self.canvas.self_themed = True  # type: ignore[attr-defined]
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Configure>", lambda e: self.redraw())
-        self._schedule_refresh()
         self.after(TICK_MS, self._tick)
 
     # ----------------------------------------------------------- Refresh
-
-    def _schedule_refresh(self) -> None:
-        """Restart the auto-refresh countdown (VE-03)."""
-        if self._timer is not None:
-            self.after_cancel(self._timer)
-        minutes = self.app.settings.overview_refresh
-        self._next_refresh = now_local() + timedelta(minutes=minutes)
-        self._timer = self.after(minutes * 60_000, self._refresh_fired)
-
-    def _refresh_fired(self) -> None:
-        self._timer = None
-        if self.app.is_visible(self):
-            self.app.refresh()
-        else:
-            # Do not disturb another tab: refresh when the overview is shown again.
-            self._refresh_due = True
-        self._schedule_refresh()
+    # The application synchronises every N minutes and reloads this tab afterwards (VE-03, CH-13).
 
     def _tick(self) -> None:
         """Keep the 'next refresh in N min' line up to date."""
@@ -105,9 +85,8 @@ class OverviewTab(ttk.Frame):
         self.after(TICK_MS, self._tick)
 
     def settings_changed(self) -> None:
-        """Rules, thresholds, repositories or refresh period may have changed."""
+        """Rules, thresholds, repositories or synchronisation period may have changed."""
         self.dirty = True
-        self._schedule_refresh()
         if self.app.is_visible(self):
             self.reload()
 
@@ -115,10 +94,6 @@ class OverviewTab(ttk.Frame):
 
     def reload(self) -> None:
         self.dirty = False
-        if self._refresh_due:
-            self._refresh_due = False
-            self.app.refresh()  # brings the store up to date and reloads this tab
-            return
         if not self.app.ensure_connection():
             self._data, self._message = None, "Configurez la connexion et les dépôts dans l'onglet Config."
             self.redraw()
@@ -153,7 +128,6 @@ class OverviewTab(ttk.Frame):
         # Offline, the data dates from the last synchronisation, not from now (CH-08).
         offline = self.app.data.offline_since
         self._synced_at = to_local(offline) if offline else now_local()
-        self._schedule_refresh()
         self.redraw()
 
     def restyle(self) -> None:
@@ -295,9 +269,9 @@ class OverviewTab(ttk.Frame):
         parts = []
         if self._synced_at:
             parts.append(f"Synchronisé à {self._synced_at:%H:%M}")
-        if self._next_refresh:
-            minutes = max(0, math.ceil((self._next_refresh - now_local()).total_seconds() / 60))
-            parts.append(f"prochain rafraîchissement dans {minutes} min")
+        if self.app.next_sync:
+            minutes = max(0, math.ceil((self.app.next_sync - now_local()).total_seconds() / 60))
+            parts.append(f"prochaine synchronisation dans {minutes} min")
         status = " · ".join(parts)
         right = width - PAD - chip_w - 16
         self._text(right, y, status, 13, theme.muted, anchor="e")

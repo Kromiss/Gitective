@@ -50,6 +50,7 @@ class SettingsTab(ttk.Frame):
             column.grid(row=0, column=index, sticky="nsew", padx=8, pady=12)
 
         self._build_connection(columns[0])
+        self._build_notifications(columns[0])
         self._build_theme(columns[0])
         self._build_rules(columns[1])
         self._build_tester(columns[1])
@@ -97,18 +98,49 @@ class SettingsTab(ttk.Frame):
         ttk.Spinbox(row, from_=PARALLEL_RANGE[0], to=PARALLEL_RANGE[1], textvariable=self.parallel,
                     width=4).pack(side="left", padx=8)
         ttk.Button(box, text="Tester la connexion", command=self._test_connection).pack(anchor="w")
+        # Read-only: computed from GitLab, never edited (OC-11).
+        self._profile_text = ttk.Label(box, style="BarMuted.TLabel", wraplength=320, justify="left")
+        self._profile_text.pack(anchor="w", pady=(10, 0))
+        self.sync_minutes = tk.StringVar()
+        row = ttk.Frame(box, style="Surface.TFrame")
+        row.pack(fill="x", pady=(10, 0))
+        ttk.Label(row, text="Synchronisation automatique (min)", style="Bar.TLabel").pack(side="left")
+        ttk.Spinbox(row, from_=REFRESH_RANGE[0], to=REFRESH_RANGE[1], textvariable=self.sync_minutes,
+                    width=4).pack(side="left", padx=8)
+
+    def _build_notifications(self, parent: tk.Misc) -> None:
+        """Desktop notifications, shown for the Merger profile only (NO-01, OC-11)."""
+        self._notifications = ttk.LabelFrame(parent, text="Notifications de bureau", padding=12)
+        self._notifications_parent = parent
+        self.notify_merges = tk.BooleanVar()
+        self.notify_assigned = tk.BooleanVar()
+        ttk.Checkbutton(self._notifications, text="Nouveaux merges sur les dépôts suivis",
+                        variable=self.notify_merges).pack(anchor="w")
+        ttk.Checkbutton(self._notifications, text="MR qui me sont assignées ou en relecture",
+                        variable=self.notify_assigned).pack(anchor="w", pady=(4, 0))
+        ttk.Label(self._notifications, text="Affichées même quand Gitective est réduit (pas quand il est fermé).",
+                  style="BarMuted.TLabel", wraplength=320).pack(anchor="w", pady=(6, 0))
+
+    def show_profile(self) -> None:
+        """Token owner and detected profile (OC-11); the notifications block follows the profile."""
+        profile = self.app.profile
+        if profile.user is None:
+            text = "Profil : inconnu (testez la connexion ou rafraîchissez)."
+        else:
+            text = f"Connecté en tant que {profile.user.name} ({profile.user.username}) · Profil : {profile.label}"
+            if profile.merger and profile.merge_projects:
+                text += "\nPeut merger sur : " + ", ".join(profile.merge_projects)
+        self._profile_text.configure(text=text)
+        if profile.merger:
+            self._notifications.pack(fill="x", pady=(0, 12), after=self._notifications_parent.winfo_children()[0])
+        else:
+            self._notifications.pack_forget()
 
     def _build_theme(self, parent: tk.Misc) -> None:
         box = self._section(parent, "Thème")
         self.theme = tk.StringVar()
         for key, theme in THEMES.items():
             ttk.Radiobutton(box, text=theme.label, value=key, variable=self.theme).pack(anchor="w", pady=2)
-        self.overview_refresh = tk.StringVar()
-        row = ttk.Frame(box, style="Surface.TFrame")
-        row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text="Rafraîchissement de la Vue d'ensemble (min)", style="Bar.TLabel").pack(side="left")
-        ttk.Spinbox(row, from_=REFRESH_RANGE[0], to=REFRESH_RANGE[1], textvariable=self.overview_refresh,
-                    width=4).pack(side="left", padx=8)
         ttk.Button(box, text="Relancer l'assistant de démarrage", command=self.app.open_wizard).pack(anchor="w", pady=(10, 0))
         ttk.Button(box, text="Vider la base locale", command=self._clear_store).pack(anchor="w", pady=(6, 0))
 
@@ -132,10 +164,13 @@ class SettingsTab(ttk.Frame):
         self.weights = {c: tk.StringVar() for c in FIXED_CRITERIA}
         for index, criterion in enumerate(FIXED_CRITERIA):
             cell = ttk.Frame(weights, style="Surface.TFrame")
-            cell.grid(row=0, column=index, sticky="ew", padx=(0, 8))
+            cell.grid(row=0, column=index, sticky="sew", padx=(0, 8))
             weights.columnconfigure(index, weight=1)
-            ttk.Label(cell, text=FIXED_LABELS[criterion], style="BarMuted.TLabel").pack(anchor="w")
+            ttk.Label(cell, text=FIXED_LABELS[criterion], style="BarMuted.TLabel", wraplength=90).pack(anchor="w")
             ttk.Entry(cell, textvariable=self.weights[criterion], width=6).pack(fill="x")
+        self.assignee_rule = tk.BooleanVar()
+        ttk.Checkbutton(fixed, text="Compter la règle « Mergée par l'assigné » (RC-06)",
+                        variable=self.assignee_rule).pack(anchor="w", pady=(8, 0))
         ttk.Label(fixed, text="Seuils du score (%)", style="BarMuted.TLabel").pack(anchor="w", pady=(12, 2))
         thresholds = ttk.Frame(fixed, style="Surface.TFrame")
         thresholds.pack(fill="x")
@@ -200,7 +235,10 @@ class SettingsTab(ttk.Frame):
         self.verify_ssl.set(d.verify_ssl)
         self.parallel.set(str(d.parallel_requests))
         self.theme.set(d.theme)
-        self.overview_refresh.set(str(d.overview_refresh))
+        self.sync_minutes.set(str(d.sync_minutes))
+        self.assignee_rule.set(d.assignee_rule)
+        self.notify_merges.set(d.notify_merges)
+        self.notify_assigned.set(d.notify_assigned)
         self.link_regex.set(d.link_regex)
         self.ticket_regex.set(d.ticket_regex)
         for criterion, var in self.weights.items():
@@ -211,6 +249,7 @@ class SettingsTab(ttk.Frame):
         self._render_projects()
         self._render_people()
         self._run_tester()
+        self.show_profile()
 
     def _collect(self) -> tuple[Settings | None, str]:
         """Build settings from the form; return (None, error) when invalid."""
@@ -221,6 +260,9 @@ class SettingsTab(ttk.Frame):
         d.theme = self.theme.get()
         d.link_regex = self.link_regex.get()
         d.ticket_regex = self.ticket_regex.get()
+        d.assignee_rule = self.assignee_rule.get()
+        d.notify_merges = self.notify_merges.get()
+        d.notify_assigned = self.notify_assigned.get()
         checks = [(f"de la règle « {r.name} »", r.pattern) for r in d.rules]
         checks += [("du lien ticket", d.link_regex), ("du n° de ticket", d.ticket_regex)]
         for label, pattern in checks:
@@ -233,7 +275,8 @@ class SettingsTab(ttk.Frame):
             d.orange_threshold = float(self.orange.get().replace(",", "."))
         except ValueError:
             return None, "Pondérations et seuils : saisissez des nombres."
-        all_weights = [*d.weights.values(), *(r.weight for r in d.active_rules)]
+        counted = {c: w for c, w in d.weights.items() if c != "assignee" or d.assignee_rule}
+        all_weights = [*counted.values(), *(r.weight for r in d.active_rules)]
         if any(w < 0 for w in all_weights) or sum(all_weights) <= 0:
             return None, "Pondérations : valeurs positives avec un total supérieur à 0."
         if not 0 <= d.orange_threshold <= d.green_threshold <= 100:
@@ -243,9 +286,9 @@ class SettingsTab(ttk.Frame):
             return None, f"Requêtes simultanées : un nombre entier entre {low} et {high}."
         d.parallel_requests = int(self.parallel.get())
         low, high = REFRESH_RANGE
-        if not self.overview_refresh.get().strip().isdigit() or not low <= int(self.overview_refresh.get()) <= high:
-            return None, f"Rafraîchissement de la Vue d'ensemble : un nombre de minutes entre {low} et {high}."
-        d.overview_refresh = int(self.overview_refresh.get())
+        if not self.sync_minutes.get().strip().isdigit() or not low <= int(self.sync_minutes.get()) <= high:
+            return None, f"Synchronisation automatique : un nombre de minutes entre {low} et {high}."
+        d.sync_minutes = int(self.sync_minutes.get())
         for project in d.projects:
             project.branch = self._branch_vars[project.id].get().strip() if project.id in self._branch_vars else project.branch
             project.ci_expected = self._ci_vars[project.id].get() if project.id in self._ci_vars else project.ci_expected

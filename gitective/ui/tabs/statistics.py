@@ -263,7 +263,7 @@ class StatsTab(DataTab):
         self.request_reload()
 
     def _filters_changed(self, what: str) -> None:
-        if what == "authors":
+        if what in ("authors", "badge"):
             self.authors.set_selected(self.app.filters.authors)
             self._apply_view()
 

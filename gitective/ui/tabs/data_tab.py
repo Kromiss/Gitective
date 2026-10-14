@@ -39,13 +39,14 @@ class DataTab(ttk.Frame):
 
     def make_grid(self, columns: Sequence[Column], empty_text: str, links: bool = False,
                   master: tk.Misc | None = None, table: str | None = None,
-                  on_link: Callable[[str], None] | None = None) -> DataGrid:
+                  on_link: Callable[[str], None] | None = None,
+                  on_select: Callable[[int], None] | None = None) -> DataGrid:
         """Sortable grid whose column widths are saved under `table` (the tab's own by default)."""
         name = table or self.table
         grid = DataGrid(master or self, columns, self.app.get_theme, on_sort=self._sort_by,
                         on_link=on_link or (self.app.open_url if links else None), empty_text=empty_text,
                         widths=self.app.column_widths(name),
-                        on_widths_changed=lambda w: self.app.save_column_widths(name, w))
+                        on_widths_changed=lambda w: self.app.save_column_widths(name, w), on_select=on_select)
         grid.set_sort(self._sort_key, self._ascending)
         return grid
 
