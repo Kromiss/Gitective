@@ -174,6 +174,14 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     style.configure("TLabelframe", background=theme.surface, bordercolor=theme.border)
     style.configure("TLabelframe.Label", background=theme.bg, foreground=theme.text,
                     font=(theme.font[0], theme.font[1] + 1, "bold"))
+    # Notification switches pointed at from a desktop notification (NO-10).
+    style.configure("Highlight.TLabelframe", background=theme.surface, bordercolor=theme.accent, borderwidth=2)
+    style.configure("Highlight.TLabelframe.Label", background=theme.bg, foreground=theme.accent,
+                    font=(theme.font[0], theme.font[1] + 1, "bold"))
+    style.configure("Highlight.TCheckbutton", background=theme.surface, foreground=theme.accent,
+                    indicatorbackground=theme.surface, indicatorforeground=theme.accent,
+                    font=(theme.font[0], theme.font[1], "bold"))
+    style.map("Highlight.TCheckbutton", background=[("active", theme.surface)])
     style.configure("Horizontal.TProgressbar", background=theme.highlight, troughcolor=theme.header, bordercolor=theme.border)
     for scrollbar in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
         style.configure(scrollbar, background=theme.header, troughcolor=theme.bg, arrowcolor=theme.muted,

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from gitective.ui.app import App
 
 AVATAR_PX = 30
+HIGHLIGHT_MS = 6000  # how long the notification switches stay highlighted (NO-10)
 
 
 class SettingsTab(ttk.Frame):
@@ -46,6 +47,7 @@ class SettingsTab(ttk.Frame):
 
         scroller = ScrollableFrame(self)
         scroller.pack(fill="both", expand=True)
+        self._scroller = scroller
         body = scroller.inner
         body.columnconfigure((0, 1, 2), weight=1, uniform="col")
         columns = [ttk.Frame(body) for _ in range(3)]
@@ -115,6 +117,7 @@ class SettingsTab(ttk.Frame):
         """Desktop notifications; the Developer profile only sees "my MR merged" (NO-01, OC-11)."""
         self._notifications = ttk.LabelFrame(parent, text="Notifications de bureau", padding=12)
         self._notifications_parent = parent
+        self._highlight_job: str | None = None
         self.notify_merges = tk.BooleanVar()
         self.notify_assigned = tk.BooleanVar()
         self.notify_own_merged = tk.BooleanVar()
@@ -129,6 +132,29 @@ class SettingsTab(ttk.Frame):
         self._own_check.pack(anchor="w", pady=(4, 0))
         ttk.Label(self._notifications, text="Affichées même quand Gitective est réduit (pas quand il est fermé).",
                   style="BarMuted.TLabel", wraplength=320).pack(anchor="w", pady=(6, 0))
+
+    def highlight_notifications(self) -> None:
+        """Scroll to the notification switches and highlight them for a few seconds (NO-10)."""
+        self.update_idletasks()
+        frame = self._notifications
+        top = frame.winfo_rooty() - self._scroller.inner.winfo_rooty()
+        height = max(1, self._scroller.inner.winfo_height())
+        self._scroller.canvas.yview_moveto(max(0.0, (top - 12) / height))
+        checks = [self._own_check, *self._merger_checks]
+        frame.configure(style="Highlight.TLabelframe")
+        for check in checks:
+            check.configure(style="Highlight.TCheckbutton")
+        self._own_check.focus_set()
+        if self._highlight_job:
+            self.after_cancel(self._highlight_job)
+
+        def restore() -> None:
+            self._highlight_job = None
+            frame.configure(style="TLabelframe")
+            for check in checks:
+                check.configure(style="TCheckbutton")
+
+        self._highlight_job = self.after(HIGHLIGHT_MS, restore)
 
     def show_profile(self) -> None:
         """Token owner and detected profile (OC-11); the notifications block follows the profile."""

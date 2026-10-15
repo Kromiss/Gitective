@@ -19,8 +19,10 @@ class Toasts:
     """Stack of at most three notifications in the bottom-right corner of the screen (NO-02, NO-05)."""
 
     def __init__(self, root: tk.Tk, get_theme: Callable[[], Theme], open_url: Callable[[str], None],
-                 open_merge_requests: Callable[[], None], logo: tk.PhotoImage | None = None) -> None:
+                 open_merge_requests: Callable[[], None], open_settings: Callable[[], None],
+                 logo: tk.PhotoImage | None = None) -> None:
         self._root = root
+        self._open_settings = open_settings
         self._get_theme = get_theme
         self._open_url = open_url
         self._open_tab = open_merge_requests
@@ -75,9 +77,15 @@ class Toasts:
 
         head = tk.Frame(body, background=theme.surface)
         head.pack(fill="x")
-        close = tk.Label(head, text="✕", background=theme.surface, foreground=theme.muted, cursor="hand2",
+        corner = tk.Frame(head, background=theme.surface)
+        corner.pack(side="right", anchor="n")
+        close = tk.Label(corner, text="✕", background=theme.surface, foreground=theme.muted, cursor="hand2",
                          font=(font, size + 1))
-        close.pack(side="right", anchor="n")
+        close.pack()
+        # Gear: straight to the notification switches of the Config tab (NO-10).
+        gear = tk.Label(corner, text="⚙", background=theme.surface, foreground=theme.muted, cursor="hand2",
+                        font=(font, size + 2))
+        gear.pack(pady=(4, 0))
         if self._logo is not None:
             tk.Label(head, image=self._logo, background=theme.surface).pack(side="left", padx=(0, 10))
         names = tk.Frame(head, background=theme.surface)
@@ -114,11 +122,19 @@ class Toasts:
             else:
                 self._close(window)
 
+        def settings(_event: tk.Event) -> None:
+            self._open_settings()
+            self._close(window)
+
         for widget in _all(window):
-            if widget is not close:
+            if widget not in (close, gear):
                 widget.bind("<Button-1>", clicked)
                 widget.configure(cursor="hand2")  # type: ignore[call-arg]
         close.bind("<Button-1>", lambda e: self._close(window))
+        gear.bind("<Button-1>", settings)
+        for icon in (close, gear):
+            icon.bind("<Enter>", lambda e: e.widget.configure(foreground=theme.text))
+            icon.bind("<Leave>", lambda e: e.widget.configure(foreground=theme.muted))
         window.bind("<Enter>", lambda e: hovered.__setitem__(0, True))
         window.bind("<Leave>", lambda e: hovered.__setitem__(0, False))
         self._windows.append(window)
