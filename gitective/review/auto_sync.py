@@ -51,7 +51,8 @@ def synchronise(
 
     A failing project, profile or MR list is reported in `errors`, never fatal
     (ER-03): the last known profile and MRs are kept. Notifications are for
-    the Merger profile only, never at the very first synchronisation, and new
+    the Merger profile only ("my MR merged" for every profile, NO-09), never at
+    the very first synchronisation, and new
     merges only on repositories already in the base (otherwise their whole
     history would look new).
     """
@@ -88,10 +89,11 @@ def synchronise(
             errors.append(exc)
             mine = store.my_mrs()
     notices: list[Notice] = []
-    if profile.merger and not first:
-        if settings.notify_merges:
-            notices += merge_notices(before, fresh, profile.user, people)
-        if settings.notify_assigned and had_mine:
+    if not first:
+        others = profile.merger and settings.notify_merges
+        if others or settings.notify_own_merged:
+            notices += merge_notices(before, fresh, profile.user, people, others, settings.notify_own_merged)
+        if profile.merger and settings.notify_assigned and had_mine:
             notices += role_notices(previous_roles, mine, people)
     store.set_meta(NOTIFIED_ONCE, "1")
     return SyncOutcome(profile, mine, notices, errors)

@@ -1,4 +1,4 @@
-"""Desktop notifications of the Merger profile: topmost borderless windows and taskbar flash (5.8)."""
+"""Desktop notifications: topmost borderless windows and taskbar flash (5.8)."""
 
 from __future__ import annotations
 
@@ -41,6 +41,10 @@ class Toasts:
         theme = self._get_theme()
         merges = [n for n in notices if n.kind == "merge"]
         roles = [n for n in notices if n.kind == "role"]
+        own = [n for n in notices if n.kind == "own"]
+        if own:
+            self._popup("Vos MR mergées", f"{len(own)} de vos MR ont été mergées", "", "", theme.ok[1],
+                        self._open_tab, "Cliquer pour ouvrir Gitective")
         if roles:
             self._popup("À traiter", f"{len(roles)} MR assignées ou en relecture", "", "", theme.accent,
                         self._open_tab, "Cliquer pour ouvrir Gitective")
@@ -51,7 +55,7 @@ class Toasts:
     def _color(self, notice: Notice) -> str:
         """Same colors as the badges: assignee = accent, reviewer = secondary accent, merge = green."""
         theme = self._get_theme()
-        if notice.kind == "merge":
+        if notice.kind in ("merge", "own"):
             return theme.ok[1]
         return theme.second if notice.title == "Relecture demandée" else theme.accent
 

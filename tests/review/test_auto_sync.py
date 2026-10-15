@@ -27,8 +27,10 @@ def iso(minutes_ago: float) -> str:
     return (NOW - timedelta(minutes=minutes_ago)).isoformat().replace("+00:00", "Z")
 
 
-def merged(iid: int, project_id: int = 10, merger: dict[str, Any] = BOB) -> MergeRequest:
-    data = mr_json(iid=iid, project_id=project_id, merger=merger, created_at=iso(600), merged_at=iso(1))
+def merged(iid: int, project_id: int = 10, merger: dict[str, Any] = BOB,
+           author: dict[str, Any] | None = None) -> MergeRequest:
+    data = mr_json(iid=iid, project_id=project_id, merger=merger, author=author, created_at=iso(600),
+                   merged_at=iso(1))
     data["updated_at"] = iso(1)
     return MergeRequest.from_json(data)
 
@@ -121,8 +123,8 @@ class AutoSyncTests(unittest.TestCase):
 
     def test_switches_turn_notifications_off(self) -> None:
         self.run_sync()
-        self.settings.notify_merges = self.settings.notify_assigned = False
-        self.forge.mrs[10] = [merged(1)]
+        self.settings.notify_merges = self.settings.notify_assigned = self.settings.notify_own_merged = False
+        self.forge.mrs[10] = [merged(1), merged(2, author=ME)]
         self.forge.assigned = [opened(6)]
         self.assertEqual(self.run_sync().notices, [])
 
@@ -133,6 +135,23 @@ class AutoSyncTests(unittest.TestCase):
         outcome = self.run_sync()
         self.assertFalse(outcome.profile.merger)
         self.assertEqual((outcome.my_mrs, outcome.notices, self.forge.my_calls), ([], [], 0))
+
+    def test_my_merged_mr_is_notified_once_for_every_profile(self) -> None:
+        self.forge.level = 30  # Developer
+        self.run_sync()
+        self.forge.mrs[10] = [merged(1), merged(2, author=ME), merged(3, author=ME, merger=ME)]
+        outcome = self.run_sync()
+        self.assertFalse(outcome.profile.merger)
+        self.assertEqual([(n.kind, n.mr.iid, n.title, n.merger) for n in outcome.notices],
+                         [("own", 2, "Votre MR a été mergée", "Bob")])
+
+    def test_merger_gets_my_merged_mr_instead_of_new_merge(self) -> None:
+        self.run_sync()
+        self.forge.mrs[10] = [merged(1), merged(2, author=ME)]
+        self.assertEqual(sorted((n.kind, n.mr.iid) for n in self.run_sync().notices), [("merge", 1), ("own", 2)])
+        self.settings.notify_own_merged = False
+        self.forge.mrs[10].append(merged(4, author=ME))
+        self.assertEqual(self.run_sync().notices, [])  # switched off: no "new merge" in its place either
 
     def test_failures_are_reported_and_last_profile_kept(self) -> None:
         self.forge.assigned = [opened(5)]

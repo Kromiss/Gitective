@@ -112,15 +112,21 @@ class SettingsTab(ttk.Frame):
                     width=4).pack(side="left", padx=8)
 
     def _build_notifications(self, parent: tk.Misc) -> None:
-        """Desktop notifications, shown for the Merger profile only (NO-01, OC-11)."""
+        """Desktop notifications; the Developer profile only sees "my MR merged" (NO-01, OC-11)."""
         self._notifications = ttk.LabelFrame(parent, text="Notifications de bureau", padding=12)
         self._notifications_parent = parent
         self.notify_merges = tk.BooleanVar()
         self.notify_assigned = tk.BooleanVar()
-        ttk.Checkbutton(self._notifications, text="Nouveaux merges sur les dépôts suivis",
-                        variable=self.notify_merges).pack(anchor="w")
-        ttk.Checkbutton(self._notifications, text="MR qui me sont assignées ou en relecture",
-                        variable=self.notify_assigned).pack(anchor="w", pady=(4, 0))
+        self.notify_own_merged = tk.BooleanVar()
+        self._merger_checks = [
+            ttk.Checkbutton(self._notifications, text="Nouveaux merges sur les dépôts suivis",
+                            variable=self.notify_merges),
+            ttk.Checkbutton(self._notifications, text="MR qui me sont assignées ou en relecture",
+                            variable=self.notify_assigned),
+        ]
+        self._own_check = ttk.Checkbutton(self._notifications, text="Ma MR mergée",
+                                          variable=self.notify_own_merged)
+        self._own_check.pack(anchor="w", pady=(4, 0))
         ttk.Label(self._notifications, text="Affichées même quand Gitective est réduit (pas quand il est fermé).",
                   style="BarMuted.TLabel", wraplength=320).pack(anchor="w", pady=(6, 0))
 
@@ -134,10 +140,13 @@ class SettingsTab(ttk.Frame):
             if profile.merger and profile.merge_projects:
                 text += "\nPeut merger sur : " + ", ".join(profile.merge_projects)
         self._profile_text.configure(text=text)
-        if profile.merger:
+        if not self._notifications.winfo_manager():
             self._notifications.pack(fill="x", pady=(0, 12), after=self._notifications_parent.winfo_children()[0])
-        else:
-            self._notifications.pack_forget()
+        for check in self._merger_checks:
+            if profile.merger:
+                check.pack(anchor="w", pady=(4, 0), before=self._own_check)
+            else:
+                check.pack_forget()
 
     def _build_theme(self, parent: tk.Misc) -> None:
         box = self._section(parent, "Thème")
@@ -250,6 +259,7 @@ class SettingsTab(ttk.Frame):
         self.assignee_rule.set(d.assignee_rule)
         self.notify_merges.set(d.notify_merges)
         self.notify_assigned.set(d.notify_assigned)
+        self.notify_own_merged.set(d.notify_own_merged)
         self.link_regex.set(d.link_regex)
         self.ticket_regex.set(d.ticket_regex)
         for criterion, var in self.weights.items():
@@ -274,6 +284,7 @@ class SettingsTab(ttk.Frame):
         d.assignee_rule = self.assignee_rule.get()
         d.notify_merges = self.notify_merges.get()
         d.notify_assigned = self.notify_assigned.get()
+        d.notify_own_merged = self.notify_own_merged.get()
         error = apply_numbers(d, NumberFields(
             weights={c: v.get() for c, v in self.weights.items()}, green=self.green.get(),
             orange=self.orange.get(), parallel=self.parallel.get(), sync_minutes=self.sync_minutes.get()))

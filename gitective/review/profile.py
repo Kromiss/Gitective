@@ -112,7 +112,7 @@ def new_count(items: Sequence[MyMr], seen: set[RoleKey]) -> int:
 class Notice:
     """One desktop notification (NO-03)."""
 
-    kind: str  # "merge" or "role"
+    kind: str  # "merge", "own" (my MR merged, NO-09) or "role"
     title: str
     mr: MergeRequest
     repo: str
@@ -133,8 +133,14 @@ def merge_notices(
     synced: Iterable[tuple[TrackedProject, MergeRequest]],
     me: User | None,
     people: PersonDirectory,
+    others: bool = True,
+    own: bool = True,
 ) -> list[Notice]:
-    """MRs merged since the previous synchronisation, own merges excluded (NO-04)."""
+    """MRs merged since the previous synchronisation, own merges excluded (NO-04).
+
+    `others`: any new merge (NO-01); `own`: the user's own MRs merged by someone
+    else (NO-09), which then get this notification only.
+    """
     mine = people.for_user(me).key if me else None
     notices = []
     for project, mr in synced:
@@ -143,7 +149,12 @@ def merge_notices(
         merger = people.for_user(mr.merged_by)
         if merger.key == mine:
             continue
-        notices.append(Notice("merge", "Nouveau merge", mr, project.path, people.for_user(mr.author).name, merger.name))
+        author = people.for_user(mr.author)
+        if mine is not None and author.key == mine:
+            if own:
+                notices.append(Notice("own", "Votre MR a été mergée", mr, project.path, author.name, merger.name))
+        elif others:
+            notices.append(Notice("merge", "Nouveau merge", mr, project.path, author.name, merger.name))
     return sorted(notices, key=lambda n: n.mr.merged_at or n.mr.created_at)
 
 

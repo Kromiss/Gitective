@@ -23,19 +23,19 @@ class ConfigFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "config.json"
             settings = Settings(assignee_rule=True, notify_merges=False, notify_assigned=True, sync_minutes=12,
-                                detail_width=500)
+                                detail_width=500, notify_own_merged=False)
             settings.filters.assignees, settings.filters.drafts = ["p:kevin"], "only"
             config.save(settings, path)
             again = config.load(path)
             self.assertEqual((again.assignee_rule, again.notify_merges, again.notify_assigned, again.sync_minutes,
-                              again.detail_width), (True, False, True, 12, 500))
+                              again.detail_width, again.notify_own_merged), (True, False, True, 12, 500, False))
             self.assertEqual((again.filters.assignees, again.filters.drafts), (["p:kevin"], "only"))
 
     def test_older_file_gets_safe_defaults(self) -> None:
         old = Settings.from_dict({"gitlab_url": "https://gitlab.test", "overview_refresh": 9,
                                   "weights": {"ticket": 10, "self_merge": 20, "pipeline": 30}})
         self.assertEqual((old.sync_minutes, old.assignee_rule, old.notify_merges, old.notify_assigned,
-                          old.detail_width), (9, False, True, True, 420))
+                          old.detail_width, old.notify_own_merged), (9, False, True, True, 420, True))
         self.assertEqual(old.weights["assignee"], 25.0)
         self.assertEqual((old.filters.assignees, old.filters.reviewers, old.filters.drafts), ([], [], "all"))
 

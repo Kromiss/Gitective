@@ -51,7 +51,7 @@ next to `main.py`.
 | People | Groups several GitLab accounts and Git identities under one person. |
 | Theme | Default, Light, Dark, Windows 95 or Matrix. Default is a dark navy theme with a turquoise accent. |
 | Automatic synchronisation | How often Gitective updates its database from GitLab, in minutes (default 5), even when minimized. |
-| Desktop notifications | Merger profile only: new merges on the tracked repositories, and MRs assigned to you or awaiting your review. |
+| Desktop notifications | Your own MR merged (every profile); for the Merger profile, also new merges on the tracked repositories and MRs assigned to you or awaiting your review. |
 | Merged by the assignee | Tick to count the RC-06 rule (see below) in the score; off by default. |
 | Start with Windows | Starts Gitective minimized when you log in to Windows, so the synchronisation and notifications run all day. Stored in your user's registry (`HKCU\...\Run`), no admin rights needed. |
 
@@ -178,6 +178,9 @@ A Merger also gets:
   when Gitective is minimized: new merges, and MRs assigned to you or
   awaiting your review. Click one to open the MR. The taskbar button also
   flashes. Notifications only appear while Gitective is running.
+
+Every profile gets a desktop notification when one of **your MRs is merged**
+by someone else on a tracked repository ("Votre MR a été mergée").
 
 **Direct commits** (a state of the Merge Requests tab)
 

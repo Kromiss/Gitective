@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.11 (brouillon) — 14/10/2026
+Version : 1.12 (brouillon) — 15/10/2026
 
 ## 1. Objet
 
@@ -45,7 +45,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Requêtes GitLab simultanées (1 à 16) | 6 |
 | Thème | Default |
 | Synchronisation automatique de la base (CH-13) | 5 minutes |
-| Notifications de bureau, profil Mergeur (NO-01) : nouveaux merges / MR qui me sont assignées ou en relecture | activées / activées |
+| Notifications de bureau (NO-01) : nouveaux merges / MR qui me sont assignées ou en relecture / mes MR mergées | activées / activées / activées |
 | Derniers filtres utilisés (état, dates, auteurs, mergeurs, assignés, relecteurs, brouillons, dépôts, taille de page) | Mergées « Depuis hier », 20 |
 | Vue de l'onglet Statistiques (par personne / par dépôt) | Par personne |
 | Largeurs de colonnes modifiées | aucune (ajustement au titre) |
@@ -87,7 +87,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | OC-07 | Validation des regex avant enregistrement ; une regex invalide bloque l'enregistrement et est signalée par le bandeau. |
 | OC-08 | Gestion des correspondances personnes ↔ comptes (voir 5.4). |
 | OC-10 | Bloc « Livraison » : nom de branche par mode (LI-25), validé selon les règles Git avant enregistrement ; protocole de clone ; chemin de `git` avec bouton « Tester » (affiche la version de Git). |
-| OC-11 | Affichage en lecture seule de l'utilisateur du token et du profil détecté (Développeur / Mergeur, avec la liste des dépôts où il peut merger). Bloc « Notifications » (deux cases, NO-01), visible en profil Mergeur uniquement. |
+| OC-11 | Affichage en lecture seule de l'utilisateur du token et du profil détecté (Développeur / Mergeur, avec la liste des dépôts où il peut merger). Bloc « Notifications » (trois cases, NO-01) ; en profil Développeur, seule la case « Ma MR mergée » est affichée. |
 | OC-12 | Case « Lancer Gitective au démarrage de Windows (réduit) » : ajoute ou retire une entrée dans la clé de registre de l'utilisateur `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (module `winreg`, sans droits administrateur), qui lance `pythonw main.pyw --minimized`. L'application démarre réduite dans la barre des tâches, synchronisation et notifications actives. Réglage lu dans le registre, pas dans `config.json` ; case grisée hors Windows. |
 | OC-09 | Bouton « Vider la base locale » : supprime toutes les données de `gitective.db` après confirmation (voir CH-10). |
 
@@ -168,16 +168,17 @@ L'interface dépend des droits du compte propriétaire du token.
 | PR-02 | Profil **Mergeur** si l'utilisateur peut merger sur la branche surveillée d'au moins un dépôt suivi ; sinon profil **Développeur**. Dépôt sans branche surveillée : ignoré (comme ST-11). |
 | PR-03 | Droit de merge sur un dépôt : même calcul que ST-11 — membres du projet (héritage des groupes inclus, `GET /projects/:id/members/all`) croisés avec les règles de branche protégée de la branche surveillée (rôle minimal autorisé à merger, utilisateurs nommés ; branche non protégée : Developer et plus). Administrateur de l'instance (`is_admin` de `GET /user`) : Mergeur. Ces lectures fonctionnent avec `read_api`. |
 | PR-04 | Profil recalculé à chaque synchronisation (CH-05, CH-13) et à l'ajout ou au retrait d'un dépôt suivi ; un changement de profil s'applique immédiatement, sans redémarrage. |
-| PR-05 | Profil **Développeur** : IHM actuelle, sans la colonne « Nouvelle » ni les MR de dépôts non suivis (6.4), sans les badges (6.5) et sans notifications de bureau (5.8). |
-| PR-06 | Profil **Mergeur** : IHM du Développeur + suivi de ses MR à merger dans l'état Ouvertes (6.4), badges et notifications de bureau. |
+| PR-05 | Profil **Développeur** : IHM actuelle, sans la colonne « Nouvelle » ni les MR de dépôts non suivis (6.4), sans les badges (6.5) ; seule notification de bureau : « Ma MR mergée » (NO-09). |
+| PR-06 | Profil **Mergeur** : IHM du Développeur + suivi de ses MR à merger dans l'état Ouvertes (6.4), badges et toutes les notifications de bureau. |
 | PR-07 | Instance injoignable (CH-08) : dernier profil connu, stocké en base. |
 
-### 5.8 Notifications de bureau (profil Mergeur)
+### 5.8 Notifications de bureau
 
 | Réf. | Exigence |
 |---|---|
-| NO-01 | Deux types, chacun activable dans l'onglet Config : **nouveau merge** (MR mergée sur un dépôt suivi) et **MR assignée / relecture demandée** (MR ou rôle de l'utilisateur qui apparaît, 6.4, tous dépôts). |
+| NO-01 | Trois types, chacun activable dans l'onglet Config : **nouveau merge** (MR mergée sur un dépôt suivi) et **MR assignée / relecture demandée** (MR ou rôle de l'utilisateur qui apparaît, 6.4, tous dépôts), en profil Mergeur ; **ma MR mergée** (NO-09), tous profils. |
 | NO-08 | Le titre de la notification indique le rôle : « MR assignée », « Relecture demandée » ou « MR assignée + relecture ». |
+| NO-09 | **Ma MR mergée** : MR d'un dépôt suivi dont l'utilisateur du token est l'auteur (comparaison par personne, 5.4), passée à l'état mergé depuis la synchronisation précédente. Titre « Votre MR a été mergée » ; contenu NO-03, mergeur compris. Une MR qui déclencherait aussi « nouveau merge » ne produit qu'une notification, celle-ci. Données déjà synchronisées (CH-05) : aucune requête supplémentaire. Limite : MR des dépôts non suivis non couvertes. |
 | NO-02 | Affichage : petite fenêtre `tkinter` sans bordure (`Toplevel`, `overrideredirect`, `-topmost`), dans le coin bas-droit de l'écran, aux couleurs du thème. Visible par-dessus les autres applications, y compris quand Gitective est réduit. Disparaît après 8 s ; survol = reste affichée. |
 | NO-03 | Contenu : type, titre de la MR, dépôt, auteur (et mergeur pour un merge). Clic = ouverture de la MR dans le navigateur ; croix = fermeture. |
 | NO-04 | Détection après chaque synchronisation (CH-13 ou Rafraîchir), par comparaison avec la base avant synchronisation. Pas de notification pour ses propres merges ni à la toute première synchronisation. |
@@ -506,7 +507,7 @@ Objectif : préparer une livraison composée de plusieurs dépôts : calculer le
 | AR-02 | Code, noms et commentaires en anglais. |
 | AR-03 | Commentaires synthétiques et logiques : docstring courte pour chaque module, classe et fonction publique ; commentaire en ligne uniquement pour la logique non évidente. |
 | AR-04 | Annotations de type partout. |
-| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), calcul de livraison (rattachement merge / squash / fast-forward, commits hors MR, nouveau tag, incrément du mineur), génération du changelog, opérations Git (dépôts temporaires locaux et distant nu, ignorés si Git est absent ; refus des cas de LI-32), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04) et données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10). |
+| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), calcul de livraison (rattachement merge / squash / fast-forward, commits hors MR, nouveau tag, incrément du mineur), génération du changelog, opérations Git (dépôts temporaires locaux et distant nu, ignorés si Git est absent ; refus des cas de LI-32), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04, NO-09) et données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10). |
 | AR-06 | `README.md` en anglais : prérequis, installation, configuration, utilisation. |
 
 ### 14.2 Arborescence
@@ -618,4 +619,4 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 | Livraison : différences entre les modes Version et Release au-delà des modèles de noms (branche de départ, calcul, contenu du changelog, dépôts concernés) | Hypothèse retenue : seuls les modèles de nom de branche et de tag diffèrent. À confirmer. |
 | Livraison : valeurs par défaut des noms de branche | Défauts proposés en LI-25, à confirmer. |
 | Changelog : lien vers le ticket (URL du gestionnaire de tickets construite à partir du n° extrait) | À décider. |
-| Notifications « nouveau merge » : réservées au profil Mergeur | Hypothèse retenue. À confirmer (utile aussi aux développeurs ?). |
+| Notifications « nouveau merge » : réservées au profil Mergeur | Hypothèse retenue. À confirmer (utile aussi aux développeurs ?). « Ma MR mergée » est disponible pour tous les profils (NO-09). |
