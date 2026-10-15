@@ -65,10 +65,6 @@ in GitLab will not appear in Gitective. When it expires, create a new one
 and replace it in the **Config** tab. If the **Access tokens** page is missing,
 your administrator has disabled personal tokens: ask them.
 
-The Release tab's clone and push do not use this token: they use the Git
-credentials already set up on your computer (Windows credential manager or
-SSH key).
-
 ## Configuration
 
 Every setting is editable in the **Config** tab and saved to `config.json`,
