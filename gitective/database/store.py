@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import sqlite3
 import threading
@@ -112,11 +113,17 @@ def _decode_value(hint: Any, value: Any) -> Any:
     return value
 
 
+@functools.cache
+def _field_hints(cls: type) -> dict[str, Any]:
+    """Resolved field types of a model class, computed once: get_type_hints is slow (string annotations)."""
+    hints = typing.get_type_hints(cls)
+    return {f.name: hints[f.name] for f in dataclasses.fields(cls)}
+
+
 def decode(cls: type[T], data: dict[str, Any]) -> T:
     """Rebuild a model object from encode()'s output; unknown keys are ignored."""
-    hints = typing.get_type_hints(cls)
-    known = {f.name for f in dataclasses.fields(cls)}  # type: ignore[arg-type]
-    return cls(**{k: _decode_value(hints[k], v) for k, v in data.items() if k in known})
+    hints = _field_hints(cls)
+    return cls(**{k: _decode_value(hints[k], v) for k, v in data.items() if k in hints})
 
 
 def dumps(value: Any) -> str:
@@ -243,8 +250,17 @@ class Store:
         with self.transaction() as tx:
             tx.executemany("INSERT OR REPLACE INTO merge_requests VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
 
-    def merge_requests(self, project_id: int) -> list[MergeRequest]:
-        rows = self.conn.execute("SELECT data FROM merge_requests WHERE project_id = ?", (project_id,))
+    def merge_requests(self, project_id: int, state: str | None = None, merged_after: datetime | None = None,
+                       created_after: datetime | None = None,
+                       updated_after: datetime | None = None) -> list[MergeRequest]:
+        """Stored MRs of a project; the filters run in SQL so only the MRs shown are decoded."""
+        where, args = ["project_id = ?"], [project_id]
+        for clause, value in (("state = ?", state), ("merged_at >= ?", ts(merged_after)),
+                              ("created_at >= ?", ts(created_after)), ("updated_at >= ?", ts(updated_after))):
+            if value is not None:
+                where.append(clause)
+                args.append(value)
+        rows = self.conn.execute(f"SELECT data FROM merge_requests WHERE {' AND '.join(where)}", args)
         return [decode(MergeRequest, json.loads(d)) for (d,) in rows]
 
     def merged_keys(self, project_ids: Iterable[int]) -> set[tuple[int, int]]:

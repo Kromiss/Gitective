@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from gitective.database.store import Store
-from gitective.database.sync import ForgeData
+from gitective.database.sync import MR_OVERLAP, ForgeData
 from gitective.forge.errors import ForgeError
 from gitective.forge.models import MergeRequest
 from gitective.review.profile import (
@@ -66,8 +67,12 @@ def synchronise(
     errors: list[ForgeError] = []
     fresh: list[tuple[TrackedProject, MergeRequest]] = []
     for project in projects:
+        state = store.sync_state(f"mr:{project.id}")
+        # A merge new to the base was read by this round, so it was updated after the previous one:
+        # only those MRs are decoded, not the whole history.
+        changed = datetime.fromtimestamp(state[1], timezone.utc) - MR_OVERLAP if state else None
         try:
-            mrs = data.merge_requests(project.id, now_local())
+            mrs = data.merge_requests(project.id, now_local(), state="merged", updated_after=changed)
         except ForgeError as exc:
             errors.append(exc)
             continue
