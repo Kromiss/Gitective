@@ -20,8 +20,9 @@ class Toasts:
 
     def __init__(self, root: tk.Tk, get_theme: Callable[[], Theme], open_url: Callable[[str], None],
                  open_merge_requests: Callable[[], None], open_settings: Callable[[], None],
-                 logo: tk.PhotoImage | None = None) -> None:
+                 score_colors: Callable[[float], tuple[str, str]], logo: tk.PhotoImage | None = None) -> None:
         self._root = root
+        self._score_colors = score_colors  # (background, foreground) of a score's level
         self._open_settings = open_settings
         self._get_theme = get_theme
         self._open_url = open_url
@@ -38,7 +39,7 @@ class Toasts:
                 people = f"{notice.author} → {notice.merger}" if notice.merger else f"par {notice.author}"
                 self._popup(notice.title, notice.mr.title, notice.repo.split("/")[-1], people,
                             self._color(notice), lambda n=notice: self._open_url(n.mr.web_url),
-                            "Cliquer pour ouvrir dans GitLab")
+                            "Cliquer pour ouvrir dans GitLab", notice.score)
             return
         theme = self._get_theme()
         merges = [n for n in notices if n.kind == "merge"]
@@ -55,14 +56,17 @@ class Toasts:
                         self._open_tab, "Cliquer pour ouvrir Gitective")
 
     def _color(self, notice: Notice) -> str:
-        """Same colors as the badges: assignee = accent, reviewer = secondary accent, merge = green."""
+        """Level color of the MR's score; without a score, the type color (assignee = accent, reviewer =
+        secondary accent, merge = green, like the badges)."""
+        if notice.score is not None:
+            return self._score_colors(notice.score)[1]
         theme = self._get_theme()
         if notice.kind in ("merge", "own"):
             return theme.ok[1]
         return theme.second if notice.title == "Relecture demandée" else theme.accent
 
     def _popup(self, kind: str, title: str, repo: str, people: str, color: str, on_click: Callable[[], None],
-               hint: str) -> None:
+               hint: str, score: float | None = None) -> None:
         theme = self._get_theme()
         font, size = theme.font
         window = tk.Toplevel(self._root)
@@ -71,7 +75,7 @@ class Toasts:
         window.configure(background=theme.border)
         outer = tk.Frame(window, background=theme.surface)
         outer.pack(fill="both", expand=True, padx=1, pady=1)
-        tk.Frame(outer, background=color, width=5).pack(side="left", fill="y")  # role color, like the badges
+        tk.Frame(outer, background=color, width=5).pack(side="left", fill="y")  # score level, else type color
         body = tk.Frame(outer, background=theme.surface, padx=14, pady=12)
         body.pack(side="left", fill="both", expand=True)
 
@@ -97,15 +101,20 @@ class Toasts:
 
         tk.Label(body, text=title, background=theme.surface, foreground=theme.text, anchor="w", justify="left",
                  wraplength=WIDTH - 50, font=(font, size + 2, "bold")).pack(fill="x", pady=(10, 4))
-        if repo or people:
+        # People on their own line, above the repository; the score on the repository line (NO-03).
+        if people:
+            tk.Label(body, text=people, background=theme.surface, foreground=theme.muted, anchor="w",
+                     font=(font, size - 1)).pack(fill="x", pady=(0, 4))
+        if repo or score is not None:
             meta = tk.Frame(body, background=theme.surface)
             meta.pack(fill="x")
             if repo:
                 tk.Label(meta, text=repo, background=theme.header, foreground=theme.text, padx=7, pady=1,
                          font=(theme.mono[0], theme.mono[1] - 1)).pack(side="left")
-            if people:
-                tk.Label(meta, text=people, background=theme.surface, foreground=theme.muted,
-                         font=(font, size - 1)).pack(side="left", padx=(8, 0))
+            if score is not None:
+                pill_bg, pill_fg = self._score_colors(score)
+                tk.Label(meta, text=f"Score {score:.0f} %", background=pill_bg, foreground=pill_fg, padx=9, pady=1,
+                         font=(font, size - 1, "bold")).pack(side="right")
         tk.Frame(body, background=theme.border, height=1).pack(fill="x", pady=(10, 6))
         tk.Label(body, text=f"{hint}  ↗", background=theme.surface, foreground=theme.link, anchor="w",
                  font=(font, size - 1)).pack(fill="x")

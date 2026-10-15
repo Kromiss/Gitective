@@ -209,7 +209,8 @@ A Merger also gets:
 - a **Nouvelle** column on the open MRs;
 - **desktop notifications** in the bottom-right corner of the screen, even
   when Gitective is minimized: new merges, and MRs assigned to you or
-  awaiting your review. Click one to open the MR; its gear icon (⚙, under the
+  awaiting your review. Each one shows the people, the repository and the
+  MR's score, its left stripe in the score's color. Click one to open the MR; its gear icon (⚙, under the
   close cross) opens the Config tab with the notification switches
   highlighted. The taskbar button also flashes. Notifications only appear while Gitective is running.
 

@@ -33,7 +33,7 @@ from gitective.review.profile import (
     seen_on_click,
     unseen_keys,
 )
-from gitective.review.rules import RuleSet
+from gitective.review.rules import RuleSet, score_level
 from gitective.database.store import Store, StoreError
 from gitective.database.sync import ForgeData
 from gitective.settings.filter_state import FilterState
@@ -160,7 +160,7 @@ class App:
         logo = ASSETS / "logo.png"
         self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
         self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests,
-                             self._open_notification_settings, self._toast_logo)
+                             self._open_notification_settings, self._score_colors, self._toast_logo)
 
         self.notebook = ttk.Notebook(self.root)
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
@@ -416,6 +416,11 @@ class App:
         self.root.deiconify()
         self.root.lift()
         self.notebook.select(self.mr_tab)
+
+    def _score_colors(self, score: float) -> tuple[str, str]:
+        """(background, foreground) of a score's level, with the configured thresholds."""
+        s = self.settings
+        return self.get_theme().level_colors(score_level(round(score, 6), s.green_threshold, s.orange_threshold))
 
     def _open_notification_settings(self) -> None:
         """Gear of a desktop notification: Config tab, notification switches highlighted (NO-10)."""

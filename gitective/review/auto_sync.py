@@ -6,13 +6,14 @@ Runs in a background thread; the interface only shows its outcome.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 from gitective.database.store import Store
 from gitective.database.sync import MR_OVERLAP, ForgeData
 from gitective.forge.errors import ForgeError
 from gitective.forge.models import MergeRequest
+from gitective.review.mr_evaluation import evaluate_all
 from gitective.review.profile import (
     MyMr,
     Notice,
@@ -23,6 +24,7 @@ from gitective.review.profile import (
     role_notices,
     save_profile,
 )
+from gitective.review.rules import RuleSet
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.dates import now_local
 from gitective.shared.people import PersonDirectory
@@ -100,5 +102,27 @@ def synchronise(
             notices += merge_notices(before, fresh, profile.user, people, others, settings.notify_own_merged)
         if profile.merger and settings.notify_assigned and had_mine:
             notices += role_notices(previous_roles, mine, people)
+    if notices:
+        notices = _with_scores(data, notices, projects, settings, people, errors)
     store.set_meta(NOTIFIED_ONCE, "1")
     return SyncOutcome(profile, mine, notices, errors)
+
+
+def _with_scores(
+    data: ForgeData,
+    notices: list[Notice],
+    projects: Sequence[TrackedProject],
+    settings: Settings,
+    people: PersonDirectory,
+    errors: list[ForgeError],
+) -> list[Notice]:
+    """Score of each notified MR (NO-03); without it a notification keeps its type color."""
+    tracked = {p.id: p for p in projects}
+    pairs = [(tracked.get(n.mr.project_id) or TrackedProject(id=n.mr.project_id, path=n.repo), n.mr) for n in notices]
+    try:
+        evaluations = evaluate_all(data, pairs, RuleSet.from_settings(settings), people,
+                                   workers=settings.parallel_requests)
+    except ForgeError as exc:
+        errors.append(exc)
+        return notices
+    return [replace(n, score=e.score) for n, e in zip(notices, evaluations)]

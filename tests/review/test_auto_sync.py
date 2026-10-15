@@ -12,6 +12,7 @@ from gitective.forge.errors import AuthenticationError, NetworkError
 from gitective.forge.models import MergeRequest, ProtectedBranch, User
 from gitective.review.auto_sync import synchronise
 from gitective.review.profile import ASSIGNEE, REVIEWER, Profile
+from gitective.review.rules import RuleSet
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.people import PersonDirectory
 from tests.factories import mr_json, user_json
@@ -120,6 +121,19 @@ class AutoSyncTests(unittest.TestCase):
         notices = self.run_sync().notices
         self.assertEqual(sorted((n.mr.iid, n.title) for n in notices),
                          [(5, "Relecture demandée"), (6, "MR assignée")])
+
+    def test_notifications_carry_the_mr_score(self) -> None:
+        self.forge.assigned = [opened(5)]
+        self.run_sync()
+        self.forge.mrs[10] = [merged(1)]
+        self.forge.assigned = [opened(5), opened(6)]
+        notices = self.run_sync().notices
+        rules = RuleSet.from_settings(self.settings)
+        for notice in notices:
+            expected = rules.evaluate(notice.mr, "acme/billing", self.people).score
+            self.assertEqual((notice.mr.iid, notice.score), (notice.mr.iid, expected))
+        self.assertEqual(sorted(n.mr.iid for n in notices), [1, 6])
+        self.assertTrue(all(n.score is not None for n in notices))
 
     def test_switches_turn_notifications_off(self) -> None:
         self.run_sync()
