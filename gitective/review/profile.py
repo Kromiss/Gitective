@@ -118,6 +118,7 @@ class Notice:
     repo: str
     author: str
     merger: str = ""
+    score: float | None = None  # process score of the MR, shown and used as the color (NO-03)
 
 
 def role_title(roles: Iterable[str]) -> str:
