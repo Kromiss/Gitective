@@ -166,6 +166,13 @@ class NoticeTests(unittest.TestCase):
         self.assertEqual([n.mr.iid for n in notices], [2])
         self.assertEqual((notices[0].title, notices[0].merger, notices[0].repo), ("Nouveau merge", "Bob", "group/repo"))
 
+    def test_my_mr_merged_by_someone_else_from_any_of_my_accounts(self) -> None:
+        mine = MergeRequest.from_json(mr_json(iid=5, merger=user_json(2, "bob"), author=user_json(70, "me-old")))
+        notices = merge_notices(set(), [(PROJECT, mine)], ME, self.people, others=False)
+        self.assertEqual([(n.kind, n.title, n.author, n.merger) for n in notices],
+                         [("own", "Votre MR a été mergée", "Moi", "Bob")])
+        self.assertEqual(merge_notices(set(), [(PROJECT, mine)], ME, self.people, own=False), [])
+
     def test_role_notices_name_the_role_and_skip_drafts(self) -> None:
         items = [(open_mr(1), frozenset({ASSIGNEE})), (open_mr(2), frozenset({ASSIGNEE, REVIEWER})),
                  (open_mr(3, draft=True), frozenset({REVIEWER})), (open_mr(4), frozenset({REVIEWER}))]

@@ -159,7 +159,8 @@ class App:
         self._busy_label = ttk.Label(header, text="Chargement…", style="BarMuted.TLabel")
         logo = ASSETS / "logo.png"
         self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
-        self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests, self._toast_logo)
+        self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests,
+                             self._open_notification_settings, self._toast_logo)
 
         self.notebook = ttk.Notebook(self.root)
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
@@ -415,6 +416,13 @@ class App:
         self.root.deiconify()
         self.root.lift()
         self.notebook.select(self.mr_tab)
+
+    def _open_notification_settings(self) -> None:
+        """Gear of a desktop notification: Config tab, notification switches highlighted (NO-10)."""
+        self.root.deiconify()
+        self.root.lift()
+        self.notebook.select(self.settings_tab)
+        self.settings_tab.highlight_notifications()
 
     def apply_settings(self, new: Settings) -> None:
         """Save new settings and rebuild whatever depends on them."""
