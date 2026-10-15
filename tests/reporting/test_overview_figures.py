@@ -66,6 +66,14 @@ class FeedTests(unittest.TestCase):
         self.assertEqual(data.this_week, [1, None, None, None, None, None, None])
         self.assertEqual(data.last_week, [0, 0, 0, 0, 2, 0, 1])  # Friday 9 and Sunday 11
 
+    def test_each_day_gets_the_average_score_of_its_merges(self) -> None:
+        good, bad = merged(1, NOW - timedelta(days=3)), merged(2, NOW - timedelta(days=3, hours=1), title="no ticket")
+        data = build([merged(3, NOW - timedelta(hours=1)), good, bad])
+        self.assertEqual(data.this_week_scores, [merged(3, NOW).score, None, None, None, None, None, None])
+        self.assertEqual(data.last_week_scores[4], (good.score + bad.score) / 2)  # Friday 9
+        self.assertNotEqual(good.score, bad.score)
+        self.assertEqual(data.last_week_scores[:4] + data.last_week_scores[5:], [None] * 6)
+
 
 class ScoreTests(unittest.TestCase):
     def test_score_trend_ranking_and_kos(self) -> None:
