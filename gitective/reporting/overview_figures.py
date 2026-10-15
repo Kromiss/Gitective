@@ -42,6 +42,9 @@ class OverviewData:
     today_count: int = 0
     this_week: list[int | None] = field(default_factory=list)  # Monday → Sunday, None = day to come
     last_week: list[int] = field(default_factory=list)
+    # Average score of each day's merges, same days as above; None without merge (VE-06).
+    this_week_scores: list[float | None] = field(default_factory=list)
+    last_week_scores: list[float | None] = field(default_factory=list)
     score: float | None = None
     previous_score: float | None = None
     merged_count: int = 0
@@ -88,6 +91,15 @@ def build_overview(
     data.today_count = per_day[today]
     data.this_week = [per_day[d] if d <= today else None for d in (monday + timedelta(days=i) for i in range(7))]
     data.last_week = [per_day[monday - timedelta(days=7 - i)] for i in range(7)]
+    day_scores: dict[date, list[float]] = defaultdict(list)
+    for ev in done:
+        day_scores[day_of(ev)].append(ev.score)
+
+    def day_score(day: date) -> float | None:
+        return average(day_scores[day]) if day_scores.get(day) else None
+
+    data.this_week_scores = [day_score(monday + timedelta(days=i)) for i in range(7)]
+    data.last_week_scores = [day_score(monday - timedelta(days=7 - i)) for i in range(7)]
 
     # Average score over the last SCORE_DAYS days and the period before (VE-07).
     recent_start = now - timedelta(days=SCORE_DAYS)

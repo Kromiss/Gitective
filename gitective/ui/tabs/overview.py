@@ -359,9 +359,9 @@ class OverviewTab(ttk.Frame):
         left = x + INNER + label_w
         for index, name in enumerate(DAY_NAMES):
             self._text(left + index * (cell_w + gap) + cell_w / 2, y + 50, name, 11, theme.muted, anchor="center")
-        ramp = [theme.header, *(blend(self._card_fill(), theme.accent, r) for r in (0.25, 0.5, 0.75, 1.0))]
-        rows = (("Cette semaine", data.this_week), ("Sem. dernière", data.last_week))
-        for number, (label, values) in enumerate(rows):
+        rows = (("Cette semaine", data.this_week, data.this_week_scores),
+                ("Sem. dernière", data.last_week, data.last_week_scores))
+        for number, (label, values, scores) in enumerate(rows):
             top = y + 62 + number * 38
             self._text(x + INNER, top + 15, label, 13, theme.muted, anchor="w")
             for index, value in enumerate(values):
@@ -369,10 +369,11 @@ class OverviewTab(ttk.Frame):
                 if value is None:
                     self.canvas.create_rectangle(cx, top, cx + cell_w, top + 30, outline=theme.border, dash=(3, 3))
                     continue
-                level = 0 if value == 0 else 1 if value <= 2 else 2 if value <= 4 else 3 if value <= 6 else 4
-                self._box(cx, top, cx + cell_w, top + 30, 6 if theme.radius else 0, ramp[level],
+                # Background = level of the day's average score, like the score pills; no merge = neutral.
+                score = scores[index]
+                fill, color = self._level(score) if score is not None else (theme.header, theme.muted)
+                self._box(cx, top, cx + cell_w, top + 30, 6 if theme.radius else 0, fill,
                           theme.border if theme.relief == "raised" or theme.radius == 0 else "")
-                color = theme.accent_text if level >= 3 else theme.muted if level == 0 else theme.text
                 self._text(cx + cell_w / 2, top + 15, str(value), 14, color, "bold", anchor="center")
             total = sum(v for v in values if v)
             self._text(x + w - INNER, top + 15, str(total), 18, weight="bold", anchor="e")

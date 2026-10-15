@@ -101,7 +101,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | TH-03 | Windows 95 | Gris, reliefs biseautés, police système rétro. |
 | TH-04 | Matrix | Fond noir, texte vert, police monospace. |
 
-Chaque thème définit : fonds, textes, bordures, rayons des coins, police, accent et accent secondaire, couleurs OK / KO / N/A et couleurs des niveaux de score, dégradé d'intensité (merges par jour). Thèmes non modifiables. Appliqués via `ttk.Style` et la grille personnalisée.
+Chaque thème définit : fonds, textes, bordures, rayons des coins, police, accent et accent secondaire, couleurs OK / KO / N/A et couleurs des niveaux de score (aussi utilisées par les merges par jour, VE-06). Thèmes non modifiables. Appliqués via `ttk.Style` et la grille personnalisée.
 
 Les couleurs OK / KO / N/A sont adaptées à chaque thème (ex. Matrix : vert vif / vert sombre / gris). Les libellés texte « OK », « KO », « N/A » restent affichés pour garantir la lisibilité quelle que soit la couleur.
 
@@ -382,7 +382,7 @@ Onglet de supervision, purement graphique, pensé pour un affichage permanent : 
 | VE-03 | Redessinée après chaque synchronisation automatique (CH-13). En-tête : heure de la dernière synchronisation et délai avant la prochaine. |
 | VE-04 | Disposition : colonne de gauche (≈ un tiers) = fil des derniers merges, puis merges par jour ; à droite, trois niveaux : score moyen + qualité par semaine / classement des dépôts / règles enfreintes + MR créées et mergées. |
 | VE-05 | **Derniers merges**, élément principal : jusqu'à 40 dernières MR mergées, de la plus récente à la plus ancienne, groupées par jour. Ligne : heure de merge, titre, dépôt, auteur → mergeur, pastille de score colorée. Dès que les merges du jour ne tiennent pas sur deux lignes chacun, chaque merge passe sur une seule ligne, pour voir d'un coup une journée chargée (10 à 15 merges) ; le titre est coupé (45 caractères au plus, avec « … ») pour que le dépôt et les personnes restent toujours visibles. Groupe « Aujourd'hui » mis en évidence ; nombre de merges du jour en grand dans l'en-tête. Les plus anciennes sont coupées si la place manque. |
-| VE-06 | **Merges par jour** : semaine en cours et semaine précédente, lundi → dimanche. Chaque case affiche le nombre de merges, teintée selon l'intensité ; total par semaine. Jours à venir en pointillés. |
+| VE-06 | **Merges par jour** : semaine en cours et semaine précédente, lundi → dimanche. Chaque case affiche le nombre de merges ; son fond prend la couleur du niveau (vert / orange / rouge, seuils de la section 3, mêmes couleurs que les pastilles de score) du score moyen des MR mergées ce jour-là ; jour sans merge : fond neutre. Total par semaine. Jours à venir en pointillés. |
 | VE-07 | **Score moyen** : MR mergées des 30 derniers jours, couleur selon les seuils, écart en points avec les 30 jours précédents, barre 0 – 100. |
 | VE-08 | **Qualité des MR mergées** : 12 dernières semaines complètes, barres empilées du nombre de MR à 100 %, 50 – 99 % et < 50 %. |
 | VE-09 | **Classement des dépôts** : score moyen sur 30 jours, tri décroissant, rang, barre et valeur colorées. Réparti sur deux colonnes pour afficher 12 à 20 dépôts. |
