@@ -45,13 +45,13 @@ class Toasts:
         roles = [n for n in notices if n.kind == "role"]
         own = [n for n in notices if n.kind == "own"]
         if own:
-            self._popup("Vos MR mergées", f"{len(own)} de vos MR ont été mergées", "", "", theme.ok[1],
+            self._popup("Vos MR mergées", "1 de vos MR a été mergée" if len(own) == 1 else f"{len(own)} de vos MR ont été mergées", "", "", theme.ok[1],
                         self._open_tab, "Cliquer pour ouvrir Gitective")
         if roles:
-            self._popup("À traiter", f"{len(roles)} MR assignées ou en relecture", "", "", theme.accent,
+            self._popup("À traiter", "1 MR assignée ou en relecture" if len(roles) == 1 else f"{len(roles)} MR assignées ou en relecture", "", "", theme.accent,
                         self._open_tab, "Cliquer pour ouvrir Gitective")
         if merges:
-            self._popup("Nouveaux merges", f"{len(merges)} MR mergées sur les dépôts suivis", "", "", theme.ok[1],
+            self._popup("Nouveaux merges", "1 MR mergée sur les dépôts suivis" if len(merges) == 1 else f"{len(merges)} MR mergées sur les dépôts suivis", "", "", theme.ok[1],
                         self._open_tab, "Cliquer pour ouvrir Gitective")
 
     def _color(self, notice: Notice) -> str:
