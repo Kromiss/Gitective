@@ -88,6 +88,24 @@ class StoreTests(unittest.TestCase):
         branch = ProtectedBranch(name="release/*", merge_levels=(30, 40), merge_user_ids=(7,))
         self.assertEqual(decode(ProtectedBranch, encode(branch)), branch)
 
+    def test_merge_requests_filtered_in_the_base(self) -> None:
+        store = Store(MEMORY)
+        store.put_merge_requests(10, [
+            MergeRequest.from_json(mr_json(iid=1, created_at="2026-01-05T08:00:00Z", merged_at="2026-01-06T08:00:00Z")),
+            MergeRequest.from_json(mr_json(iid=2, created_at="2026-10-01T08:00:00Z", merged_at="2026-10-02T08:00:00Z")),
+            MergeRequest.from_json(mr_json(iid=3, state="opened", created_at="2026-10-03T08:00:00Z")),
+        ])
+        since = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+        def iids(**filters: Any) -> list[int]:
+            return sorted(m.iid for m in store.merge_requests(10, **filters))
+
+        self.assertEqual(iids(), [1, 2, 3])
+        self.assertEqual(iids(state="merged", merged_after=since), [2])
+        self.assertEqual(iids(created_after=since), [2, 3])
+        self.assertEqual(iids(state="opened"), [3])
+        self.assertEqual(iids(updated_after=since), [2, 3])  # the factory sets updated_at = created_at
+
     def test_reopening_a_file_keeps_data_and_clear_empties_it(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "gitective.db"

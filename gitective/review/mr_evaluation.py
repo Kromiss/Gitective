@@ -31,7 +31,8 @@ def load_merge_requests(
     the start of the period include every MR merged in it.
     """
     since = period[0] if state == "merged" and period else now_local()
-    mrs = data.merge_requests(project.id, since)
+    start = period[0] if state == "merged" and period else None
+    mrs = data.merge_requests(project.id, since, state=state, merged_after=start)
     if state == "merged":
         return [m for m in mrs if m.state == "merged" and not m.draft and in_period(m.merged_at, period)]
     return [m for m in mrs if m.state == state]
@@ -43,7 +44,8 @@ def load_all_states(
     period: Period | None,
 ) -> list[MergeRequest]:
     """MRs of every state created within period (None = all time), drafts excluded."""
-    mrs = data.merge_requests(project.id, period[0] if period else None)
+    start = period[0] if period else None
+    mrs = data.merge_requests(project.id, start, created_after=start)
     return [m for m in mrs if not m.draft and in_period(m.created_at, period)]
 
 

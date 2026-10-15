@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from gitective.forge.errors import NetworkError
 from gitective.forge.protocol import ForgeClient
@@ -112,10 +112,11 @@ class ForgeData:
 
     # ------------------------------------------------------------ Merge requests
 
-    def merge_requests(self, project_id: int, since: datetime | None) -> list[MergeRequest]:
-        """Every stored MR of a project, after making sure MRs updated since `since` are there.
+    def merge_requests(self, project_id: int, since: datetime | None, **filters: Any) -> list[MergeRequest]:
+        """Stored MRs of a project, after making sure MRs updated since `since` are there.
 
         since=None asks for the whole history. Open and closed MRs are always complete.
+        `filters` narrow the result (see Store.merge_requests).
         """
         key = f"mr:{project_id}"
         wanted = ts(since) if since is not None else EPOCH
@@ -127,7 +128,7 @@ class ForgeData:
                 if state is None:
                     raise
                 self._offline(state[1])
-        return self.store.merge_requests(project_id)
+        return self.store.merge_requests(project_id, **filters)
 
     def _sync_mrs(self, key: str, project_id: int, wanted: float, state: tuple[float, float] | None) -> None:
         client = self._require_client()

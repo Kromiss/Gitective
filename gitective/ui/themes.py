@@ -10,6 +10,7 @@ from tkinter import ttk
 from gitective.ui.rounded import blend, rounded_png
 
 CONTROL_RADIUS = 7  # corner radius of buttons and fields in the rounded themes
+SLICE = 48  # px of the stretchable middle of the rounded control images
 ROUNDED_STYLES = ("TButton", "Accent.TButton", "Active.TButton", "Toolbutton", "TEntry", "TMenubutton",
                   "Active.TMenubutton", "TNotebook.Tab")
 # Images must outlive the elements using them: kept per theme, created once.
@@ -269,7 +270,9 @@ def _rounded_controls(root: tk.Tk, style: ttk.Style, theme: Theme) -> None:
 
 def _make_images(root: tk.Tk, theme: Theme) -> dict[str, tk.PhotoImage]:
     """Every state of every rounded control of a theme, as PhotoImages."""
-    size, r = 2 * CONTROL_RADIUS + 6, CONTROL_RADIUS
+    # Stretchable middle well wider than the corners: Tk tiles it to fill each control, and a
+    # 2-pixel middle meant hundreds of alpha blits per widget, so a tab switch took over a second.
+    size, r = 2 * (CONTROL_RADIUS + 2) + SLICE, CONTROL_RADIUS
     plain, hover = theme.header, blend(theme.header, theme.accent, 0.14)
     pressed = blend(theme.header, theme.accent, 0.28)
     specs = {
@@ -298,7 +301,9 @@ def _make_images(root: tk.Tk, theme: Theme) -> dict[str, tk.PhotoImage]:
 def _create_elements(style: ttk.Style, key: str, images: dict[str, tk.PhotoImage]) -> None:
     border = CONTROL_RADIUS + 2
     # border = slices kept intact when stretched; padding = room inside, the style adds its own.
-    options = {"border": border, "padding": (4, 2), "sticky": "nsew"}
+    # width / height: minimum size of the control, independent of the (wide) image size.
+    minimum = 2 * border + 2
+    options = {"border": border, "padding": (4, 2), "sticky": "nsew", "width": minimum, "height": minimum}
     style.element_create(f"{key}.button", "image", images["button"], ("pressed", images["button.pressed"]),
                          ("active", images["button.hover"]), ("disabled", images["button.disabled"]), **options)
     style.element_create(f"{key}.accent", "image", images["accent"], ("pressed", images["accent.pressed"]),
