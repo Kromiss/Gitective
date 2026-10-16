@@ -7,14 +7,14 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
-from gitective.shared.dates import format_datetime
+from gitective.shared.dates import HISTORY_START, format_datetime, now_local
 from gitective.review.direct_commits import OrphanCommit, find_orphan_commits
 from gitective.shared.people import PersonRef
 from gitective.ui.tabs.data_tab import DataTab
 from gitective.ui.components.grid import Column, sort_rows
 from gitective.ui.components.pagination import Pager
 from gitective.shared.search import matches
-from gitective.ui.components.widgets import MultiSelect, search_box
+from gitective.ui.components.widgets import MultiSelect
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
@@ -49,23 +49,26 @@ class CommitsView(DataTab):
 
     table = "commits"
 
-    def __init__(self, master: tk.Misc, app: App, repos: MultiSelect, authors: MultiSelect) -> None:
+    def __init__(self, master: tk.Misc, app: App, repos: MultiSelect, authors: MultiSelect,
+                 search: tk.StringVar) -> None:
         super().__init__(master, app, sort_key="date", ascending=False)
         self._items: list[Item] = []
         self._visible: list[Item] = []
         self.repos, self.authors = repos, authors
+        self._search = search  # the filter bar's search field (FI-12)
 
-        summary = ttk.Frame(self, padding=(16, 10, 16, 6))
+        card = ttk.Frame(self, style="Card.TFrame", padding=(10, 8, 10, 10))
+        card.pack(fill="both", expand=True, padx=16, pady=(12, 0))
+        summary = ttk.Frame(card, style="Bar.TFrame", padding=(6, 2, 6, 8))
         summary.pack(fill="x")
-        self._count = ttk.Label(summary, style="Title.TLabel")
+        self._count = ttk.Label(summary, style="Section.TLabel")
         self._count.pack(side="left")
-        self._progress_text = ttk.Label(summary, style="Muted.TLabel")
+        self._progress_text = ttk.Label(summary, style="BarMuted.TLabel")
         self._progress_text.pack(side="left", padx=(18, 6))
         self._progress = ttk.Progressbar(summary, length=200, mode="determinate")
-        self._search = search_box(summary, lambda: self._apply_view(reset_page=True))
-        ttk.Label(summary, text="Clic sur un commit : ouvre sa page GitLab", style="Muted.TLabel").pack(side="right")
-        self.grid_view = self.make_grid(COLUMNS, "Aucun commit direct sur cette période", links=True)
-        self.grid_view.pack(fill="both", expand=True, padx=16)
+        ttk.Label(summary, text="Clic sur un commit : ouvre sa page GitLab", style="BarMuted.TLabel").pack(side="right")
+        self.grid_view = self.make_grid(COLUMNS, "Aucun commit direct sur cette période", links=True, master=card)
+        self.grid_view.pack(fill="both", expand=True)
         self.pager = Pager(self, self._page_changed, page_size=app.filters.page_size)
         self.pager.pack(fill="x", padx=16, pady=10)
 
@@ -80,7 +83,8 @@ class CommitsView(DataTab):
         if not self.app.ensure_connection():
             return
         try:
-            period = self.app.filters.period()
+            # "Total": the whole history of the watched branches (FI-19).
+            period = self.app.filters.period() or (HISTORY_START, now_local())
         except ValueError:
             self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA.")
             return

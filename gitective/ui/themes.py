@@ -12,7 +12,7 @@ from gitective.ui.rounded import blend, rounded_png
 CONTROL_RADIUS = 7  # corner radius of buttons and fields in the rounded themes
 SLICE = 48  # px of the stretchable middle of the rounded control images
 ROUNDED_STYLES = ("TButton", "Accent.TButton", "Active.TButton", "Toolbutton", "TEntry", "TMenubutton",
-                  "Active.TMenubutton", "TNotebook.Tab")
+                  "Active.TMenubutton", "TNotebook.Tab", "Card.TFrame")
 # Images must outlive the elements using them: kept per theme, created once.
 _IMAGES: dict[str, dict[str, tk.PhotoImage]] = {}
 _CLAM_LAYOUTS: dict[str, object] = {}
@@ -139,14 +139,25 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     style.configure("TFrame", background=theme.bg)
     style.configure("Surface.TFrame", background=theme.surface)
     style.configure("Bar.TFrame", background=theme.surface)
+    # Window header (logo, tabs, badges) and the rounded cards holding filters and tables.
+    style.configure("Header.TFrame", background=theme.bg)
+    style.configure("Header.TLabel", background=theme.bg, foreground=theme.text)
+    style.configure("HeaderMuted.TLabel", background=theme.bg, foreground=theme.muted)
+    style.configure("Card.TFrame", background=theme.surface, bordercolor=theme.border, borderwidth=border,
+                    relief=theme.relief if theme.relief == "raised" else "solid")
+    # Pages of the main notebook: the tabs are drawn in the header (TabBar), not by ttk.
+    style.layout("Pages.TNotebook.Tab", [])
+    style.layout("Pages.TNotebook", [("Notebook.client", {"sticky": "nswe"})])
+    style.configure("Pages.TNotebook", background=theme.bg, borderwidth=0, tabmargins=0)
     style.configure("TLabel", background=theme.bg, foreground=theme.text)
     style.configure("Bar.TLabel", background=theme.surface, foreground=theme.text)
     style.configure("Muted.TLabel", background=theme.bg, foreground=theme.muted)
     style.configure("BarMuted.TLabel", background=theme.surface, foreground=theme.muted)
     style.configure("Title.TLabel", background=theme.bg, foreground=theme.text, font=(theme.font[0], theme.font[1] + 2, "bold"))
     style.configure("Section.TLabel", background=theme.surface, foreground=theme.text, font=(theme.font[0], theme.font[1] + 1, "bold"))
+    # width=0: buttons as wide as their text, so the filter cards fit the window.
     style.configure("TButton", background=theme.surface, foreground=theme.text, borderwidth=border,
-                    relief=theme.relief if theme.relief == "raised" else "solid", padding=(10, 4))
+                    relief=theme.relief if theme.relief == "raised" else "solid", padding=(10, 4), width=0)
     style.map("TButton", background=[("active", theme.header), ("disabled", theme.bg)],
               foreground=[("disabled", theme.muted)])
     style.configure("Accent.TButton", background=theme.accent, foreground=theme.accent_text, font=(theme.font[0], theme.font[1], "bold"))
@@ -175,9 +186,10 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     style.configure("TLabelframe", background=theme.surface, bordercolor=theme.border)
     style.configure("TLabelframe.Label", background=theme.bg, foreground=theme.text,
                     font=(theme.font[0], theme.font[1] + 1, "bold"))
-    # Notification switches pointed at from a desktop notification (NO-10).
-    style.configure("Highlight.TLabelframe", background=theme.surface, bordercolor=theme.accent, borderwidth=2)
-    style.configure("Highlight.TLabelframe.Label", background=theme.bg, foreground=theme.accent,
+    # Notification switches pointed at from a desktop notification (NO-10): the card gets the
+    # "alternate" state (accent border), its title and switches the accent color.
+    style.map("Card.TFrame", bordercolor=[("alternate", theme.accent)])
+    style.configure("Highlight.TLabel", background=theme.surface, foreground=theme.accent,
                     font=(theme.font[0], theme.font[1] + 1, "bold"))
     style.configure("Highlight.TCheckbutton", background=theme.surface, foreground=theme.accent,
                     indicatorbackground=theme.surface, indicatorforeground=theme.accent,
@@ -248,6 +260,7 @@ def _rounded_controls(root: tk.Tk, style: ttk.Style, theme: Theme) -> None:
 
     style.layout("TButton", button("button"))
     style.layout("Accent.TButton", button("accent"))
+    style.layout("Card.TFrame", [(f"{key}.card", {"sticky": "nsew"})])
     style.layout("Active.TButton", button("active"))
     style.layout("Toolbutton", [(f"{key}.segment", {"sticky": "nsew", "children": [
         ("Toolbutton.padding", {"sticky": "nsew", "children": [("Toolbutton.label", {"sticky": "nsew"})]})]})])
@@ -301,6 +314,8 @@ def _make_images(root: tk.Tk, theme: Theme) -> dict[str, tk.PhotoImage]:
         "tab.selected": (theme.surface, theme.border, theme.accent),
         "field": (theme.bg, theme.border, None),
         "field.focus": (theme.bg, theme.accent, None),
+        "card": (theme.surface, theme.border, None),
+        "card.highlight": (theme.surface, theme.accent, None),
     }
     return {name: tk.PhotoImage(master=root, data=base64.b64encode(rounded_png(size, r, fill, line, underline=under)))
             for name, (fill, line, under) in specs.items()}
@@ -321,5 +336,6 @@ def _create_elements(style: ttk.Style, key: str, images: dict[str, tk.PhotoImage
     style.element_create(f"{key}.segment", "image", images["segment"], ("selected", images["segment.selected"]),
                          ("active", images["segment.hover"]), ("disabled", images["button.disabled"]), **options)
     style.element_create(f"{key}.field", "image", images["field"], ("focus", images["field.focus"]), **options)
+    style.element_create(f"{key}.card", "image", images["card"], ("alternate", images["card.highlight"]), **options)
     style.element_create(f"{key}.tab", "image", images["tab"], ("selected", images["tab.selected"]),
                          ("active", images["tab.hover"]), **options)

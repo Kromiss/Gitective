@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-from gitective.forge.models import Commit, CommitStatus, MergeRequest, Project, ProtectedBranch, User
+from gitective.forge.models import Branch, Commit, CommitStatus, MergeRequest, Project, ProtectedBranch, Tag, User
 
 T = TypeVar("T")
 
@@ -64,11 +64,38 @@ MIGRATIONS: tuple[tuple[str, ...], ...] = (
             project_id INTEGER NOT NULL, iid INTEGER NOT NULL, mr_updated_at REAL, data TEXT NOT NULL,
             PRIMARY KEY (project_id, iid))""",
     ),
+    (
+        # Branches and tags tabs (BR-10, TG-08, TG-09): deleted_at is set when GitLab no longer lists them.
+        """CREATE TABLE branches (
+            project_id INTEGER NOT NULL, name TEXT NOT NULL, data TEXT NOT NULL, deleted_at REAL,
+            PRIMARY KEY (project_id, name))""",
+        """CREATE TABLE tags (
+            project_id INTEGER NOT NULL, name TEXT NOT NULL, data TEXT NOT NULL, deleted_at REAL,
+            PRIMARY KEY (project_id, name))""",
+        """CREATE TABLE tag_pipelines (
+            project_id INTEGER NOT NULL, name TEXT NOT NULL, commit_sha TEXT NOT NULL, data TEXT NOT NULL,
+            PRIMARY KEY (project_id, name))""",
+    ),
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 DATA_TABLES = ("meta", "sync", "projects", "merge_requests", "mr_commits", "mr_statuses",
-               "branch_commits", "commit_mr", "project_access", "avatars", "my_mrs", "seen_roles", "mr_details")
+               "branch_commits", "commit_mr", "project_access", "avatars", "my_mrs", "seen_roles", "mr_details",
+               "branches", "tags", "tag_pipelines")
 RoleKey = tuple[int, int, str]  # (project_id, iid, "assignee" | "reviewer")
+NAMED_TABLES = ("branches", "tags")  # lists read whole at each synchronisation and compared with the base
+
+
+@dataclasses.dataclass(frozen=True)
+class LinkedMr:
+    """Few fields of a stored MR, read straight from SQL: MRs of a branch, MR of a tag's commit (BR-03, TG-07)."""
+
+    project_id: int
+    iid: int
+    state: str
+    title: str
+    web_url: str
+    created_at: float
+    source_branch: str
 
 
 class StoreError(Exception):
@@ -283,6 +310,15 @@ class Store:
             tx.execute("INSERT OR REPLACE INTO mr_commits VALUES (?, ?, ?, ?)",
                        (project_id, iid, mr_updated_at, dumps(list(commits))))
 
+    def mr_commit_shas(self, project_ids: Iterable[int]) -> dict[tuple[int, int], list[str]]:
+        """SHAs of the stored commits of every MR of these projects, for the SHA search (FI-20)."""
+        ids = list(project_ids)
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        rows = self.conn.execute(f"SELECT project_id, iid, data FROM mr_commits WHERE project_id IN ({marks})", ids)
+        return {(pid, iid): [c["id"] for c in json.loads(data)] for pid, iid, data in rows}
+
     def get_mr_statuses(self, project_id: int, iid: int) -> list[CommitStatus] | None:
         row = self.conn.execute("SELECT data FROM mr_statuses WHERE project_id = ? AND iid = ?",
                                 (project_id, iid)).fetchone()
@@ -371,3 +407,71 @@ class Store:
         with self.transaction() as tx:
             tx.execute("INSERT OR REPLACE INTO mr_details VALUES (?, ?, ?, ?)",
                        (project_id, iid, mr_updated_at, dumps(detail)))
+
+    # ------------------------------------------------------------ Branches and tags (11, 12)
+
+    def replace_named(self, table: str, project_id: int, items: Sequence[Branch] | Sequence[Tag],
+                      seen_at: float) -> None:
+        """Store the complete list of branches or tags of a project, read from the forge (BR-10, TG-08).
+
+        New and changed items are written and active again (a branch recreated
+        under the same name is no longer deleted); stored items missing from the
+        list are kept, marked deleted at `seen_at` unless already marked.
+        """
+        assert table in NAMED_TABLES
+        names = [i.name for i in items]
+        with self.transaction() as tx:
+            tx.executemany(f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?, NULL)",
+                           [(project_id, i.name, dumps(i)) for i in items])
+            marks = ",".join("?" * len(names))
+            missing = f" AND name NOT IN ({marks})" if names else ""
+            tx.execute(f"UPDATE {table} SET deleted_at = ? WHERE project_id = ? AND deleted_at IS NULL{missing}",
+                       [seen_at, project_id, *names])
+
+    def branches(self, project_ids: Iterable[int]) -> list[tuple[int, Branch, float | None]]:
+        """(project_id, branch, deleted_at) of these projects."""
+        return [(pid, decode(Branch, item), deleted) for pid, item, deleted in self._named("branches", project_ids)]
+
+    def tags(self, project_ids: Iterable[int]) -> list[tuple[int, Tag, float | None]]:
+        """(project_id, tag, deleted_at) of these projects."""
+        return [(pid, decode(Tag, item), deleted) for pid, item, deleted in self._named("tags", project_ids)]
+
+    def _named(self, table: str, project_ids: Iterable[int]) -> list[tuple[int, dict[str, Any], float | None]]:
+        ids = list(project_ids)
+        if not ids:
+            return []
+        marks = ",".join("?" * len(ids))
+        rows = self.conn.execute(f"SELECT project_id, data, deleted_at FROM {table} WHERE project_id IN ({marks})", ids)
+        return [(pid, json.loads(data), deleted) for pid, data, deleted in rows]
+
+    def linked_mrs(self, project_ids: Iterable[int]) -> list[LinkedMr]:
+        """Stored MRs of these projects, decoded lightly, for the "MR liées" column (BR-03)."""
+        ids = list(project_ids)
+        if not ids:
+            return []
+        marks = ",".join("?" * len(ids))
+        rows = self.conn.execute(
+            "SELECT project_id, iid, state, json_extract(data, '$.title'), json_extract(data, '$.web_url'),"
+            f" created_at, json_extract(data, '$.source_branch') FROM merge_requests WHERE project_id IN ({marks})",
+            ids)
+        return [LinkedMr(*row) for row in rows]
+
+    def mr_of_commit(self, project_id: int, sha: str) -> LinkedMr | None:
+        """Stored MR whose merge, squash or head commit is `sha` (TG-07)."""
+        row = self.conn.execute(
+            "SELECT project_id, iid, state, json_extract(data, '$.title'), json_extract(data, '$.web_url'),"
+            " created_at, json_extract(data, '$.source_branch') FROM merge_requests WHERE project_id = ? AND ? IN"
+            " (json_extract(data, '$.merge_commit_sha'), json_extract(data, '$.squash_commit_sha'),"
+            " json_extract(data, '$.sha')) ORDER BY created_at DESC LIMIT 1", (project_id, sha)).fetchone()
+        return LinkedMr(*row) if row else None
+
+    def get_tag_pipeline(self, project_id: int, name: str, cls: type[T]) -> tuple[str, T] | None:
+        """(commit SHA it was read for, stored pipeline data) of a tag (TG-09)."""
+        row = self.conn.execute("SELECT commit_sha, data FROM tag_pipelines WHERE project_id = ? AND name = ?",
+                                (project_id, name)).fetchone()
+        return (row[0], decode(cls, json.loads(row[1]))) if row else None
+
+    def put_tag_pipeline(self, project_id: int, name: str, commit_sha: str, data: Any) -> None:
+        with self.transaction() as tx:
+            tx.execute("INSERT OR REPLACE INTO tag_pipelines VALUES (?, ?, ?, ?)",
+                       (project_id, name, commit_sha, dumps(data)))

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import tkinter as tk
 from collections.abc import Callable
-from datetime import datetime
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
 from gitective.shared.avatars import badge_color, initials
 from gitective.shared.dates import (
+    HISTORY_START,
     Period,
     current_month,
     current_year,
@@ -46,8 +46,6 @@ if TYPE_CHECKING:
 
 AVATAR_PX = 26
 PERSON, REPO = "person", "repo"
-# "Total" has no start date: direct commits are then searched from this date.
-HISTORY_START = datetime(2000, 1, 1).astimezone()
 
 Loaded = tuple[list[Evaluation], dict[str, list[str]], list[OrphanCommit], list[Exception]]
 
@@ -115,45 +113,50 @@ class StatsTab(DataTab):
         self._to = tk.StringVar(value=format_date(end.date()))
         self._total = False
 
-        bar = ttk.Frame(self, style="Bar.TFrame", padding=(16, 10))
-        bar.pack(fill="x")
+        bar = ttk.Frame(self, style="Card.TFrame", padding=(14, 12))
+        bar.pack(fill="x", padx=16, pady=(12, 0))
+        top = ttk.Frame(bar, style="Bar.TFrame")
+        top.pack(fill="x")
+        bottom = ttk.Frame(bar, style="Bar.TFrame")
+        bottom.pack(fill="x", pady=(10, 0))
         self._view_var = tk.StringVar(value=self._view)
-        switch = ttk.Frame(bar, style="Bar.TFrame")
-        switch.pack(side="left", padx=(0, 18), anchor="s")
+        switch = ttk.Frame(top, style="Bar.TFrame")
+        switch.pack(side="left", padx=(0, 18))
         for value, text in ((PERSON, "Par personne"), (REPO, "Par dépôt")):
             ttk.Radiobutton(switch, text=text, value=value, variable=self._view_var, style="Toolbutton",
                             command=lambda: self.set_view(self._view_var.get())).pack(side="left")
-        for label, var in (("Du (création)", self._from), ("Au", self._to)):
-            box = ttk.Frame(bar, style="Bar.TFrame")
-            box.pack(side="left", padx=(0, 10))
-            ttk.Label(box, text=label, style="BarMuted.TLabel").pack(anchor="w")
-            entry = ttk.Entry(box, textvariable=var, width=11)
-            entry.pack()
+        ttk.Label(top, text="Création du", style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
+        for index, var in enumerate((self._from, self._to)):
+            if index:
+                ttk.Label(top, text="→", style="BarMuted.TLabel").pack(side="left", padx=4)
+            entry = ttk.Entry(top, textvariable=var, width=10)
+            entry.pack(side="left")
             entry.bind("<Return>", lambda e: self._apply_dates())
-        ttk.Button(bar, text="Appliquer", command=self._apply_dates).pack(side="left", anchor="s")
-        shortcuts = ttk.Frame(bar, style="Bar.TFrame")
-        shortcuts.pack(side="left", padx=(16, 0), anchor="s")
+        ttk.Button(top, text="Appliquer", command=self._apply_dates).pack(side="left", padx=(8, 0))
         for text, period in (("7 jours", lambda: last_days(7)), ("30 jours", lambda: last_days(30)),
                              ("Mois en cours", current_month), ("Année en cours", current_year)):
-            ttk.Button(shortcuts, text=text, command=lambda p=period: self._shortcut(p())).pack(side="left", padx=2)
-        self._total_button = ttk.Button(shortcuts, text="Total", command=self._set_total)
-        self._total_button.pack(side="left", padx=2)
-        self.repos = MultiSelect(bar, "Dépôts", self._repos_changed, app.get_theme)
-        self.repos.pack(side="left", padx=(16, 0), anchor="s")
-        self.authors = self.make_authors(bar, "Personnes")
-        self.authors.pack(side="left", padx=(8, 0), anchor="s")
-        self.refresh_button(bar, compact=True).pack(side="right", anchor="s")
+            ttk.Button(top, text=text, command=lambda p=period: self._shortcut(p())).pack(side="left", padx=(6, 0))
+        self._total_button = ttk.Button(top, text="Total", command=self._set_total)
+        self._total_button.pack(side="left", padx=(6, 0))
+        self.repos = MultiSelect(bottom, "Dépôts", self._repos_changed, app.get_theme)
+        self.repos.pack(side="left")
+        self.authors = self.make_authors(bottom, "Personnes")
+        self.authors.pack(side="left", padx=(8, 0))
+        self.refresh_button(bottom).pack(side="right")
 
-        status = ttk.Frame(self)
-        status.pack(fill="x", padx=16, pady=(8, 0))
-        self._progress_text = ttk.Label(status, style="Muted.TLabel")
+        self._card = ttk.Frame(self, style="Card.TFrame", padding=(10, 8, 10, 10))
+        self._card.pack(fill="both", expand=True, padx=16, pady=(12, 0))
+        status = ttk.Frame(self._card, style="Bar.TFrame", padding=(6, 2, 6, 8))
+        status.pack(fill="x")
+        self._progress_text = ttk.Label(status, style="BarMuted.TLabel")
         self._progress_text.pack(side="left")
         self._progress = ttk.Progressbar(status, length=200, mode="determinate")
-        self._hint = ttk.Label(status, style="Muted.TLabel")
+        self._hint = ttk.Label(status, style="BarMuted.TLabel")
         self._hint.pack(side="right")
 
-        self._person_grid = self.make_grid(HEAD_COLUMNS, "Aucune merge request sur cette période")
-        self._repo_grid = self.make_grid(REPO_HEAD, "Aucun dépôt", table="stats_repo", on_link=self._open_repo)
+        self._person_grid = self.make_grid(HEAD_COLUMNS, "Aucune merge request sur cette période", master=self._card)
+        self._repo_grid = self.make_grid(REPO_HEAD, "Aucun dépôt", table="stats_repo", on_link=self._open_repo,
+                                         master=self._card)
         self.grid_view: DataGrid = self._person_grid
         self.update_columns()
         self.chart = WeeklyChart(self, app.get_theme)
@@ -179,7 +182,7 @@ class StatsTab(DataTab):
         self.grid_view.pack_forget()
         self.grid_view = self._person_grid if self._view == PERSON else self._repo_grid
         self.grid_view.set_sort(self._sort_key, self._ascending)
-        self.grid_view.pack(fill="both", expand=True, padx=16, pady=(8, 0))
+        self.grid_view.pack(fill="both", expand=True)
         self._hint.configure(text="Clic sur un dépôt : ses statistiques par personne" if self._view == REPO else "")
 
     def _open_repo(self, path: str) -> None:
@@ -255,7 +258,7 @@ class StatsTab(DataTab):
 
     def _set_total(self) -> None:
         self._total = True
-        self._total_button.configure(style="Accent.TButton")
+        self._total_button.configure(style="Active.TButton")
         self.request_reload()
 
     def _repos_changed(self, keys: list[str]) -> None:
@@ -263,7 +266,7 @@ class StatsTab(DataTab):
         self.request_reload()
 
     def _filters_changed(self, what: str) -> None:
-        if what in ("authors", "badge"):
+        if what in ("authors", "badge", "reset"):
             self.authors.set_selected(self.app.filters.authors)
             self._apply_view()
 

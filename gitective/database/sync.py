@@ -28,7 +28,9 @@ from gitective.forge.models import (
     Job,
     MergeRequest,
     MergeState,
+    PipelineRef,
     ProtectedBranch,
+    Tag,
     User,
 )
 from gitective.database.store import Store, ts
@@ -59,6 +61,25 @@ class MrDetailData:
     log_job_id: int | None = None
     log: str = ""  # raw log of the first failed job
     statuses: tuple[CommitStatus, ...] = ()  # head commit statuses, for CIs without a GitLab pipeline
+
+
+@dataclass(frozen=True)
+class TagPipelineData:
+    """Latest pipeline of a tag with its jobs and the log tail of the first failed one (TG-07, TG-09)."""
+
+    fetched_at: datetime
+    pipeline: PipelineRef | None = None
+    jobs: tuple[Job, ...] = ()
+    log_job_id: int | None = None
+    log: str = ""
+
+    @property
+    def finished(self) -> bool:
+        """A finished pipeline is never read again (CH-09); no pipeline at all is read again."""
+        return self.pipeline is not None and self.pipeline.status in FINISHED
+
+
+FINISHED = {"success", "failed", "canceled", "skipped"}
 
 
 def _dt(value: float) -> datetime:
@@ -353,3 +374,46 @@ class ForgeData:
             log=log,
             statuses=tuple(statuses),
         )
+
+    # ------------------------------------------------------------ Branches and tags (11, 12)
+
+    def refresh_repository(self, project_id: int) -> None:
+        """Read the complete branch and tag lists of a project and compare them with the base (BR-10, TG-08).
+
+        Offline, the stored lists stay as they are (CH-08).
+        """
+        try:
+            client = self._require_client()
+            branches, tags = client.list_branches(project_id), client.list_tags(project_id)
+        except NetworkError:
+            self._offline(None)
+            return
+        seen = _now().timestamp()
+        self.store.replace_named("branches", project_id, branches, seen)
+        self.store.replace_named("tags", project_id, tags, seen)
+
+    def stored_tag_pipeline(self, project_id: int, tag: Tag) -> TagPipelineData | None:
+        stored = self.store.get_tag_pipeline(project_id, tag.name, TagPipelineData)
+        return stored[1] if stored else None
+
+    def tag_pipeline(self, project_id: int, tag: Tag) -> TagPipelineData:
+        """Pipeline of a tag: read again while unfinished or when the tag moved to another commit (TG-09)."""
+        stored = self.store.get_tag_pipeline(project_id, tag.name, TagPipelineData)
+        if stored is not None and stored[0] == tag.commit_sha and stored[1].finished:
+            return stored[1]
+        try:
+            client = self._require_client()
+            pipeline = client.latest_pipeline(project_id, tag.name)
+            jobs: list[Job] = client.list_pipeline_jobs(project_id, pipeline.id) if pipeline else []
+            failed = [j for j in jobs if j.status == "failed"][:LOG_JOBS]
+            log_job, log = None, ""
+            if failed:
+                log_job, log = failed[0].id, client.job_log(project_id, failed[0].id)[-LOG_KEEP:]
+        except NetworkError:
+            if stored is None:
+                raise
+            self._offline(None)
+            return stored[1]
+        data = TagPipelineData(fetched_at=_now(), pipeline=pipeline, jobs=tuple(jobs), log_job_id=log_job, log=log)
+        self.store.put_tag_pipeline(project_id, tag.name, tag.commit_sha, data)
+        return data

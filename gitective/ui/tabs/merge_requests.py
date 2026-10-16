@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 from gitective.reporting.statistics import average
 from gitective.review.mr_evaluation import Pair, evaluate_all, load_merge_requests, load_pairs
-from gitective.review.mr_filters import names, people_cell, people_choices, step_selection, visible
+from gitective.review.mr_filters import mr_shas, names, people_cell, people_choices, step_selection, visible
 from gitective.review.rules import Evaluation, score_level
 from gitective.settings.config_file import TrackedProject
 from gitective.shared.dates import format_datetime
+from gitective.shared.search import sha_hit
 from gitective.ui.components.filter_bar import MrFilterBar
 from gitective.ui.components.grid import Column, sort_rows
 from gitective.ui.components.pagination import Pager
-from gitective.ui.components.widgets import search_box
 from gitective.ui.tabs.data_tab import DataTab
 from gitective.ui.tabs.direct_commits import CommitsView
 from gitective.ui.tabs.mr_detail_panel import MrDetailPanel
@@ -54,8 +54,8 @@ BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
     "score": lambda e: e.score,
 }
 
-Loaded = tuple[list[Evaluation], list[Exception]]
 Key = tuple[int, int]
+Loaded = tuple[list[Evaluation], list[Exception], dict[Key, list[str]]]
 
 
 def _key(ev: Evaluation) -> Key:
@@ -73,34 +73,39 @@ class MrTab(DataTab):
         self._visible_rows: list[Evaluation] = []
         self._tracked: set[int] = set()
         self._selected: Key | None = None
+        self._commit_shas: dict[Key, list[str]] = {}  # stored commits of the loaded MRs, for the SHA search
         self._soft = False  # reload after a synchronisation: keep page and selection
 
-        self.bar = MrFilterBar(self, app.filters, app.get_theme, app.refresh, lambda m: app.notify("error", m))
-        self.bar.pack(fill="x")
+        self.bar = MrFilterBar(self, app.filters, app.get_theme, app.refresh, lambda m: app.notify("error", m),
+                               self._search_changed)
+        self.bar.pack(fill="x", padx=16, pady=(12, 0))
         self.repos, self.authors = self.bar.repos, self.bar.authors
+        self._search = self.bar.search
         # Two interchangeable views under the shared filter bar.
         self._mr_view = ttk.Frame(self)
-        self.commits = CommitsView(self, app, self.repos, self.authors)
-        summary = ttk.Frame(self._mr_view, padding=(16, 10, 16, 6))
-        summary.pack(fill="x")
-        self._count = ttk.Label(summary, style="Title.TLabel")
-        self._count.pack(side="left")
-        ttk.Label(summary, text="Score moyen", style="Muted.TLabel").pack(side="left", padx=(18, 6))
-        self._avg = tk.Label(summary, padx=8, pady=1)
-        self._avg.pack(side="left")
-        self._progress_text = ttk.Label(summary, style="Muted.TLabel")
-        self._progress_text.pack(side="left", padx=(18, 0))
-        self._search = search_box(summary, lambda: self._apply_view(reset_page=True))
-        ttk.Label(summary, text="Clic sur un titre : ouvre GitLab · sur la ligne : détail",
-                  style="Muted.TLabel").pack(side="right")
+        self.commits = CommitsView(self, app, self.repos, self.authors, self._search)
 
-        # Table on the left, detail panel on the right when a row is selected (DE-02).
+        # Table card on the left, detail panel on the right when a row is selected (DE-02).
         self._split = ttk.PanedWindow(self._mr_view, orient="horizontal")
-        self._split.pack(fill="both", expand=True, padx=16)
+        self._split.pack(fill="both", expand=True, padx=16, pady=(12, 0))
         left = ttk.Frame(self._split)
         self._split.add(left, weight=1)
+        card = ttk.Frame(left, style="Card.TFrame", padding=(10, 8, 10, 10))
+        card.pack(fill="both", expand=True)
+        summary = ttk.Frame(card, style="Bar.TFrame", padding=(6, 2, 6, 8))
+        summary.pack(fill="x")
+        self._count = ttk.Label(summary, style="Section.TLabel")
+        self._count.pack(side="left")
+        ttk.Label(summary, text="Score moyen", style="BarMuted.TLabel").pack(side="left", padx=(18, 6))
+        self._avg = tk.Label(summary, padx=8, pady=1)
+        self._avg.pack(side="left")
+        self._progress_text = ttk.Label(summary, style="BarMuted.TLabel")
+        self._progress_text.pack(side="left", padx=(18, 6))
+        self._progress = ttk.Progressbar(summary, length=220, mode="determinate")
+        ttk.Label(summary, text="Clic sur un titre : ouvre GitLab · sur la ligne : détail",
+                  style="BarMuted.TLabel").pack(side="right")
         self.grid_view = self.make_grid(BASE_COLUMNS, "Aucune merge request pour ces filtres", links=True,
-                                        master=left, on_select=self._row_selected)
+                                        master=card, on_select=self._row_selected)
         self.grid_view.pack(fill="both", expand=True)
         self.pager = Pager(left, self._page_changed, page_size=app.filters.page_size)
         self.pager.pack(fill="x", pady=10)
@@ -174,9 +179,14 @@ class MrTab(DataTab):
 
     # ------------------------------------------------------------- Loading
 
+    def _search_changed(self) -> None:
+        (self.commits if self._direct else self)._apply_view(reset_page=True)
+
     def _filters_changed(self, what: str) -> None:
         self.app.persist_filters()
-        if what in ("state", "badge"):
+        if what == "badge":
+            self._search.set("")  # BA-02
+        if what in ("state", "badge", "reset"):
             self._show_view()
             self.update_columns()
         if what in ("authors", "mergers", "assignees", "reviewers", "drafts"):
@@ -213,26 +223,39 @@ class MrTab(DataTab):
                      if mr.project_id not in tracked_ids and (not wanted or mr.project_id in wanted)]
         data, rules, people = self.app.data, self.app.rules, self.app.people
         assert rules is not None
-        self._progress_text.configure(text="Chargement…")
         workers = self.app.settings.parallel_requests
+        # "Total" reads the history missing from the base, repository by repository (FI-19).
+        phase = ["Chargement de l'historique absent de la base" if period is None and state == "merged"
+                 else "Chargement des MR"]
+        self._show_progress(phase[0], 0, len(projects))
+        store = self.app.store
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
-            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data, p, state, period))
-            return evaluate_all(data, [*pairs, *extra], rules, people, progress, workers), list(errors)
+            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data, p, state, period), progress)
+            phase[0] = "Lecture des commits des MR"
+            evaluations = evaluate_all(data, [*pairs, *extra], rules, people, progress, workers)
+            return evaluations, list(errors), store.mr_commit_shas({e.mr.project_id for e in evaluations})
 
         self.app.runner.run("mr", task, lambda r: self._loaded(r, tracked_ids, soft), self._failed,
-                            on_progress=self._on_progress)
+                            on_progress=lambda done, total: self._show_progress(phase[0], done, total))
 
-    def _on_progress(self, done: int, total: int) -> None:
-        self._progress_text.configure(text=f"Lecture des commits des MR : {done} / {total}")
+    def _show_progress(self, text: str, done: int, total: int) -> None:
+        self._progress_text.configure(text=f"{text} : {done} / {total}" if total else text)
+        self._progress.configure(maximum=max(total, 1), value=done)
+        if not self._progress.winfo_ismapped():
+            self._progress.pack(side="left", after=self._progress_text)
+
+    def _hide_progress(self) -> None:
+        self._progress.pack_forget()
+        self._progress_text.configure(text="")
 
     def _failed(self, exc: BaseException) -> None:
-        self._progress_text.configure(text="")
+        self._hide_progress()
         self.app.report_error(exc)
 
     def _loaded(self, result: Loaded, tracked: set[int], soft: bool) -> None:
-        evaluations, errors = result
-        self._progress_text.configure(text="")
+        evaluations, errors, self._commit_shas = result
+        self._hide_progress()
         self.absorb(evaluations, errors)
         self.app.register_people((p.key, p.name) for e in evaluations for p in (*e.assignees, *e.reviewers))
         self._tracked = tracked
@@ -255,7 +278,7 @@ class MrTab(DataTab):
     # ---------------------------------------------------------------- View
 
     def _apply_view(self, reset_page: bool = False) -> None:
-        rows = visible(self._evaluations, self.app.filters, self._search.get())
+        rows = visible(self._evaluations, self.app.filters, self._search.get(), self._commit_shas)
         self._visible_rows = sort_rows(rows, self._sort_keys()[self._sort_key], self._ascending)
         self.pager.update_total(len(self._visible_rows), reset=reset_page)
         self._show_summary()
@@ -274,7 +297,7 @@ class MrTab(DataTab):
             self._avg.configure(text=f"{avg:.0f} %", background=bg, foreground=fg,
                                 font=(theme.font[0], theme.font[1] + 1, "bold"))
         else:
-            self._avg.configure(text="—", background=theme.bg, foreground=theme.muted, font=theme.font)
+            self._avg.configure(text="—", background=theme.surface, foreground=theme.muted, font=theme.font)
 
     def _page_rows(self) -> list[Evaluation]:
         return self._visible_rows[self.pager.slice()]
@@ -283,6 +306,7 @@ class MrTab(DataTab):
         settings = self.app.settings
         me = self.app.me_key()
         new = self.app.new_mr_keys() if self._shows_new else set()
+        needle = self._search.get()
         rows = []
         for ev in self._page_rows():
             mr = ev.mr
@@ -302,6 +326,9 @@ class MrTab(DataTab):
             }
             if mr.draft:
                 row["_muted"], row["_tag"] = True, "BROUILLON"
+            else:
+                # Which SHA the search found: "merge 4f1a9c2e" before the title (FI-20).
+                row["_tag"] = sha_hit(needle, mr_shas(ev, self._commit_shas))
             for cid in self._criteria_ids:
                 result = ev.results.get(cid)
                 if result:

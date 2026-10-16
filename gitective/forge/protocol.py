@@ -12,6 +12,7 @@ from typing import Protocol
 
 from gitective.forge.models import (
     Approvals,
+    Branch,
     ChangedFile,
     Commit,
     CommitStatus,
@@ -19,8 +20,10 @@ from gitective.forge.models import (
     Job,
     MergeRequest,
     MergeState,
+    PipelineRef,
     Project,
     ProtectedBranch,
+    Tag,
     User,
 )
 
@@ -79,6 +82,18 @@ class ForgeClient(Protocol):
         ...
 
     def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
+        ...
+
+    def list_branches(self, project_id: int) -> list[Branch]:
+        """Every branch with its last commit, merged / protected / default flags (BR-10)."""
+        ...
+
+    def list_tags(self, project_id: int) -> list[Tag]:
+        """Every tag with its message, pointed commit and release (TG-08)."""
+        ...
+
+    def latest_pipeline(self, project_id: int, ref: str) -> PipelineRef | None:
+        """Most recent pipeline of a branch or tag (TG-09)."""
         ...
 
     def list_my_open_merge_requests(self, user_id: int, role: str) -> list[MergeRequest]:

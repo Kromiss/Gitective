@@ -8,6 +8,8 @@ DATE_FORMAT = "%d/%m/%Y"
 DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 
 Period = tuple[datetime, datetime]
+# "Total" has no start date: commits are then searched from this date (FI-19, ST-05).
+HISTORY_START = datetime(2000, 1, 1).astimezone()
 
 
 def now_local() -> datetime:

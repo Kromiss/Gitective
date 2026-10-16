@@ -23,7 +23,7 @@ from gitective.review.mr_detail import (
 from gitective.review.rules import KO, NA, OK, Evaluation, score_level
 from gitective.shared.dates import business_days, format_datetime, now_local, to_local
 from gitective.shared.people import PersonRef
-from gitective.ui.components.widgets import ScrollableFrame
+from gitective.ui.components.side_panel import SidePanel
 from gitective.ui.themes import Theme
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 ICONS = {OK: "✓", KO: "✕", WARN: "!", NA: "–"}
 
 
-class MrDetailPanel(ttk.Frame):
+class MrDetailPanel(SidePanel):
     """Read-only summary of one MR; the forge data is loaded in the background (DE-12)."""
 
     def __init__(self, master: tk.Misc, app: App, on_close: Callable[[], None]) -> None:
@@ -45,10 +45,6 @@ class MrDetailPanel(ttk.Frame):
         self._loading = False
         self._error = ""
         self._all_files = False
-        self._scroller = ScrollableFrame(self)
-        self._scroller.pack(fill="both", expand=True)
-        self.bind("<Configure>", lambda e: self._wrap_changed(e.width))
-        self._wrap = 360
 
     @property
     def evaluation(self) -> Evaluation | None:
@@ -80,20 +76,11 @@ class MrDetailPanel(ttk.Frame):
 
         self.app.runner.run("detail", lambda _p: data.mr_detail(mr.project_id, mr), done, failed)
 
-    def _wrap_changed(self, width: int) -> None:
-        wrap = max(200, width - 70)
-        if abs(wrap - self._wrap) > 20:
-            self._wrap = wrap
-            self.render()
-
     # ---------------------------------------------------------------- Drawing
 
     def render(self) -> None:
-        inner = self._scroller.inner
-        for child in inner.winfo_children():
-            child.destroy()
         theme = self.app.get_theme()
-        self._scroller.set_background(theme.bg)
+        inner = self._clear(theme)
         if self._ev is None:
             return
         self._header(inner, theme)
@@ -119,60 +106,14 @@ class MrDetailPanel(ttk.Frame):
             when = format_datetime(to_local(detail.fetched_at))
             tk.Label(footer, text=f"Lu le {when}", background=theme.bg, foreground=theme.muted,
                      font=self._font(theme, -1)).pack(side="left")
-        # Children were rebuilt: scroll with the wheel over all of them.
-        for widget in _descendants(inner):
-            self._scroller.bind_wheel(widget)
-
-    def _font(self, theme: Theme, delta: int = 0, weight: str = "normal") -> tuple[str, int, str]:
-        return (theme.font[0], theme.font[1] + delta, weight)
-
-    def _card(self, parent: tk.Misc, theme: Theme, title: str = "", right: str = "",
-              right_colors: tuple[str, str] | None = None) -> tk.Frame:
-        card = tk.Frame(parent, background=theme.surface, highlightthickness=1, highlightbackground=theme.border)
-        card.pack(fill="x", padx=12, pady=(10, 0))
-        if title or right:
-            head = tk.Frame(card, background=theme.surface)
-            head.pack(fill="x", padx=12, pady=(9, 4))
-            tk.Label(head, text=title.upper(), background=theme.surface, foreground=theme.muted,
-                     font=self._font(theme, -2, "bold")).pack(side="left")
-            if right:
-                bg, fg = right_colors or (theme.surface, theme.text)
-                tk.Label(head, text=right, background=bg, foreground=fg, padx=6,
-                         font=self._font(theme, 2, "bold")).pack(side="right")
-        body = tk.Frame(card, background=theme.surface)
-        body.pack(fill="x", padx=12, pady=(0, 9))
-        return body
-
-    def _line(self, parent: tk.Misc, theme: Theme, left: str, right: str = "", color: str | None = None,
-              right_color: str | None = None, icon: str = "", icon_color: str = "", mono: bool = False) -> None:
-        row = tk.Frame(parent, background=theme.surface)
-        row.pack(fill="x", pady=1)
-        if icon:
-            tk.Label(row, text=icon, width=2, background=theme.surface, foreground=icon_color,
-                     font=self._font(theme, 0, "bold")).pack(side="left")
-        font = (theme.mono[0], theme.mono[1] - 1) if mono else self._font(theme)
-        if right:
-            tk.Label(row, text=right, background=theme.surface, foreground=right_color or theme.muted,
-                     font=font).pack(side="right")
-        tk.Label(row, text=left, background=theme.surface, foreground=color or theme.text, font=font,
-                 justify="left", anchor="w", wraplength=self._wrap - 120 if right else self._wrap - 20).pack(
-            side="left", fill="x")
-
-    def _placeholder(self, parent: tk.Misc, theme: Theme, title: str) -> None:
-        body = self._card(parent, theme, title)
-        text = self._error or "Chargement…"
-        tk.Label(body, text=text, background=theme.surface, foreground=theme.muted, font=self._font(theme),
-                 wraplength=self._wrap - 20, justify="left").pack(anchor="w")
+        self._bind_wheel()
 
     def _header(self, parent: tk.Misc, theme: Theme) -> None:
         assert self._ev is not None
         ev, mr = self._ev, self._ev.mr
         head = tk.Frame(parent, background=theme.bg)
         head.pack(fill="x", padx=12, pady=(12, 0))
-        close = tk.Label(head, text="✕", background=theme.bg, foreground=theme.muted, cursor="hand2",
-                         font=self._font(theme, 3))
-        close.pack(side="right", anchor="n")
-        close.bind("<Button-1>", lambda e: self._on_close())
+        self._close_button(head, theme, self._on_close)
         title = f"BROUILLON  {mr.title}" if mr.draft else mr.title
         tk.Label(head, text=title, background=theme.bg, foreground=theme.text, font=self._font(theme, 3, "bold"),
                  wraplength=self._wrap - 30, justify="left", anchor="w").pack(fill="x")
@@ -197,10 +138,6 @@ class MrDetailPanel(ttk.Frame):
             self._tag(tags, f"Fermée le {format_datetime(mr.closed_at)}", theme.na, theme)
         if self._is_new:
             self._tag(tags, "Nouvelle", (theme.header, theme.second), theme)
-
-    def _tag(self, parent: tk.Misc, text: str, colors: tuple[str, str], theme: Theme) -> None:
-        tk.Label(parent, text=text, background=colors[0], foreground=colors[1], padx=7, pady=1,
-                 font=self._font(theme, -1, "bold")).pack(side="left", padx=(0, 6), pady=2)
 
     def _status_color(self, theme: Theme, status: str) -> str:
         return {OK: theme.ok[1], KO: theme.ko[1], WARN: theme.orange[1]}.get(status, theme.muted)
@@ -335,10 +272,3 @@ class MrDetailPanel(ttk.Frame):
         self._all_files = True
         self.render()
 
-
-def _descendants(widget: tk.Misc) -> list[tk.Misc]:
-    found = []
-    for child in widget.winfo_children():
-        found.append(child)
-        found.extend(_descendants(child))
-    return found

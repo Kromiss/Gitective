@@ -321,3 +321,73 @@ class Job:
         duration = data.get("duration")
         return cls(id=int(data["id"]), name=data.get("name", ""), status=data.get("status", ""),
                    duration=float(duration) if duration is not None else None, web_url=data.get("web_url", "") or "")
+
+
+# ---------------------------------------------------------------- Branches and tags (11, 12)
+
+
+@dataclass(frozen=True)
+class Branch:
+    """A branch with its last commit and GitLab flags (BR-10)."""
+
+    name: str
+    commit_sha: str
+    committed_date: datetime | None
+    author_name: str = ""
+    author_email: str = ""
+    merged: bool = False
+    protected: bool = False
+    default: bool = False
+    web_url: str = ""
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Branch:
+        commit = data.get("commit") or {}
+        return cls(
+            name=data.get("name", ""),
+            commit_sha=commit.get("id", "") or "",
+            committed_date=parse_datetime(commit.get("committed_date") or commit.get("created_at")),
+            author_name=commit.get("author_name", "") or "",
+            author_email=commit.get("author_email", "") or "",
+            merged=bool(data.get("merged", False)),
+            protected=bool(data.get("protected", False)),
+            default=bool(data.get("default", False)),
+            web_url=data.get("web_url", "") or "",
+        )
+
+
+@dataclass(frozen=True)
+class Tag:
+    """A tag, its pointed commit and its GitLab release (TG-08)."""
+
+    name: str
+    message: str
+    commit_sha: str
+    commit_title: str = ""
+    committed_date: datetime | None = None
+    author_name: str = ""
+    author_email: str = ""
+    annotated: bool = False  # annotated tag (own tag object) or lightweight tag
+    release_name: str = ""
+    release_notes: str = ""
+    has_release: bool = False
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Tag:
+        commit = data.get("commit") or {}
+        release = data.get("release") or {}
+        sha = commit.get("id", "") or ""
+        target = data.get("target") or sha
+        return cls(
+            name=data.get("name", ""),
+            message=(data.get("message") or "").strip(),
+            commit_sha=sha,
+            commit_title=commit.get("title", "") or "",
+            committed_date=parse_datetime(commit.get("committed_date") or commit.get("created_at")),
+            author_name=commit.get("author_name", "") or "",
+            author_email=commit.get("author_email", "") or "",
+            annotated=bool(data.get("message")) or target != sha,
+            release_name=release.get("name") or release.get("tag_name") or "",
+            release_notes=(release.get("description") or "").strip(),
+            has_release=bool(release),
+        )

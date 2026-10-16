@@ -1,4 +1,4 @@
-"""Filters of the Merge Requests tab, independent of the interface (FI-01..FI-17)."""
+"""Filters of the Merge Requests tab, independent of the interface (FI-01..FI-19)."""
 
 from __future__ import annotations
 
@@ -22,12 +22,14 @@ class FilterState:
 
     Listeners receive the name of what changed: 'state', 'period',
     'authors', 'mergers', 'assignees', 'reviewers', 'drafts', 'repos', or
-    'badge' when a badge reset several of them at once (BA-02).
+    'badge' / 'reset' when a badge or the reset button changed several of
+    them at once (BA-02, FI-18).
     """
 
     def __init__(self, saved: Filters) -> None:
         self.state = saved.state if saved.state in dict(STATES) else "merged"
         self.since_yesterday = saved.since_yesterday
+        self.total = saved.total and not saved.since_yesterday  # no date limit (FI-19)
         today = format_date(now_local().date())
         self.date_from = saved.date_from or today
         self.date_to = saved.date_to or today
@@ -47,22 +49,33 @@ class FilterState:
         for listener in list(self._listeners):
             listener(what)
 
-    def period(self) -> Period:
-        """Current date range; raises ValueError on a malformed date."""
+    def period(self) -> Period | None:
+        """Current date range, None for "Total"; raises ValueError on a malformed date."""
+        if self.total:
+            return None
         if self.since_yesterday:
             return since_yesterday()
         return day_range(parse_date(self.date_from), parse_date(self.date_to))
 
     def period_text(self) -> str:
+        if self.total:
+            return "Total (sans limite de date)"
         if self.since_yesterday:
             return "Depuis hier (hier 00:00 → maintenant)"
         return f"{self.date_from} → {self.date_to}"
 
     def to_settings(self) -> Filters:
         return Filters(state=self.state, since_yesterday=self.since_yesterday, date_from=self.date_from,
-                       date_to=self.date_to, authors=list(self.authors), mergers=list(self.mergers),
+                       date_to=self.date_to, total=self.total, authors=list(self.authors), mergers=list(self.mergers),
                        assignees=list(self.assignees), reviewers=list(self.reviewers), drafts=self.drafts,
                        repos=list(self.repos), page_size=self.page_size)
+
+    def reset(self) -> None:
+        """Every filter back to "all", dates to "Depuis hier"; state, page size and sort kept (FI-18)."""
+        self.authors, self.mergers, self.assignees, self.reviewers, self.repos = [], [], [], [], []
+        self.drafts = "all"
+        self.since_yesterday, self.total = True, False
+        self.changed("reset")
 
     def show_mine(self, role: str, me_key: str) -> None:
         """Open MRs where the user has `role`, every other filter reset (BA-02)."""

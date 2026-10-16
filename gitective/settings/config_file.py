@@ -22,6 +22,10 @@ THEMES = ("default", "light", "dark", "win95", "matrix")
 REFRESH_RANGE = (1, 120)  # automatic synchronisation period, in minutes (CH-13)
 DRAFT_MODES = ("all", "exclude", "only")  # drafts filter (FI-17)
 PAGE_SIZES = (20, 50, 100)
+# Branch states (BR-04), in priority order; the default filter hides deleted branches (BR-06).
+BRANCH_STATES = ("deleted", "merged", "dead", "active")
+DEFAULT_BRANCH_STATES = ["active", "dead", "merged"]
+DEFAULT_BRANCH_EXCLUDE = r"^(main|master|develop.*)$"
 PARALLEL_RANGE = (1, 16)
 
 # Fields a custom rule can inspect (RP-02).
@@ -88,6 +92,7 @@ class Filters:
     since_yesterday: bool = True
     date_from: str = ""
     date_to: str = ""
+    total: bool = False  # "Total": no date limit (FI-19)
     authors: list[str] = dc_field(default_factory=list)
     mergers: list[str] = dc_field(default_factory=list)
     assignees: list[str] = dc_field(default_factory=list)
@@ -95,6 +100,25 @@ class Filters:
     drafts: str = "all"
     repos: list[int] = dc_field(default_factory=list)
     page_size: int = 20
+
+
+@dataclass
+class BranchFilters:
+    """Last filters of the Branches tab (BR-06); the name search is not remembered."""
+
+    authors: list[str] = dc_field(default_factory=list)
+    repos: list[int] = dc_field(default_factory=list)
+    states: list[str] = dc_field(default_factory=lambda: list(DEFAULT_BRANCH_STATES))
+
+
+@dataclass
+class TagFilters:
+    """Last filters of the Tags tab (TG-04); "Total" (no date limit) by default."""
+
+    repos: list[int] = dc_field(default_factory=list)
+    total: bool = True
+    date_from: str = ""
+    date_to: str = ""
 
 
 @dataclass
@@ -128,7 +152,12 @@ class Settings:
     # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
     parallel_requests: int = 6
     filters: Filters = dc_field(default_factory=Filters)
-    # Column widths set by dragging, per table ("mr", "commits", "stats", "stats_repo") then column key.
+    # Branches tab (BR-04, BR-05): exclusion regex and age of a dead branch, in calendar days.
+    branch_exclude_regex: str = DEFAULT_BRANCH_EXCLUDE
+    dead_branch_days: int = 30
+    branch_filters: BranchFilters = dc_field(default_factory=BranchFilters)
+    tag_filters: TagFilters = dc_field(default_factory=TagFilters)
+    # Column widths set by dragging, per table ("mr", "commits", "stats", "stats_repo", "branches", "tags").
     column_widths: dict[str, dict[str, int]] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -165,6 +194,10 @@ class Settings:
             detail_width=clamp_width(data.get("detail_width", base.detail_width)),
             stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
             column_widths=_column_widths(data.get("column_widths")),
+            branch_exclude_regex=str(data.get("branch_exclude_regex", base.branch_exclude_regex)),
+            dead_branch_days=clamp_dead_days(data.get("dead_branch_days", base.dead_branch_days)),
+            branch_filters=_branch_filters(data.get("branch_filters")),
+            tag_filters=TagFilters(**_pick(_dict(data.get("tag_filters")), TagFilters)),
         )
 
     @property
@@ -184,6 +217,14 @@ def clamp_parallel(value: Any) -> int:
     except (TypeError, ValueError):
         number = Settings.parallel_requests
     return max(PARALLEL_RANGE[0], min(PARALLEL_RANGE[1], number))
+
+
+def clamp_dead_days(value: Any) -> int:
+    """Age of a dead branch in calendar days, at least 1 (BR-04)."""
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return Settings.dead_branch_days
 
 
 def clamp_width(value: Any) -> int:
@@ -208,6 +249,16 @@ def _filters(data: Any) -> Filters:
     filters = Filters(**_pick(data if isinstance(data, dict) else {}, Filters))
     if filters.drafts not in DRAFT_MODES:
         filters.drafts = "all"
+    return filters
+
+
+def _dict(data: Any) -> dict[str, Any]:
+    return data if isinstance(data, dict) else {}
+
+
+def _branch_filters(data: Any) -> BranchFilters:
+    filters = BranchFilters(**_pick(_dict(data), BranchFilters))
+    filters.states = [state for state in filters.states if state in BRANCH_STATES]
     return filters
 
 
