@@ -1,4 +1,4 @@
-"""Base class of the data views (Merge Requests, direct commits, Statistics)."""
+"""Base class of the data views (Merge Requests, direct commits, Branches, Tags, Statistics)."""
 
 from __future__ import annotations
 
@@ -56,9 +56,7 @@ class DataTab(ttk.Frame):
         widget.set_selected(self.app.filters.authors)
         return widget
 
-    def refresh_button(self, parent: tk.Misc, compact: bool = False) -> ttk.Button:
-        if compact:
-            return ttk.Button(parent, text="⟳", width=3, style="Accent.TButton", command=self.app.refresh)
+    def refresh_button(self, parent: tk.Misc) -> ttk.Button:
         return ttk.Button(parent, text="⟳  Rafraîchir (F5)", style="Accent.TButton", command=self.app.refresh)
 
     # ------------------------------------------------------------- Loading

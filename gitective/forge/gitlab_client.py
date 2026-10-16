@@ -25,6 +25,7 @@ from gitective.forge.errors import (
 )
 from gitective.forge.models import (
     Approvals,
+    Branch,
     ChangedFile,
     Commit,
     CommitStatus,
@@ -32,8 +33,10 @@ from gitective.forge.models import (
     Job,
     MergeRequest,
     MergeState,
+    PipelineRef,
     Project,
     ProtectedBranch,
+    Tag,
     User,
 )
 
@@ -277,6 +280,22 @@ class GitLabClient:
     def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
         """List the branch protection rules of a project."""
         return [ProtectedBranch.from_json(b) for b in self._paginate(f"projects/{project_id}/protected_branches")]
+
+    # ------------------------------------------------- Branches and tags (11, 12)
+
+    def list_branches(self, project_id: int) -> list[Branch]:
+        """Every branch of a project with its last commit and flags (BR-10)."""
+        return [Branch.from_json(b) for b in self._paginate(f"projects/{project_id}/repository/branches")]
+
+    def list_tags(self, project_id: int) -> list[Tag]:
+        """Every tag of a project with its message, pointed commit and release (TG-08)."""
+        return [Tag.from_json(t) for t in self._paginate(f"projects/{project_id}/repository/tags")]
+
+    def latest_pipeline(self, project_id: int, ref: str) -> PipelineRef | None:
+        """Most recent pipeline of a branch or tag, None when it never ran (TG-09)."""
+        data = self._get(f"projects/{project_id}/pipelines",
+                         {"ref": ref, "order_by": "id", "sort": "desc", "per_page": 1})
+        return PipelineRef.from_json(data[0]) if data else None
 
     # ------------------------------------------------- Token owner's MRs (6.4)
 

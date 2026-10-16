@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import datetime
 
 from gitective.forge.errors import ForgeError
 from gitective.forge.models import Commit, CommitStatus, MergeRequest
@@ -28,10 +29,14 @@ def load_merge_requests(
     Merged MRs are filtered on their merge date; open and closed MRs are the
     complete lists (FI-05), drafts included: the tab marks and filters them
     (FI-08, FI-16). A merge always updates the MR, so the MRs updated since
-    the start of the period include every MR merged in it.
+    the start of the period include every MR merged in it. A merged state
+    without period ("Total", FI-19) reads the whole history once.
     """
-    since = period[0] if state == "merged" and period else now_local()
-    start = period[0] if state == "merged" and period else None
+    if state == "merged":
+        since: datetime | None = period[0] if period else None
+        start = since
+    else:
+        since, start = now_local(), None
     mrs = data.merge_requests(project.id, since, state=state, merged_after=start)
     if state == "merged":
         return [m for m in mrs if m.state == "merged" and not m.draft and in_period(m.merged_at, period)]
@@ -52,11 +57,14 @@ def load_all_states(
 def load_pairs(
     projects: Sequence[TrackedProject],
     loader: Callable[[TrackedProject], list[MergeRequest]],
+    progress: Progress | None = None,
 ) -> tuple[list[Pair], list[ForgeError]]:
     """Load the MRs of each project; a failing project is reported, not fatal (ER-03)."""
     pairs: list[Pair] = []
     errors: list[ForgeError] = []
-    for project in projects:
+    for index, project in enumerate(projects):
+        if progress:
+            progress(index, len(projects))
         try:
             pairs.extend((project, mr) for mr in loader(project))
         except ForgeError as exc:

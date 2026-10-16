@@ -60,6 +60,7 @@ class SettingsTab(ttk.Frame):
         self._build_rules(columns[1])
         self._build_tester(columns[1])
         self._build_projects(columns[2])
+        self._build_branches(columns[2])
         self._build_people(columns[2])
 
         actions = ttk.Frame(self, padding=(16, 10))
@@ -70,9 +71,12 @@ class SettingsTab(ttk.Frame):
 
     # ------------------------------------------------------------ Sections
 
-    def _section(self, parent: tk.Misc, title: str) -> ttk.LabelFrame:
-        frame = ttk.LabelFrame(parent, text=title, padding=12)
-        frame.pack(fill="x", pady=(0, 12))
+    def _section(self, parent: tk.Misc, title: str, pack: bool = True) -> ttk.Frame:
+        """Rounded card with its title, like the filter cards of the data tabs."""
+        frame = ttk.Frame(parent, style="Card.TFrame", padding=(14, 12))
+        ttk.Label(frame, text=title, style="Section.TLabel").pack(anchor="w", pady=(0, 4))
+        if pack:
+            frame.pack(fill="x", pady=(0, 12))
         return frame
 
     def _labeled_entry(self, parent: tk.Misc, label: str, var: tk.StringVar, **options: object) -> ttk.Entry:
@@ -115,7 +119,7 @@ class SettingsTab(ttk.Frame):
 
     def _build_notifications(self, parent: tk.Misc) -> None:
         """Desktop notifications; the Developer profile only sees "my MR merged" (NO-01, OC-11)."""
-        self._notifications = ttk.LabelFrame(parent, text="Notifications de bureau", padding=12)
+        self._notifications = self._section(parent, "Notifications de bureau", pack=False)
         self._notifications_parent = parent
         self._highlight_job: str | None = None
         self.notify_merges = tk.BooleanVar()
@@ -141,7 +145,9 @@ class SettingsTab(ttk.Frame):
         height = max(1, self._scroller.inner.winfo_height())
         self._scroller.canvas.yview_moveto(max(0.0, (top - 12) / height))
         checks = [self._own_check, *self._merger_checks]
-        frame.configure(style="Highlight.TLabelframe")
+        title = frame.winfo_children()[0]  # the card title (see _section)
+        frame.state(["alternate"])  # accent border of the card
+        title.configure(style="Highlight.TLabel")  # type: ignore[call-arg]
         for check in checks:
             check.configure(style="Highlight.TCheckbutton")
         self._own_check.focus_set()
@@ -150,7 +156,8 @@ class SettingsTab(ttk.Frame):
 
         def restore() -> None:
             self._highlight_job = None
-            frame.configure(style="TLabelframe")
+            frame.state(["!alternate"])
+            title.configure(style="Section.TLabel")  # type: ignore[call-arg]
             for check in checks:
                 check.configure(style="TCheckbutton")
 
@@ -263,6 +270,20 @@ class SettingsTab(ttk.Frame):
         self._branch_vars: dict[int, tk.StringVar] = {}
         self._ci_vars: dict[int, tk.BooleanVar] = {}
 
+    def _build_branches(self, parent: tk.Misc) -> None:
+        """Exclusion regex and dead branch threshold of the Branches tab (OC-10)."""
+        box = self._section(parent, "Branches")
+        self.branch_regex = tk.StringVar()
+        self.dead_days = tk.StringVar()
+        self._labeled_entry(box, "Regex d'exclusion (insensible à la casse)", self.branch_regex)
+        ttk.Label(box, text="La branche par défaut et les branches protégées sont toujours masquées.",
+                  style="BarMuted.TLabel", wraplength=320).pack(anchor="w", pady=(4, 0))
+        row = ttk.Frame(box, style="Surface.TFrame")
+        row.pack(fill="x", pady=(10, 0))
+        ttk.Label(row, text="Branche morte après", style="Bar.TLabel").pack(side="left")
+        ttk.Spinbox(row, from_=1, to=3650, textvariable=self.dead_days, width=5).pack(side="left", padx=8)
+        ttk.Label(row, text="jours calendaires sans commit", style="Bar.TLabel").pack(side="left")
+
     def _build_people(self, parent: tk.Misc) -> None:
         box = self._section(parent, "Personnes et comptes")
         ttk.Button(box, text="+ Personne", command=lambda: self._edit_person(None)).pack(anchor="w")
@@ -288,6 +309,8 @@ class SettingsTab(ttk.Frame):
         self.notify_own_merged.set(d.notify_own_merged)
         self.link_regex.set(d.link_regex)
         self.ticket_regex.set(d.ticket_regex)
+        self.branch_regex.set(d.branch_exclude_regex)
+        self.dead_days.set(str(d.dead_branch_days))
         for criterion, var in self.weights.items():
             var.set(_fmt(d.weights.get(criterion, 0)))
         self.green.set(_fmt(d.green_threshold))
@@ -307,13 +330,15 @@ class SettingsTab(ttk.Frame):
         d.theme = self.theme.get()
         d.link_regex = self.link_regex.get()
         d.ticket_regex = self.ticket_regex.get()
+        d.branch_exclude_regex = self.branch_regex.get().strip()
         d.assignee_rule = self.assignee_rule.get()
         d.notify_merges = self.notify_merges.get()
         d.notify_assigned = self.notify_assigned.get()
         d.notify_own_merged = self.notify_own_merged.get()
         error = apply_numbers(d, NumberFields(
             weights={c: v.get() for c, v in self.weights.items()}, green=self.green.get(),
-            orange=self.orange.get(), parallel=self.parallel.get(), sync_minutes=self.sync_minutes.get()))
+            orange=self.orange.get(), parallel=self.parallel.get(), sync_minutes=self.sync_minutes.get(),
+            dead_branch_days=self.dead_days.get()))
         if error:
             return None, error
         for project in d.projects:

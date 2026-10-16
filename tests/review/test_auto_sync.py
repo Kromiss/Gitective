@@ -9,7 +9,7 @@ from typing import Any
 from gitective.database.store import MEMORY, Store
 from gitective.database.sync import ForgeData
 from gitective.forge.errors import AuthenticationError, NetworkError
-from gitective.forge.models import MergeRequest, ProtectedBranch, User
+from gitective.forge.models import Branch, MergeRequest, ProtectedBranch, Tag, User
 from gitective.review.auto_sync import synchronise
 from gitective.review.profile import ASSIGNEE, REVIEWER, Profile
 from gitective.review.rules import RuleSet
@@ -55,6 +55,8 @@ class Forge:
         self.fail_user: Exception | None = None
         self.down: set[int] = set()
         self.my_calls = 0
+        self.branches: dict[int, list[Branch]] = {}
+        self.tags: dict[int, list[Tag]] = {}
 
     def current_user(self) -> User:
         if self.fail_user:
@@ -71,6 +73,14 @@ class Forge:
 
     def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
         return [ProtectedBranch("main", merge_levels=(40,))]
+
+    def list_branches(self, project_id: int) -> list[Branch]:
+        if project_id in self.down:
+            raise NetworkError("down")
+        return self.branches.get(project_id, [])
+
+    def list_tags(self, project_id: int) -> list[Tag]:
+        return self.tags.get(project_id, [])
 
     def list_my_open_merge_requests(self, user_id: int, role: str) -> list[MergeRequest]:
         self.my_calls += 1
@@ -182,6 +192,32 @@ class AutoSyncTests(unittest.TestCase):
         self.forge.assigned = [opened(5)]
         self.forge.reviewing = [opened(5)]
         self.assertEqual(self.run_sync().my_mrs[0][1], frozenset({ASSIGNEE, REVIEWER}))
+
+    def test_branches_and_tags_compared_with_the_base(self) -> None:
+        """BR-10, TG-08: new ones stored, missing ones kept as deleted, a recreated one active again."""
+        feature, old = Branch("feature/a", "s1", None), Branch("feature/old", "s2", None)
+        self.forge.branches = {10: [feature, old]}
+        self.forge.tags = {10: [Tag("v1.0", "", "s1")]}
+        self.run_sync()
+        self.assertEqual({b.name: d for _, b, d in self.store.branches([10])}, {"feature/a": None, "feature/old": None})
+        self.forge.branches = {10: [feature]}
+        self.forge.tags = {10: []}
+        self.run_sync()
+        deleted = {b.name: d for _, b, d in self.store.branches([10])}
+        self.assertIsNone(deleted["feature/a"])
+        self.assertIsNotNone(deleted["feature/old"])
+        self.assertIsNotNone(self.store.tags([10])[0][2])
+        self.forge.branches = {10: [feature, old]}
+        self.run_sync()
+        self.assertIsNone({b.name: d for _, b, d in self.store.branches([10])}["feature/old"])
+
+    def test_branches_kept_when_offline(self) -> None:
+        self.forge.branches = {11: [Branch("feature/a", "s1", None)]}
+        self.run_sync()
+        self.forge.down = {11}
+        outcome = self.run_sync()
+        self.assertEqual([b.name for _, b, d in self.store.branches([11]) if d is None], ["feature/a"])
+        self.assertNotIn("NetworkError", [type(e).__name__ for e in outcome.errors])
 
 
 if __name__ == "__main__":

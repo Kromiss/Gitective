@@ -99,6 +99,32 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(opener.query(0)["state"], ["merged"])
         self.assertEqual(mrs[0].source_branch, "feature/PROJ-1-thing")
 
+    def test_branches_tags_and_latest_pipeline(self) -> None:
+        """BR-10, TG-08, TG-09."""
+        commit = {"id": "a" * 40, "title": "Fix", "author_name": "Léa", "author_email": "lea@test",
+                  "committed_date": "2026-09-12T08:00:00Z"}
+        opener = FakeOpener(
+            FakeResponse([{"name": "feature/x", "merged": True, "protected": False, "default": False,
+                           "web_url": "https://gitlab.test/g/r/-/tree/feature/x", "commit": commit}]),
+            FakeResponse([{"name": "v1.0", "message": "Version 1.0", "target": "b" * 40, "commit": commit,
+                           "release": {"tag_name": "v1.0", "description": "Notes"}}]),
+            FakeResponse([{"id": 9, "status": "failed", "updated_at": "2026-10-16T08:00:00Z"}]),
+            FakeResponse([]),
+        )
+        client, _ = make_client(opener)
+        branch = client.list_branches(10)[0]
+        assert branch.committed_date is not None
+        self.assertEqual((branch.name, branch.merged, branch.author_email, branch.committed_date.day),
+                         ("feature/x", True, "lea@test", 12))
+        tag = client.list_tags(10)[0]
+        self.assertEqual((tag.name, tag.annotated, tag.release_notes, tag.commit_sha),
+                         ("v1.0", True, "Notes", "a" * 40))
+        self.assertEqual(client.latest_pipeline(10, "v1.0").status, "failed")  # type: ignore[union-attr]
+        self.assertEqual(opener.query(2)["ref"], ["v1.0"])
+        self.assertIsNone(client.latest_pipeline(10, "v0"))
+        self.assertIn("/repository/branches", opener.requests[0].full_url)
+        self.assertIn("/repository/tags", opener.requests[1].full_url)
+
     def test_projects_pages_fetched_concurrently_in_order(self) -> None:
         def opener(request: Any, timeout: float) -> FakeResponse:
             page = int(urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)["page"][0])

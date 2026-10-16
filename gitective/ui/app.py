@@ -37,7 +37,10 @@ from gitective.review.rules import RuleSet, score_level
 from gitective.database.store import Store, StoreError
 from gitective.database.sync import ForgeData
 from gitective.settings.filter_state import FilterState
+from gitective.ui.tabs.branches import BranchesTab
 from gitective.ui.tabs.merge_requests import MrTab
+from gitective.ui.tabs.tags import TagsTab
+from gitective.ui.components.tab_bar import TabBar
 from gitective.ui.alerts.badges import Badge
 from gitective.ui.alerts.desktop_toast import Toasts, flash_taskbar
 from gitective.ui.alerts.error_banner import Banner, describe_error
@@ -80,7 +83,7 @@ class App:
         self._build_services()
 
         root.title(WINDOW_TITLE)
-        root.geometry("1360x820")
+        root.geometry("1440x880")
         root.minsize(1000, 600)
         self.logo_small = self._load_logo(48)
         self._set_icon()
@@ -139,41 +142,48 @@ class App:
                 self.root.iconphoto(True, self.logo_small)
 
     def _build_layout(self) -> None:
-        header = ttk.Frame(self.root, style="Bar.TFrame", padding=(16, 8))
+        # Header: logo, name, the main tabs, then the loading indicator and the Merger badges.
+        header = ttk.Frame(self.root, style="Header.TFrame", padding=(16, 0))
         header.pack(side="top", fill="x")
         if self.logo_small is not None:
-            self._logo_header = self.load_avatar_image(ASSETS / "logo.png", 32)
-            ttk.Label(header, image=self._logo_header, style="Bar.TLabel").pack(side="left", padx=(0, 8))
-        ttk.Label(header, text=APP_NAME, style="Bar.TLabel",
+            self._logo_header = self.load_avatar_image(ASSETS / "logo.png", 30)
+            ttk.Label(header, image=self._logo_header, style="Header.TLabel").pack(side="left", padx=(0, 8), pady=8)
+        ttk.Label(header, text=APP_NAME, style="Header.TLabel",
                   font=(self.theme.font[0], self.theme.font[1] + 4, "bold")).pack(side="left")
-        ttk.Label(header, text=f"v{__version__}", style="BarMuted.TLabel").pack(side="left", padx=8)
+        ttk.Label(header, text=f"v{__version__}", style="HeaderMuted.TLabel").pack(side="left", padx=(6, 0))
+        self.tab_bar = TabBar(header, self.get_theme, lambda i: self.notebook.select(i))
+        self.tab_bar.pack(side="left", fill="y", padx=(24, 0))
         # Merger badges, top right of every tab (BA-01); packed only for the Merger profile.
-        self._badges = ttk.Frame(header, style="Bar.TFrame")
+        self._badges = ttk.Frame(header, style="Header.TFrame")
         self._badge_assignee = Badge(self._badges, ASSIGNEE, "Assigné", self.get_theme,
                                      lambda: self.show_mine(ASSIGNEE))
         self._badge_reviewer = Badge(self._badges, REVIEWER, "Relecteur", self.get_theme,
                                      lambda: self.show_mine(REVIEWER))
         self._badge_assignee.pack(side="left", padx=(0, 10))
         self._badge_reviewer.pack(side="left")
-        self._busy = ttk.Progressbar(header, mode="indeterminate", length=140)
-        self._busy_label = ttk.Label(header, text="Chargement…", style="BarMuted.TLabel")
+        self._busy = ttk.Progressbar(header, mode="indeterminate", length=120)
+        self._busy_label = ttk.Label(header, text="Chargement…", style="HeaderMuted.TLabel")
+        ttk.Separator(self.root, orient="horizontal").pack(side="top", fill="x")
         logo = ASSETS / "logo.png"
         self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
         self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests,
                              self._open_notification_settings, self._score_colors, self._toast_logo)
 
-        self.notebook = ttk.Notebook(self.root)
+        self.notebook = ttk.Notebook(self.root, style="Pages.TNotebook")
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
         self.notebook.pack(side="top", fill="both", expand=True)
         self.overview_tab = OverviewTab(self.notebook, self)
         self.mr_tab = MrTab(self.notebook, self)
+        self.branches_tab = BranchesTab(self.notebook, self)
+        self.tags_tab = TagsTab(self.notebook, self)
         self.stats_tab = StatsTab(self.notebook, self)
         self.settings_tab = SettingsTab(self.notebook, self)
-        # The overview is the first tab, shown at launch (VE-01).
-        self.notebook.add(self.overview_tab, text="Vue d'ensemble")
-        self.notebook.add(self.mr_tab, text="Merge Requests")
-        self.notebook.add(self.stats_tab, text="Statistiques")
-        self.notebook.add(self.settings_tab, text="Config")
+        # The overview is the first tab, shown at launch (VE-01); Branches and Tags follow the MRs (BR-01, TG-01).
+        for tab, text in ((self.overview_tab, "Vue d'ensemble"), (self.mr_tab, "Merge Requests"),
+                          (self.branches_tab, "Branches"), (self.tags_tab, "Tags"),
+                          (self.stats_tab, "Statistiques"), (self.settings_tab, "Config")):
+            self.notebook.add(tab, text=text)
+            self.tab_bar.add(text)
         self.notebook.bind("<<NotebookTabChanged>>", lambda e: self._tab_changed())
         self._update_repo_items()
         self._apply_profile()
@@ -247,6 +257,10 @@ class App:
     def persist_filters(self) -> None:
         """Remember the filters in config.json (FI-06)."""
         self.settings.filters = self.filters.to_settings()
+        self._save()
+
+    def save_settings(self) -> None:
+        """Write config.json after a tab changed its remembered filters (BR-06, TG-04)."""
         self._save()
 
     def save_stats_view(self, view: str) -> None:
@@ -366,7 +380,7 @@ class App:
             if any(n.kind == "role" for n in outcome.notices):
                 flash_taskbar(self.root)
         self.settings_tab.show_profile()
-        for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
+        for tab in (self.overview_tab, self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
             tab.dirty = True
         current = self.notebook.nametowidget(self.notebook.select())
         if current is self.mr_tab:
@@ -436,6 +450,8 @@ class App:
         theme_changed = new.theme != self.settings.theme
         new.filters = self.filters.to_settings()
         new.column_widths = self.settings.column_widths
+        # Filters remembered by the tabs since the Config form was loaded.
+        new.branch_filters, new.tag_filters = self.settings.branch_filters, self.settings.tag_filters
         url_changed = new.gitlab_url.rstrip("/") != self.settings.gitlab_url.rstrip("/")
         self.settings = new
         self._save()
@@ -455,13 +471,14 @@ class App:
             self.banner.restyle()
             self._badge_assignee.redraw()
             self._badge_reviewer.redraw()
-            for tab in (self.overview_tab, self.mr_tab, self.stats_tab):
+            self.tab_bar.restyle()
+            for tab in (self.overview_tab, self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
                 tab.restyle()
         self.mr_tab.update_columns()
         self.stats_tab.update_columns()
         self._update_repo_items()
         self.settings_tab.reset()
-        for tab in (self.mr_tab, self.stats_tab):
+        for tab in (self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
             tab.dirty = True
         self.overview_tab.settings_changed()
         # Token, repositories or period may have changed: profile and own MRs again (PR-04).
@@ -494,10 +511,14 @@ class App:
             self.notify("error", f"Impossible d'écrire config.json : {exc}")
 
     def _update_repo_items(self) -> None:
-        for tab in (self.mr_tab, self.stats_tab):
+        for tab in (self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
             tab.update_repo_items()
 
+    def select_tab(self, tab: tk.Widget) -> None:
+        self.notebook.select(tab)
+
     def _tab_changed(self) -> None:
+        self.tab_bar.select(self.notebook.index("current"))
         current = self.notebook.nametowidget(self.notebook.select())
         if getattr(current, "dirty", False):
             current.reload()  # type: ignore[attr-defined]

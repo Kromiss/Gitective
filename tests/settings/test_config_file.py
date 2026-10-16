@@ -47,6 +47,17 @@ class ConfigFileTests(unittest.TestCase):
         damaged = Settings.from_dict({"token": "secret", "detail_width": "wide", "sync_minutes": None})
         self.assertEqual((damaged.token, damaged.detail_width, damaged.sync_minutes), ("secret", 420, 5))
 
+    def test_branch_and_tag_settings(self) -> None:
+        """BR-04, BR-05, BR-06, TG-04: defaults, then values read back; unknown states are dropped."""
+        default = Settings.from_dict({})
+        self.assertEqual((default.branch_exclude_regex, default.dead_branch_days, default.branch_filters.states,
+                          default.tag_filters.total),
+                         (r"^(main|master|develop.*)$", 30, ["active", "dead", "merged"], True))
+        read = Settings.from_dict({"dead_branch_days": "0", "branch_filters": {"states": ["deleted", "zz"]},
+                                   "tag_filters": "broken", "branch_exclude_regex": "^wip/"})
+        self.assertEqual((read.dead_branch_days, read.branch_filters.states, read.tag_filters.total,
+                          read.branch_exclude_regex), (1, ["deleted"], True, "^wip/"))
+
     def test_unreadable_file_gives_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "config.json"
@@ -65,6 +76,14 @@ class FormValidationTests(unittest.TestCase):
         settings = Settings(rules=[CustomRule(name="Cassée", pattern="(")])
         self.assertIn("règle « Cassée »", apply_numbers(settings, fields()))
         self.assertIn("lien ticket", apply_numbers(Settings(link_regex="[a-"), fields()))
+
+    def test_branch_regex_and_dead_days_validated(self) -> None:
+        """OC-07, OC-10."""
+        self.assertIn("exclusion des branches", apply_numbers(Settings(branch_exclude_regex="(main"), fields()))
+        self.assertIn("Branche morte", apply_numbers(Settings(), fields(dead_branch_days="0")))
+        settings = Settings()
+        self.assertEqual(apply_numbers(settings, fields(dead_branch_days=" 45 ")), "")
+        self.assertEqual(settings.dead_branch_days, 45)
 
     def test_numbers_weights_and_thresholds(self) -> None:
         self.assertIn("saisissez des nombres", apply_numbers(Settings(), fields(green="beaucoup")))

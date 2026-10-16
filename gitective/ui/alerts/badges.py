@@ -46,7 +46,7 @@ class Badge(tk.Canvas):
         count = str(self._counts.total)
         width = 12 + ICON + 7 + font.measure(self._label) + 8 + bold.measure(count) + 12
         top = 8  # room above for the dot
-        background = theme.surface  # the header bar the badges sit on
+        background = theme.bg  # the window header the badges sit on
         self.configure(width=width + DOT // 2 + 2, background=background)
         self._box(1, top, width, top + HEIGHT - 1, theme)
         self._icon(12, top + HEIGHT / 2, color, theme)
@@ -69,7 +69,7 @@ class Badge(tk.Canvas):
             self.create_line(x0, y1, x1, y1, x1, y0, fill="#404040")
             return
         radius = 8 if theme.radius else 0
-        _round_rect(self, x0, y0, x1, y1, radius, theme.bg, theme.border)
+        _round_rect(self, x0, y0, x1, y1, radius, theme.surface, theme.border)
 
     def _pill(self, x0: float, y0: float, x1: float, y1: float, fill: str, ring: str) -> None:
         _round_rect(self, x0, y0, x1, y1, (y1 - y0) / 2, fill, ring)

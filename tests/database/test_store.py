@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from gitective.forge.errors import NetworkError
-from gitective.forge.models import Commit, CommitStatus, MergeRequest, ProtectedBranch, User
+from gitective.forge.models import Branch, Commit, CommitStatus, MergeRequest, ProtectedBranch, User
 from gitective.database.store import MEMORY, SCHEMA_VERSION, Store, StoreError, decode, encode
 from gitective.database.sync import ForgeData
 from tests.factories import commit_json, mr_json, user_json
@@ -199,6 +199,25 @@ class SyncTests(unittest.TestCase):
         self.data.new_session()
         self.data.avatar(5, "https://gitlab.test/a.png")
         self.assertEqual(self.names(), ["members", "protections", "download", "download"])
+
+
+class NamedListTests(unittest.TestCase):
+    def test_replace_named_marks_missing_items_deleted_once(self) -> None:
+        """BR-10, TG-08: the first date a branch was seen missing is kept."""
+        store = Store(MEMORY)
+        a, b = Branch("a", "s1", None), Branch("b", "s2", None)
+        store.replace_named("branches", 10, [a, b], 1.0)
+        store.replace_named("branches", 10, [a], 2.0)
+        store.replace_named("branches", 10, [], 3.0)
+        self.assertEqual({x.name: d for _, x, d in store.branches([10])}, {"a": 3.0, "b": 2.0})
+        store.replace_named("branches", 11, [b], 4.0)  # other project untouched
+        self.assertEqual(len(store.branches([10, 11])), 3)
+
+    def test_commit_shas_of_stored_mr_commits(self) -> None:
+        store = Store(MEMORY)
+        store.put_mr_commits(10, 1, None, [Commit.from_json(commit_json("abc1234", "fix"))])
+        self.assertEqual(store.mr_commit_shas([10, 11]), {(10, 1): ["abc1234" * 5]})
+        self.assertEqual(store.mr_commit_shas([]), {})
 
 
 if __name__ == "__main__":

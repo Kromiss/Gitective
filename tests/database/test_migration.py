@@ -10,7 +10,7 @@ from pathlib import Path
 
 from gitective.database.store import MIGRATIONS, SCHEMA_VERSION, Store
 from gitective.database.sync import MrDetailData
-from gitective.forge.models import MergeRequest
+from gitective.forge.models import Branch, MergeRequest
 from gitective.review.profile import ASSIGNEE
 from tests.factories import mr_json
 
@@ -44,7 +44,7 @@ class MigrationTests(unittest.TestCase):
             schema_1_database(path)
             store = Store(path)
             self.assertEqual(store.schema_version, SCHEMA_VERSION)
-            self.assertEqual(SCHEMA_VERSION, 2)
+            self.assertEqual(SCHEMA_VERSION, 3)
             # Kept: stored MRs, commits sync state, avatars, instance URL.
             old = store.merge_requests(10)
             self.assertEqual([m.iid for m in old], [4])
@@ -64,7 +64,9 @@ class MigrationTests(unittest.TestCase):
             store.put_my_mrs([(mr, frozenset({ASSIGNEE}))])
             store.mark_seen([(10, 5, ASSIGNEE)])
             store.put_mr_detail(10, 5, 1.0, MrDetailData(fetched_at=mr.created_at))
+            store.replace_named("branches", 10, [Branch(name="feature/x", commit_sha="a1", committed_date=None)], 1.0)
             again = Store(path)
+            self.assertEqual([b.name for _, b, _ in again.branches([10])], ["feature/x"])
             self.assertEqual([(m.iid, r) for m, r in again.my_mrs()], [(5, frozenset({ASSIGNEE}))])
             self.assertEqual(again.seen_roles(), {(10, 5, ASSIGNEE)})
             self.assertIsNotNone(again.get_mr_detail(10, 5, MrDetailData))

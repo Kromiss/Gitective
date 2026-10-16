@@ -2,27 +2,26 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.12 (brouillon) — 15/10/2026
+Version : 1.13 (brouillon) — 16/10/2026
 
 ## 1. Objet
 
-**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de préparer une livraison multi-dépôts (changelog, branche et tag poussés). L'interface s'adapte aux droits du token : profil **Développeur** ou **Mergeur** (5.7).
+**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts. L'interface s'adapte aux droits du token : profil **Développeur** ou **Mergeur** (5.7).
 
 ## 2. Contraintes techniques
 
 | Réf. | Exigence |
 |---|---|
 | CT-01 | Langage : Python 3.11 minimum. |
-| CT-02 | Bibliothèque standard uniquement (aucun module externe, aucun téléchargement). Ex. : `tkinter`, `urllib`, `json`, `re`, `ssl`, `sqlite3`, `webbrowser`, `datetime`, `threading`, `subprocess`, `unittest`. |
+| CT-02 | Bibliothèque standard uniquement (aucun module externe, aucun téléchargement). Ex. : `tkinter`, `urllib`, `json`, `re`, `ssl`, `sqlite3`, `webbrowser`, `datetime`, `threading`, `unittest`. |
 | CT-03 | Système cible : Windows, Python déjà installé sur le poste. |
 | CT-04 | GitLab auto-hébergé : URL de l'instance configurable. |
-| CT-05 | Authentification API par Personal Access Token GitLab, droits `read_api` uniquement. Les opérations Git de la Livraison (clone, push) utilisent les identifiants Git du poste (LI-29). |
+| CT-05 | Authentification API par Personal Access Token GitLab, droits `read_api` uniquement. |
 | CT-06 | Token et paramètres stockés en clair dans `config.json`, à côté de l'application. |
 | CT-09 | IHM : `tkinter` + `ttk` (inclus dans Python). |
 | CT-07 | Dates affichées et filtrées dans le fuseau horaire local du PC. |
 | CT-08 | Vérification SSL active par défaut ; option de configuration pour la désactiver. |
-| CT-11 | Git for Windows installé sur le poste, requis uniquement pour les clones et le push de l'onglet Livraison (11.4). |
-| CT-10 | Données GitLab stockées dans une base locale SQLite unique, `gitective.db`, à côté de l'application (voir section 12). C'est le seul cache de l'application. |
+| CT-10 | Données GitLab stockées dans une base locale SQLite unique, `gitective.db`, à côté de l'application (voir section 13). C'est le seul cache de l'application. |
 
 ## 3. Configuration
 
@@ -46,16 +45,14 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Thème | Default |
 | Synchronisation automatique de la base (CH-13) | 5 minutes |
 | Notifications de bureau (NO-01) : nouveaux merges / MR qui me sont assignées ou en relecture / mes MR mergées | activées / activées / activées |
-| Derniers filtres utilisés (état, dates, auteurs, mergeurs, assignés, relecteurs, brouillons, dépôts, taille de page) | Mergées « Depuis hier », 20 |
+| Derniers filtres utilisés de l'onglet Merge Requests (état, dates, auteurs, mergeurs, assignés, relecteurs, brouillons, dépôts, taille de page) | Mergées « Depuis hier », 20 |
+| Branches : regex d'exclusion (BR-05) | `^(main\|master\|develop.*)$` |
+| Branches : seuil « branche morte », en jours calendaires (BR-04) | 30 |
+| Derniers filtres de l'onglet Branches (auteurs, dépôts, états) | tous, états « Active », « Morte », « Mergée non supprimée » |
+| Derniers filtres de l'onglet Tags (dépôts, période) | tous, « Total » |
 | Vue de l'onglet Statistiques (par personne / par dépôt) | Par personne |
 | Largeurs de colonnes modifiées | aucune (ajustement au titre) |
-| Largeur du panneau de détail (DE-02) | 420 px |
-| Livraison en cours : mode, nom, dépôts, branches de départ et tags (voir 11.1) | aucune, mode Version |
-| Dossier des clones (LI-24) | — |
-| Nom de branche par mode, suivi du Tag actuel (LI-25) | Version : `version/` ; Release : `release/` |
-| Protocole de clone : HTTPS ou SSH (LI-29) | HTTPS |
-| Chemin de l'exécutable `git` (LI-28) | `git` (PATH) |
-| Changelog : commits hors MR inclus (LI-21) | oui |
+| Largeur du panneau de détail (DE-02, TG-07) | 420 px |
 
 `config.json` ne contient que des paramètres ; les données lues depuis GitLab sont dans `gitective.db`. Le profil (5.7) n'est pas un paramètre : il est recalculé depuis GitLab.
 
@@ -86,7 +83,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | OC-06 | Testeur de regex : saisie d'exemples (titre, description, branches, messages de commits), affichage immédiat OK / KO de chaque règle active et de RC-03 avec le n° de ticket extrait. |
 | OC-07 | Validation des regex avant enregistrement ; une regex invalide bloque l'enregistrement et est signalée par le bandeau. |
 | OC-08 | Gestion des correspondances personnes ↔ comptes (voir 5.4). |
-| OC-10 | Bloc « Livraison » : nom de branche par mode (LI-25), validé selon les règles Git avant enregistrement ; protocole de clone ; chemin de `git` avec bouton « Tester » (affiche la version de Git). |
+| OC-10 | Bloc « Branches » : regex d'exclusion (BR-05, validée par OC-07) et seuil « branche morte » en jours calendaires (BR-04, entier ≥ 1). |
 | OC-11 | Affichage en lecture seule de l'utilisateur du token et du profil détecté (Développeur / Mergeur, avec la liste des dépôts où il peut merger). Bloc « Notifications » (trois cases, NO-01) ; en profil Développeur, seule la case « Ma MR mergée » est affichée. |
 | OC-12 | Case « Lancer Gitective au démarrage de Windows (réduit) » : ajoute ou retire une entrée dans la clé de registre de l'utilisateur `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (module `winreg`, sans droits administrateur), qui lance `pythonw main.pyw --minimized`. L'application démarre réduite dans la barre des tâches, synchronisation et notifications actives. Réglage lu dans le registre, pas dans `config.json` ; case grisée hors Windows. |
 | OC-09 | Bouton « Vider la base locale » : supprime toutes les données de `gitective.db` après confirmation (voir CH-10). |
@@ -132,7 +129,7 @@ Une même personne peut posséder plusieurs comptes GitLab (changements de compt
 |---|---|
 | PE-01 | Dans l'onglet Config, on crée une personne (nom affiché) et on lui associe un ou plusieurs comptes GitLab, choisis dans une liste. |
 | PE-02 | Un compte est identifié par son ID utilisateur GitLab. |
-| PE-03 | Pour les commits hors MR (sans ID GitLab), on associe aussi à la personne des noms et/ou e-mails Git. |
+| PE-03 | Pour les commits hors MR et les derniers commits des branches et tags (sans ID GitLab), on associe aussi à la personne des noms et/ou e-mails Git. |
 | PE-04 | Les tableaux affichent le nom de la personne (colonnes Auteur, Mergeur, Auteur de commit). |
 | PE-05 | Filtre par auteur et statistiques regroupés par personne. |
 | PE-06 | RC-04 compare des personnes : MR mergée par un autre compte de son auteur = KO. |
@@ -197,16 +194,19 @@ L'interface dépend des droits du compte propriétaire du token.
 | FI-02 | **Mergées** : filtre entre deux dates, appliqué sur la date de merge. |
 | FI-03 | Saisie des dates au format `JJ/MM/AAAA`, journées entières : date de début 00:00:00 → date de fin 23:59:59 incluses. |
 | FI-04 | **Mergées** : raccourci « Depuis hier » = hier 00:00 → maintenant. |
+| FI-19 | **Mergées** et **Commits directs** : bouton « Total » = période sans limite de date, même logique que le bouton « Total » des Statistiques (ST-05). Les champs de dates sont vidés. Seule la partie de l'historique absente de la base est chargée (CH-04), avec la barre de progression ; pour Commits directs, la détection (CO-08) couvre tout l'historique de la branche surveillée. Mémorisé (FI-06). |
 | FI-05 | **Ouvertes** et **Fermées** : aucun filtre de date, liste complète. |
 | FI-06 | Les derniers filtres sont mémorisés dans `config.json` et restaurés au lancement. |
 | FI-07 | Sans filtre mémorisé, la vue de lancement est **Mergées « Depuis hier »**. |
+| FI-18 | Bouton **« Réinitialiser les filtres »**, à côté du bouton Rafraîchir. Conserve l'état affiché, la taille de page et le tri. Remet à « tous » les filtres auteur, mergeur, assigné, relecteur et dépôt ; brouillons à « Inclus » ; recherche vidée ; dates à « Depuis hier » (Mergées, Commits directs). Aucune requête GitLab hors CH-04. Le résultat est mémorisé (FI-06). |
 | FI-08 | MR en brouillon (Draft) : affichées dans l'onglet Merge Requests (états **Ouvertes** et **Fermées**), jamais comptées ailleurs (score moyen TA-03, Statistiques, Vue d'ensemble, badges, notifications). |
 | FI-16 | Indicateur Draft : étiquette « BROUILLON » devant le titre, couleur N/A du thème, et ligne entière en texte atténué. Infobulle : « MR en brouillon : pas prête à merger ». Score affiché pour information. |
 | FI-17 | Filtre **Brouillons**, choix exclusif : **Inclus** (défaut), **Exclus**, **Seulement**. Actif pour **Ouvertes** et **Fermées** (grisé sinon, une MR mergée n'étant jamais en brouillon). Se combine avec les autres filtres (ET). Mémorisé (FI-06). Le clic sur un badge (BA-02) le remet à « Inclus ». |
 | FI-09 | Filtre par auteur, sélection multiple (tous par défaut). Actif pour tous les états (**Mergées**, **Ouvertes**, **Fermées**, **Commits directs**), jamais grisé ; liste des auteurs construite depuis les MR (ou commits) de l'état affiché. S'applique aussi à l'onglet Statistiques. |
 | FI-10 | Raccourci **F5** = Rafraîchir. |
 | FI-11 | Filtre par dépôt, sélection multiple parmi les dépôts suivis (tous par défaut). S'applique aussi à l'état Commits directs. Mémorisé comme les autres filtres (FI-06). |
-| FI-12 | Recherche texte instantanée, insensible à la casse : MR (titre, description, auteur, mergeur, dépôt, branches) et état Commits directs (message, SHA, auteur, dépôt). Non mémorisée. |
+| FI-12 | Recherche texte instantanée, insensible à la casse : MR (titre, description, auteur, mergeur, dépôt, branches, SHA) et état Commits directs (message, SHA, auteur, dépôt). Non mémorisée. |
+| FI-20 | Recherche par SHA (FI-12), par préfixe, **dès 1 caractère**, sur : commit de merge (`merge_commit_sha`), commit de squash (`squash_commit_sha`), commit de tête (`sha`) et commits de la MR présents en base (RP-04, ST-12). Aucune requête supplémentaire. Limite : les commits d'une MR dont les commits n'ont jamais été lus ne sont pas trouvés. |
 | FI-13 | Filtre par mergeur, sélection multiple regroupée par personne (toutes par défaut), parmi les mergeurs des MR chargées. Actif uniquement pour l'état **Mergées** (grisé sinon). Se combine avec le filtre auteur (ET). Mémorisé (FI-06). |
 | FI-14 | Filtre par **assigné**, sélection multiple regroupée par personne (tous par défaut), parmi les assignés des MR chargées, plus l'entrée « Non assignée ». Actif pour les états **Mergées**, **Ouvertes** et **Fermées** (grisé pour Commits directs). Une MR est retenue si l'un de ses assignés est sélectionné. Mémorisé (FI-06). |
 | FI-15 | Filtre par **relecteur**, mêmes règles que FI-14 (entrée « Sans relecteur », mêmes états). Les filtres auteur, assigné, relecteur et dépôt se combinent (ET). Données déjà lues par la synchronisation (champs assignés et relecteurs des MR, CH-03) : aucune requête supplémentaire. |
@@ -239,7 +239,7 @@ Grille personnalisée (cellules colorées individuellement). Colonnes :
 | TA-02 | Clic sur un en-tête de colonne : tri sur toute la liste filtrée (croissant / décroissant), puis repagination. |
 | TA-03 | Score moyen affiché en en-tête, calculé sur toute la liste filtrée. |
 | TA-05 | Mergée par un non-assigné : si la MR a au moins un assigné et que le mergeur n'est aucun d'eux (comparaison par personne, 5.4), la cellule Mergeur est mise en évidence (couleur d'avertissement du thème + icône « ≠ ») ; infobulle : « Mergée par X, assignée à Y ». Affiché que RC-06 soit active ou non ; le score n'est impacté que par RC-06. MR sans assigné : pas de signalement. |
-| TA-04 | Largeur des colonnes : à l'ouverture, chaque colonne s'ajuste pour afficher son titre en entier sur une ligne. L'utilisateur peut la modifier en glissant la bordure de l'en-tête ; un double-clic sur la bordure revient à l'ajustement automatique. Les largeurs modifiées sont mémorisées dans `config.json`, par tableau (MR, Commits directs, Statistiques par personne, Statistiques par dépôt, Livraison). S'applique aux cinq tableaux. |
+| TA-04 | Largeur des colonnes : à l'ouverture, chaque colonne s'ajuste pour afficher son titre en entier sur une ligne. L'utilisateur peut la modifier en glissant la bordure de l'en-tête ; un double-clic sur la bordure revient à l'ajustement automatique. Les largeurs modifiées sont mémorisées dans `config.json`, par tableau (MR, Commits directs, Statistiques par personne, Statistiques par dépôt, Branches, Tags). S'applique aux six tableaux. |
 
 ### 6.3 Pagination
 
@@ -398,7 +398,7 @@ Objectif : détecter les commits poussés directement sur une branche, sans pass
 |---|---|
 | CO-01 | État « Commits directs » du filtre d'état de l'onglet Merge Requests (FI-01) ; il n'y a plus d'onglet séparé. Le tableau affiche alors les colonnes ci-dessous ; filtre mergeur, score et score moyen sont masqués. |
 | CO-02 | Branche contrôlée : une par dépôt, définie dans `config.json`. |
-| CO-03 | Période : champs de dates et raccourci « Depuis hier » du filtre (communs avec l'état Mergées). |
+| CO-03 | Période : champs de dates, raccourci « Depuis hier » et bouton « Total » (FI-19) du filtre (communs avec l'état Mergées). |
 | CO-04 | Date utilisée : date de commit (heure locale). |
 | CO-05 | Un commit est « hors MR » s'il n'est associé à aucune MR dans GitLab. Les commits de merge générés par une MR ne sont pas signalés. |
 | CO-06 | Colonnes : Dépôt, Branche, SHA court, Message, Auteur, Date de commit. |
@@ -406,112 +406,84 @@ Objectif : détecter les commits poussés directement sur une branche, sans pass
 | CO-08 | La détection interroge GitLab commit par commit : une barre de progression est affichée. Les longues périodes sont acceptées. Le résultat de chaque commit est stocké en base : un commit déjà vérifié n'est jamais réinterrogé. |
 | CO-09 | Pagination identique aux MR (20 / 50 / 100 par page, taille commune). |
 
-## 11. Livraison
+## 11. Branches
 
-Objectif : préparer une livraison composée de plusieurs dépôts : calculer les MR mergées depuis le tag précédent de chaque dépôt, produire le changelog Markdown, puis cloner les dépôts en local et y pousser une branche de livraison (nom configuré + Tag actuel) et le Tag actuel.
-
-### 11.1 Modes, composition et clones
+Objectif : identifier rapidement les branches ouvertes, mortes ou mergées non supprimées, pour relancer leur auteur (création de MR ou suppression).
 
 | Réf. | Exigence |
 |---|---|
-| LI-01 | Onglet « Livraison », placé après l'onglet Statistiques. |
-| LI-02 | Champ « Nom de la livraison » (ex. « 2026.10 »), repris en titre du changelog et dans le message des tags annotés (LI-35). |
-| LI-23 | Sélecteur de mode **Version** / **Release**. Chaque mode a ses propres modèles de nom de branche et de nom de tag (LI-25) ; le reste du fonctionnement est identique (voir point ouvert, section 16). Le mode choisi est mémorisé. |
-| LI-24 | Champ « Dossier des clones » (bouton « Parcourir… ») : chemin local dans lequel chaque dépôt est cloné, dans un sous-dossier portant le chemin GitLab du dépôt (ex. `<dossier>/groupe/depot`). Mémorisé dans `config.json`. |
-| LI-03 | Bouton « Ajouter un dépôt » : choix parmi les dépôts suivis (SD-02), avec recherche instantanée. Un dépôt ne peut être ajouté qu'une fois. Chaque ligne a un bouton « Retirer » et peut être déplacée (haut / bas) : l'ordre des lignes est celui des sections du changelog. |
-| LI-37 | Proposition du Tag actuel : le Tag précédent avec le **mineur incrémenté** et le patch remis à 0, préfixe et suffixe conservés (ex. `v1.3.2` → `v1.4.0`, `1.3` → `1.4`, `app-2.7.1` → `app-2.8.0`). Le numéro reconnu est le premier motif `majeur.mineur[.patch]` du nom. Recalculée quand le Tag précédent change, tant que l'utilisateur n'a pas modifié le Tag actuel à la main. Tag précédent vide ou sans numéro reconnu : Tag actuel vide, à saisir. |
-| LI-26 | Pour chaque dépôt : liste déroulante **Branche de départ**, parmi les branches du dépôt. Par défaut : branche par défaut du dépôt dans GitLab (`default_branch`, en général `main`). |
-| LI-04 | Pour chaque dépôt : deux listes déroulantes **Tag précédent** et **Tag actuel**, avec recherche par saisie. Tags triés du plus récent au plus ancien (date du commit pointé), date affichée à côté du nom. |
-| LI-27 | Le **Tag actuel** est **propre à chaque dépôt** (chaque dépôt a son propre numéro) et saisissable librement : s'il n'existe pas dans le dépôt, il est marqué « nouveau » et doit être créé avec le bouton « Créer le tag » (LI-35) avant de pouvoir pousser. Il est pré-rempli par le Tag précédent incrémenté du mineur (LI-37), modifiable. Nom validé selon les règles Git (`git check-ref-format`). |
-| LI-05 | À l'ajout d'un dépôt : Tag précédent = tag le plus récent ; Tag actuel = proposition LI-37 (nouveau tag). Dépôt sans tag : Tag précédent vide = depuis le premier commit. |
-| LI-06 | Contrôle : le Tag précédent doit être un ancêtre du Tag actuel (ou, pour un nouveau tag, de la tête de la branche de départ). Sinon la ligne est signalée en erreur (infobulle) et exclue du changelog et du push. Aucun commit dans la différence : section « Aucun changement ». |
-| LI-07 | La composition (mode, nom, dépôts, ordre, branches de départ, tags) est mémorisée dans `config.json` et restaurée au lancement. Bouton « Nouvelle livraison » : vide la composition après confirmation. |
-| LI-08 | Tags et branches lus via `GET /projects/:id/repository/tags?order_by=updated` et `GET /projects/:id/repository/branches`, stockés en base ; relus au bouton Rafraîchir (CH-05) et au bouton « Recharger les tags » de l'onglet. |
-| LI-25 | Noms, réglés dans l'onglet Config, par mode. **Branche de livraison** = nom de branche configurable du mode, suivi du Tag actuel du dépôt : `<nom de branche><tag actuel>` (le séparateur fait partie du nom configuré). Défauts : Version = `version/`, Release = `release/` ; ex. Release + tag `v1.4.0` → `release/v1.4.0`. La branche de livraison est donc propre à chaque dépôt : affichée par dépôt, en lecture seule, recalculée à chaque changement du Tag actuel. Nom final validé selon les règles Git. |
+| BR-01 | Onglet « Branches », placé après l'onglet Merge Requests. Tous profils. Couvre les dépôts suivis. |
+| BR-02 | Colonnes : Dépôt ; Branche (clic = ouverture de la branche dans GitLab) ; **Dernier commit** au format `JJ/MM/AAAA (N j)`, N = jours calendaires écoulés depuis la date de commit (`committed_date`, heure locale), tri par date ; Auteur du dernier commit (personne, PE-03) ; MR liées ; État. |
+| BR-03 | **MR liées** : toutes les MR en base du même dépôt dont la branche source est cette branche, `!iid` séparés par des virgules, ouvertes d'abord puis par date de création décroissante. Chaque `!iid` est cliquable (ouverture de la MR dans GitLab) ; survol : titre et état de la MR. Recherche locale uniquement, aucune requête. Limite : une MR hors de la période synchronisée n'est pas trouvée. |
+| BR-04 | **État**, un seul par branche, dans cet ordre de priorité : **Supprimée** (absente de GitLab, BR-10 ; ligne en texte atténué) ; **Mergée non supprimée** (indicateur `merged` de GitLab, ou au moins une MR liée mergée) ; **Morte** (dernier commit plus vieux que le seuil, défaut 30 jours calendaires, réglable dans Config ; couleur « score rouge » du thème) ; **Active** sinon. |
+| BR-05 | Branches exclues du tableau : branche par défaut du dépôt, branches protégées, branches dont le nom correspond à la regex d'exclusion (onglet Config, défaut `^(main\|master\|develop.*)$`, insensible à la casse). |
+| BR-06 | Filtres, combinés (ET) : **Nom** (texte instantané, « contient », insensible à la casse, non mémorisé) ; **Auteur** (sélection multiple par personne, comme FI-09) ; **Dépôts** (sélection multiple parmi les dépôts suivis) ; **État** (sélection multiple, défaut : Active, Morte, Mergée non supprimée). Auteur, dépôts et état mémorisés dans `config.json`. |
+| BR-07 | En-tête : nombre total de branches filtrées et décompte par état. Tri TA-02, largeurs TA-04, pagination 6.3. |
+| BR-08 | Bouton **« Copier la liste »** : copie dans le presse-papiers (via `tkinter`) les branches filtrées, groupées par auteur (personne), en texte Markdown : un titre par personne, puis une ligne par branche `dépôt · branche · dernier commit (N j) · état · MR liées`. |
+| BR-09 | Aucune action d'écriture sur GitLab (token `read_api`, CT-05) : la suppression ou la création de MR se fait dans GitLab. |
+| BR-10 | Données : `GET /projects/:id/repository/branches` (nom, dernier commit : SHA, date, nom et e-mail de l'auteur ; `merged`, `protected`, `default`). Liste complète relue à chaque synchronisation (CH-05, CH-13) et comparée à la base : nouvelles branches ajoutées, branches modifiées mises à jour, branche absente de GitLab gardée en base et marquée **supprimée** (date de constat). Une branche recréée sous le même nom redevient active. |
 
-### 11.2 Détermination des MR
+## 12. Tags
+
+Objectif : consulter les tags des dépôts suivis et leurs informations sans ouvrir GitLab.
 
 | Réf. | Exigence |
 |---|---|
-| LI-09 | Commits de la différence : `GET /projects/:id/repository/commits?ref_name=<précédent>..<cible>` (syntaxe de plage Git, paginée). Cible = Tag actuel s'il existe sur GitLab ; sinon SHA du commit du tag créé localement (LI-35) ; sinon tête de la branche de départ (aperçu avant création du tag). |
-| LI-10 | Une MR mergée est retenue si son commit de merge (`merge_commit_sha`), son commit de squash (`squash_commit_sha`) ou l'un de ses commits figure dans la différence. Couvre les merges avec commit de merge, squash et fast-forward. |
-| LI-11 | Rattachement local d'abord, depuis les MR et commits de MR en base. Les commits restants sont interrogés via « MR associées à un commit » (même requête et même résultat stocké que CO-05 / CH-09), en parallèle (CH-06), avec barre de progression. |
-| LI-12 | Une MR n'apparaît qu'une fois par dépôt, même si plusieurs de ses commits sont dans la différence. Seules les MR à l'état mergé sont retenues. |
-| LI-13 | Commits de la différence rattachés à aucune MR, hors commits de merge : listés à part comme **commits hors MR** de la livraison. |
-| LI-14 | Le résultat est stocké en base, indexé par les SHA du Tag précédent et de la cible : non recalculé tant qu'ils pointent sur les mêmes commits ; recalculé si un tag a été déplacé ou si la branche de départ a avancé. |
-| LI-15 | Les filtres de l'onglet Merge Requests (auteur, mergeur, dépôt, dates, recherche) ne s'appliquent pas : le changelog est toujours complet. |
+| TG-01 | Onglet « Tags », placé après l'onglet Branches. Tous profils. Couvre les dépôts suivis. |
+| TG-02 | Colonnes : Dépôt ; Tag (clic = ouverture de la page du tag dans GitLab) ; Message ; Notes de release ; Date (date du commit pointé, heure locale) ; Commit (SHA court, clic = ouverture du commit) ; Auteur du commit (personne, PE-03). Tri par défaut : date décroissante. |
+| TG-03 | **Message** (message du tag annoté, vide pour un tag léger) et **Notes de release** (description de la release GitLab associée, vide s'il n'y en a pas) : deux colonnes distinctes, première ligne seulement, texte complet en infobulle et dans le panneau. |
+| TG-04 | Filtres, combinés (ET) : **Dépôts** (sélection multiple parmi les dépôts suivis) ; **Recherche texte** (nom, message, notes de release, SHA par préfixe dès 1 caractère ; non mémorisée) ; **Période** sur la date (deux dates `JJ/MM/AAAA`, raccourcis et bouton « Total » comme ST-05 ; défaut « Total »). Dépôts et période mémorisés. |
+| TG-05 | Tag supprimé de GitLab (TG-08) : gardé, étiquette « SUPPRIMÉ » devant le nom, ligne en texte atténué. |
+| TG-06 | En-tête : nombre total de tags filtrés. Tri TA-02, largeurs TA-04, pagination 6.3. |
+| TG-07 | **Panneau de détail** : mêmes mécanismes que DE-01 et DE-02 (clic sur la ligne hors colonnes cliquables, ligne surlignée, flèches haut / bas, Échap, largeur réglable et mémorisée, commune avec le panneau des MR). Contenu : **en-tête** (nom, dépôt, type annoté / léger, date, « SUPPRIMÉ » s'il y a lieu, croix) ; **message** complet du tag ; **commit pointé** (SHA, titre, auteur, date ; MR dont c'est le commit de merge, de squash ou de tête, si elle est en base, cliquable) ; **release GitLab** (nom et notes complètes en texte brut, masqué s'il n'y en a pas) ; **pipeline du tag** (statut et âge du dernier pipeline de la référence du tag, jobs en échec, fin du log du premier job en échec, comme DE-08 ; masqué s'il n'y en a pas) ; bouton « Ouvrir dans GitLab ». |
+| TG-08 | Données : `GET /projects/:id/repository/tags` (nom, message, commit pointé, release associée). Liste complète relue à chaque synchronisation (CH-05, CH-13) et comparée à la base, comme BR-10 : tag absent de GitLab gardé et marqué supprimé. |
+| TG-09 | Pipeline du tag (`GET /projects/:id/pipelines?ref=<tag>`, puis jobs et fin de log) : lu à l'ouverture du panneau, en tâche de fond, dernière copie en base affichée aussitôt (comme DE-12). Relu si le tag pointe sur un autre commit ou si le pipeline n'est pas terminé ; un pipeline terminé n'est plus relu. |
 
-### 11.3 Affichage et changelog
-
-| Réf. | Exigence |
-|---|---|
-| LI-16 | Tableau de la livraison (grille personnalisée, TA-02 et TA-04) : Dépôt, N° de ticket, Titre (clic = ouverture de la MR), Auteur, Mergeur, Date de merge, Score. Puis les commits hors MR : Dépôt, SHA court (clic = ouverture du commit), Message, Auteur, Date de commit. Total MR et commits hors MR par dépôt et global. |
-| LI-17 | Les MR dont le score est inférieur à 100 % restent incluses ; le score coloré et l'infobulle des critères KO permettent de les repérer avant livraison. |
-| LI-18 | N° de ticket extrait du titre par la regex de RC-03 ; vide si absent. |
-| LI-19 | Aperçu du changelog en texte, mis à jour à chaque changement de composition. |
-| LI-20 | Changelog au format **Markdown** uniquement. Structure : titre `#` (mode, nom de la livraison, date du jour) ; puis une section `##` par dépôt, dans l'ordre de composition, « Dépôt : tag précédent → tag actuel (N MR) » ; dans chaque section, MR triées par date de merge, une ligne de liste par MR : `[N° ticket] Titre ([!iid](lien MR), auteur)` ; puis, si l'option est cochée, sous-section `###` « Commits hors MR » : `SHA court Message (auteur)`. Dépôt sans MR : « Aucune MR ». |
-| LI-21 | Option : inclusion des commits hors MR (cochée par défaut), mémorisée dans `config.json`. |
-| LI-22 | Boutons « Copier » (presse-papiers, via `tkinter`) et « Enregistrer… » (fichier `.md`, nom proposé à partir du mode et du nom de la livraison). |
-
-### 11.4 Clones locaux et push
-
-| Réf. | Exigence |
-|---|---|
-| LI-28 | Opérations Git exécutées par l'exécutable `git` du poste (Git for Windows), via `subprocess`, en tâche de fond (CH-01), dans le clone du dépôt. Chemin de `git` configurable (défaut : `git` trouvé dans le `PATH`). Aucune saisie interactive (`GIT_TERMINAL_PROMPT=0`) : un identifiant manquant produit une erreur. |
-| LI-29 | Clone : bouton « Cloner » par dépôt et « Tout cloner ». Clone absent : `git clone` depuis l'URL du dépôt (HTTPS ou SSH, choix dans l'onglet Config). Clone présent : vérification que son `origin` est bien ce dépôt (sinon erreur, rien n'est modifié), puis `git fetch --tags --prune`. Authentification : identifiants Git du poste (gestionnaire d'identifiants Windows ou clé SSH) ; le token de l'application reste en `read_api` (CT-05). |
-| LI-35 | Création du tag : bouton « Créer le tag » par dépôt et « Tout créer », actifs pour les Tag actuels marqués « nouveau ». Séquence : fetch (LI-29) ; création locale du Tag actuel, tag annoté (message : « <mode> <nom de la livraison> »), sur la tête de `origin/<branche de départ>`. Le tag n'est pas poussé par cette action. Le changelog du dépôt est recalculé sur le commit tagué (LI-09). |
-| LI-36 | Un tag créé localement et pas encore poussé peut être supprimé par le bouton « Supprimer le tag local » (après confirmation), pour corriger un nom ou repartir d'un commit plus récent. Un tag déjà poussé n'est jamais supprimé (LI-32). |
-| LI-30 | Push : bouton « Pousser » par dépôt et « Tout pousser », actifs seulement si le Tag actuel existe (créé localement par LI-35, ou déjà présent sur GitLab). Le push ne crée jamais de tag. Séquence : fetch (LI-29) ; création de la branche de livraison `<nom de branche><tag actuel>` (LI-25) sur le commit du Tag actuel ; `git push origin <branche> <tag>`. |
-| LI-31 | Avant tout push, une fenêtre de confirmation liste, par dépôt, les commandes qui seront exécutées (branche de livraison, commit de départ, tag, distant). Rien n'est poussé sans validation. |
-| LI-32 | Sécurité : jamais de push forcé ni de suppression de branche ou de tag distant. Branche de livraison déjà existante sur le distant : réutilisée si elle pointe sur le commit attendu, sinon erreur. Tag déjà existant sur le distant et pointant ailleurs : erreur. Clone avec des modifications locales non commitées : erreur, rien n'est modifié. |
-| LI-33 | Colonne **État Git** par dépôt : Non cloné / Cloné / Tag créé (local) / Poussé / Erreur (infobulle avec la sortie d'erreur de `git`). Après un push réussi, les tags et branches du dépôt sont relus (LI-08) et le Tag actuel n'est plus marqué « nouveau ». |
-| LI-34 | Le commit livré est figé à la création du tag (LI-35) : le changelog et la branche de livraison portent sur le commit tagué, même si la branche de départ avance ensuite. |
-
-## 12. Chargement, base locale et rafraîchissement
+## 13. Chargement, base locale et rafraîchissement
 
 | Réf. | Exigence |
 |---|---|
 | CH-01 | Les appels GitLab s'exécutent en tâche de fond ; l'IHM reste réactive. |
 | CH-02 | Indicateur de chargement visible pendant les appels. |
-| CH-03 | Base locale persistante `gitective.db` (SQLite, `sqlite3`) : projets accessibles, MR (dont assignés et relecteurs), commits de MR, commits des branches surveillées, résultats de détection hors MR, statuts CI, membres et branches protégées, utilisateurs et avatars, tags, branches, résultats de livraison (LI-14), utilisateur du token et profil (5.7), détails de MR du panneau (état de merge, approbations, discussions, pipeline et jobs, fin des logs en échec, fichiers modifiés, DE-12), MR ouvertes de tous les dépôts où l'utilisateur est assigné ou relecteur, et couples MR / rôle déjà vus (AM-02, AM-04). Les clones locaux (11.4) sont hors base, dans le dossier des clones. Le changement de page, de tri ou de filtre lit la base sans réinterroger GitLab. |
+| CH-03 | Base locale persistante `gitective.db` (SQLite, `sqlite3`) : projets accessibles, MR (dont assignés et relecteurs), commits de MR, commits des branches surveillées, résultats de détection hors MR, statuts CI, membres et branches protégées, utilisateurs et avatars, branches (dernier commit, indicateurs, date de suppression constatée, BR-10), tags (message, release, commit pointé, date de suppression constatée, TG-08), pipelines des tags (TG-09), utilisateur du token et profil (5.7), détails de MR du panneau (état de merge, approbations, discussions, pipeline et jobs, fin des logs en échec, fichiers modifiés, DE-12), MR ouvertes de tous les dépôts où l'utilisateur est assigné ou relecteur, et couples MR / rôle déjà vus (AM-02, AM-04). Le changement de page, de tri ou de filtre lit la base sans réinterroger GitLab. |
 | CH-04 | Un changement de filtre ou de dates ne déclenche une requête GitLab que pour la partie de la période absente de la base. |
-| CH-05 | Bouton **Rafraîchir** : mise à jour incrémentale depuis la dernière synchronisation de chaque dépôt (MR via `updated_after`, commits via `since`), relecture des tags, retéléchargement des avatars et recalcul du profil (PR-04). |
-| CH-13 | **Synchronisation automatique**, tous profils : toutes les N minutes (réglable dans l'onglet Config, défaut 5), même fenêtre réduite, la mise à jour incrémentale des MR et commits de CH-05 et le recalcul du profil s'exécutent en tâche de fond (tags et avatars : au bouton Rafraîchir uniquement). Puis rafraîchissement de l'affichage, des badges (BA-04) et des notifications (NO-04). Ignorée si une synchronisation est déjà en cours. Instance injoignable : nouvel essai au cycle suivant, bandeau CH-08. |
-| CH-06 | Les requêtes « une par commit » (commits hors MR, livraison) et « une par MR » (règles sur les commits, RC-05, ST-12) partent en parallèle ; le nombre de requêtes simultanées se règle dans l'onglet Config (1 à 16, défaut 6). |
-| CH-07 | Les règles sont évaluées localement à partir des données en base : modifier une règle, une pondération ou une correspondance de personnes recalcule l'affichage sans requête GitLab. |
+| CH-05 | Bouton **Rafraîchir** : mise à jour incrémentale depuis la dernière synchronisation de chaque dépôt (MR via `updated_after`, commits via `since`), relecture des branches et des tags (BR-10, TG-08), retéléchargement des avatars et recalcul du profil (PR-04). |
+| CH-13 | **Synchronisation automatique**, tous profils : toutes les N minutes (réglable dans l'onglet Config, défaut 5), même fenêtre réduite, la mise à jour incrémentale des MR et commits de CH-05, la relecture des branches et des tags (BR-10, TG-08) et le recalcul du profil s'exécutent en tâche de fond (avatars : au bouton Rafraîchir uniquement). Puis rafraîchissement de l'affichage, des badges (BA-04) et des notifications (NO-04). Ignorée si une synchronisation est déjà en cours. Instance injoignable : nouvel essai au cycle suivant, bandeau CH-08. |
+| CH-06 | Les requêtes « une par commit » (commits hors MR) et « une par MR » (règles sur les commits, RC-05, ST-12) partent en parallèle, comme les lectures de branches et tags des différents dépôts ; le nombre de requêtes simultanées se règle dans l'onglet Config (1 à 16, défaut 6). |
+| CH-07 | Les règles sont évaluées localement à partir des données en base : modifier une règle, une pondération ou une correspondance de personnes recalcule l'affichage sans requête GitLab. Idem pour la regex d'exclusion et le seuil des branches. |
 | CH-08 | Mode hors ligne : si l'instance est injoignable, l'application affiche les données en base et un bandeau indique la date de dernière synchronisation. |
-| CH-09 | Données immuables jamais relues : commits d'une MR mergée, statuts CI d'une MR mergée (PI-05), résultat de détection d'un commit (CO-08, LI-11). |
+| CH-09 | Données immuables jamais relues : commits d'une MR mergée, statuts CI d'une MR mergée (PI-05), résultat de détection d'un commit (CO-08), pipeline terminé d'un tag (TG-09). |
 | CH-10 | La base est liée à l'URL de l'instance. Un changement d'URL dans l'onglet Config propose de vider la base. |
 | CH-11 | La base porte un numéro de version de schéma ; une version de l'application plus récente migre le schéma au démarrage. |
 | CH-12 | Accès concurrents : une connexion SQLite par thread ; les écritures sont faites par les tâches de fond, en transactions. |
 
-## 13. Gestion des erreurs
+## 14. Gestion des erreurs
 
 | Réf. | Exigence |
 |---|---|
 | ER-01 | Notification par bandeau coloré dans l'application, refermable. |
-| ER-02 | Message clair et spécifique : token invalide ou expiré, droits insuffisants, réseau coupé / instance injoignable, erreur de certificat SSL, dépôt, branche ou tag introuvable, Git absent, échec d'une commande Git (clone, fetch, push refusé, identifiants manquants) avec la sortie de `git`. |
+| ER-02 | Message clair et spécifique : token invalide ou expiré, droits insuffisants, réseau coupé / instance injoignable, erreur de certificat SSL, dépôt, branche ou tag introuvable. |
 | ER-03 | Une erreur n'interrompt pas l'application ; l'utilisateur peut corriger puis rafraîchir. |
 | ER-04 | Toutes les erreurs passent par le bandeau de notification (pas de fichier de log). Les erreurs de la synchronisation automatique (CH-13) ne déclenchent pas de notification de bureau. |
 | ER-05 | Limitation de débit GitLab (HTTP 429) et timeout réseau (30 s) : 3 nouvelles tentatives automatiques après 2, 4 puis 8 s, puis notification. Valeurs fixes. |
 | ER-06 | Base locale illisible, corrompue ou verrouillée : notification, et proposition de la recréer (resynchronisation complète depuis GitLab). |
 
-## 14. Architecture du code
+## 15. Architecture du code
 
-### 14.1 Principes
+### 15.1 Principes
 
 | Réf. | Exigence |
 |---|---|
-| AR-01 | Découpage par sujet, en trois niveaux : **`forge`** (requêtes GitLab) ← **métier** (`database`, `review`, `reporting`, `release`, `shared`, `settings`) ← **`ui`**. Un niveau ne dépend que des niveaux inférieurs. Le métier dépend uniquement de l'interface `ForgeClient` (14.3), jamais de `GitLabClient` ; seule l'IHM crée le client. |
+| AR-01 | Découpage par sujet, en trois niveaux : **`forge`** (requêtes GitLab) ← **métier** (`database`, `review`, `repository`, `reporting`, `shared`, `settings`) ← **`ui`**. Un niveau ne dépend que des niveaux inférieurs. Le métier dépend uniquement de l'interface `ForgeClient` (15.3), jamais de `GitLabClient` ; seule l'IHM crée le client. |
 | AR-07 | `forge` est isolé : il n'importe que la bibliothèque standard et ses propres modules. Il peut être copié tel quel dans un autre projet. |
 | AR-08 | Noms explicites : un dossier par sujet, un fichier par fonctionnalité, nommé avec les termes de l'IHM (ex. `direct_commits.py` pour l'état « Commits directs »). Les tests reprennent les mêmes dossiers. |
 | AR-02 | Code, noms et commentaires en anglais. |
 | AR-03 | Commentaires synthétiques et logiques : docstring courte pour chaque module, classe et fonction publique ; commentaire en ligne uniquement pour la logique non évidente. |
 | AR-04 | Annotations de type partout. |
-| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), calcul de livraison (rattachement merge / squash / fast-forward, commits hors MR, nouveau tag, incrément du mineur), génération du changelog, opérations Git (dépôts temporaires locaux et distant nu, ignorés si Git est absent ; refus des cas de LI-32), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04, NO-09) et données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10). |
+| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04, NO-09), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08). |
 | AR-06 | `README.md` en anglais : prérequis, installation, configuration, utilisation. |
 
-### 14.2 Arborescence
+### 15.2 Arborescence
 
 ```
 gitective/
@@ -526,7 +498,7 @@ gitective/
 │   ├── forge/                  # GitLab requests, isolated (AR-07)
 │   │   ├── protocol.py         # ForgeClient: forge-neutral interface
 │   │   ├── gitlab_client.py    # GitLabClient: GitLab implementation
-│   │   ├── models.py           # Project, MergeRequest, Commit, CommitStatus, User, ProtectedBranch, Branch, Tag
+│   │   ├── models.py           # Project, MergeRequest, Commit, CommitStatus, User, ProtectedBranch, Branch, Tag, Pipeline, Job
 │   │   └── errors.py           # Forge error hierarchy
 │   ├── database/               # Local store and synchronisation
 │   │   ├── store.py            # SQLite schema, migrations, queries
@@ -539,18 +511,16 @@ gitective/
 │   │   ├── direct_commits.py   # Commits pushed without MR
 │   │   ├── merge_rights.py     # Who can merge into the watched branches
 │   │   └── profile.py          # Token user, Developer / Merger profile, my open MRs, "new" flags
+│   ├── repository/             # Branches and tags tabs logic
+│   │   ├── branches.py         # Branch state, exclusions, related MRs, copied list, deleted marking
+│   │   └── tags.py             # Tag list, deleted marking, pointed-commit MR, tag pipeline
 │   ├── reporting/              # Figures shown to the user
 │   │   ├── statistics.py       # Per-person and per-repository statistics, lead times
 │   │   └── overview_figures.py # Overview tab figures
-│   ├── release/                # Release tab logic
-│   │   ├── release_diff.py     # MRs and orphan commits between two tags
-│   │   ├── changelog.py        # Markdown changelog
-│   │   ├── local_git.py        # git clone, fetch, branch, annotated tag, push (subprocess)
-│   │   └── naming.py           # Branch name per mode, minor-bump tag, ref name validation
 │   ├── shared/                 # Cross-cutting helpers
 │   │   ├── dates.py            # Date parsing, "since yesterday", local timezone
 │   │   ├── people.py           # Account-to-person mapping
-│   │   ├── search.py           # Text search
+│   │   ├── search.py           # Text and SHA prefix search
 │   │   ├── parallel.py         # Concurrent forge lookups
 │   │   └── avatars.py          # Avatar download, storage, initials fallback
 │   ├── settings/
@@ -563,15 +533,18 @@ gitective/
 │       ├── tabs/
 │       │   ├── data_tab.py     # Base class of the data tabs
 │       │   ├── overview.py     # Overview, F11
-│       │   ├── merge_requests.py # MR tab, filters, open MRs of other repos, "new" column
+│       │   ├── merge_requests.py # MR tab, filters, reset, "Total", open MRs of other repos, "new" column
 │       │   ├── mr_detail_panel.py # Side panel with the selected MR details (6.6)
 │       │   ├── direct_commits.py # Direct commits view of the MR tab
+│       │   ├── branches.py     # Branches tab, filters, copy list
+│       │   ├── tags.py         # Tags tab, filters
+│       │   ├── tag_detail_panel.py # Side panel with the selected tag details (TG-07)
 │       │   ├── statistics.py   # Per-person / per-repository switch
-│       │   ├── release.py      # Composition, tags, changelog, clone / push
-│       │   └── config.py       # Config tab, connection test, rule tester, profile, notifications
+│       │   └── config.py       # Config tab, connection test, rule tester, branches, profile, notifications
 │       ├── components/
 │       │   ├── grid.py         # Custom colored grid, sorting, tooltips
 │       │   ├── pagination.py
+│       │   ├── side_panel.py   # Shared side panel frame: resize, scroll, keyboard navigation
 │       │   ├── chart.py        # Weekly score line chart (Canvas)
 │       │   ├── filter_bar.py   # State, dates, repositories, people, drafts filters
 │       │   ├── dialogs.py      # Rule, repository and person dialogs
@@ -585,12 +558,12 @@ gitective/
     ├── forge/       test_gitlab_client.py
     ├── database/    test_store.py, test_project_list.py
     ├── review/      test_rules.py, test_pipeline.py, test_merge_rights.py, test_profile.py, test_mr_detail.py
+    ├── repository/  test_branches.py, test_tags.py
     ├── reporting/   test_statistics.py, test_overview_figures.py
-    ├── shared/      test_parallel.py, test_search.py
-    └── release/     test_release_diff.py, test_local_git.py
+    └── shared/      test_parallel.py, test_search.py
 ```
 
-### 14.3 Interface forge et classe API GitLab
+### 15.3 Interface forge et classe API GitLab
 
 L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le métier a besoin, en termes neutres. `GitLabClient` en est l'implémentation GitLab ; un adaptateur pour une autre forge (GitHub, Gitea…) pourra être ajouté sans modifier le métier ni `ui`.
 
@@ -599,25 +572,21 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 | API-01 | Construction : URL de l'instance, token, option de vérification SSL. |
 | API-02 | Basée sur `urllib.request` ; en-tête `PRIVATE-TOKEN`. |
 | API-03 | Gestion transparente de la pagination GitLab. |
-| API-04 | Renvoie des objets métier typés et neutres (`Project`, `MergeRequest`, `Commit`, `CommitStatus`, `User`, `ProtectedBranch`, `Branch`, `Tag`), pas de JSON brut ni de champ propre à GitLab. |
+| API-04 | Renvoie des objets métier typés et neutres (`Project`, `MergeRequest`, `Commit`, `CommitStatus`, `User`, `ProtectedBranch`, `Branch`, `Tag`, `Pipeline`, `Job`), pas de JSON brut ni de champ propre à GitLab. |
 | API-05 | Lève des exceptions dédiées, définies au niveau de l'interface : authentification, droits, ressource introuvable, réseau, SSL. |
-| API-06 | Méthodes minimales : lire l'utilisateur du token ; lister les projets accessibles ; lire le niveau d'accès du token sur un projet ; lister les MR d'un projet (état, dates, mises à jour depuis une date) ; lister les MR ouvertes de toute l'instance où un utilisateur est assigné, ou relecteur ; lister les commits d'une MR ; lister les commits d'une branche (dates) ; lister les MR associées à un commit ; lister les statuts CI d'un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet ; lister les tags d'un projet ; lister les branches d'un projet ; lire une branche (protégée, merge autorisé aux développeurs) ; lister les commits entre deux références ; pour le panneau de détail (6.6) : lire une MR (état de merge détaillé, conflits, retard sur la cible), lister ses approbations, ses discussions, ses fichiers modifiés (lignes ajoutées / retirées), les jobs d'un pipeline et la fin du log d'un job. `Project` porte la branche par défaut et les URL de clone HTTPS / SSH ; `MergeRequest` porte ses assignés et relecteurs ; `User` porte l'indicateur administrateur. |
+| API-06 | Méthodes minimales : lire l'utilisateur du token ; lister les projets accessibles ; lire le niveau d'accès du token sur un projet ; lister les MR d'un projet (état, dates, mises à jour depuis une date) ; lister les MR ouvertes de toute l'instance où un utilisateur est assigné, ou relecteur ; lister les commits d'une MR ; lister les commits d'une branche (dates) ; lister les MR associées à un commit ; lister les statuts CI d'un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet ; lister les branches d'un projet (dernier commit, mergée, protégée, par défaut) ; lister les tags d'un projet (message, commit pointé, release associée) ; lire une branche (protégée, merge autorisé aux développeurs) ; lister les pipelines d'une référence ; pour le panneau de détail (6.6) : lire une MR (état de merge détaillé, conflits, retard sur la cible), lister ses approbations, ses discussions, ses fichiers modifiés (lignes ajoutées / retirées), les jobs d'un pipeline et la fin du log d'un job. `Project` porte la branche par défaut ; `MergeRequest` porte ses assignés, ses relecteurs et les SHA de tête, de merge et de squash ; `User` porte l'indicateur administrateur. |
 | API-07 | `GitLabClient` reste générique et réutilisable, indépendant de l'application. |
 
-## 15. Jalons
+## 16. Jalons
 
 | Jalon | Contenu |
 |---|---|
 | J1 | Application exécutée par Python installé (périmètre de ce document). |
 | J2 (futur) | Exécutable Windows autonome. |
 
-## 16. Points ouverts
+## 17. Points ouverts
 
 | Point | Statut |
 |---|---|
 | Onglet Statistiques réservé à un mode admin | Reporté à une version ultérieure, mode d'implémentation à définir. Le profil Mergeur (5.7) pourrait servir de base. |
-| Changelog : regroupement par ticket ou par type de MR (fonctionnalité / correctif, via labels ou préfixe de titre) | À décider. |
-| Livraison : différences entre les modes Version et Release au-delà des modèles de noms (branche de départ, calcul, contenu du changelog, dépôts concernés) | Hypothèse retenue : seuls les modèles de nom de branche et de tag diffèrent. À confirmer. |
-| Livraison : valeurs par défaut des noms de branche | Défauts proposés en LI-25, à confirmer. |
-| Changelog : lien vers le ticket (URL du gestionnaire de tickets construite à partir du n° extrait) | À décider. |
 | Notifications « nouveau merge » : réservées au profil Mergeur | Hypothèse retenue. À confirmer (utile aussi aux développeurs ?). « Ma MR mergée » est disponible pour tous les profils (NO-09). |

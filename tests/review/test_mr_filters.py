@@ -38,6 +38,42 @@ def iids(rows: list[Evaluation]) -> list[int]:
     return [e.mr.iid for e in rows]
 
 
+class ShaSearchTests(unittest.TestCase):
+    def test_merge_squash_head_and_stored_commits(self) -> None:
+        """FI-20: a SHA prefix finds the MR whatever commit it names."""
+        data = mr_json(iid=1, title="Feature")
+        data.update(merge_commit_sha="4f1a" + "0" * 36, squash_commit_sha="ab12" + "0" * 36, sha="cd34" + "0" * 36)
+        ev = RULES.evaluate(MergeRequest.from_json(data), "group/repo", PEOPLE)
+        other = evaluation(2, state="merged")
+        merged = filters("merged")
+        for needle in ("4", "4F1A", "ab", "cd3", "ef"):
+            self.assertEqual(iids(visible([ev, other], merged, needle, {(10, 1): ["ef56" + "0" * 36]})), [1], needle)
+        self.assertEqual(iids(visible([ev, other], merged, "ef")), [])  # commits never read: not found
+        self.assertEqual(iids(visible([ev, other], merged, "feature")), [1, 2])  # plain text search still works
+
+
+class ResetAndTotalTests(unittest.TestCase):
+    def test_reset_keeps_state_and_page_size(self) -> None:
+        """FI-18."""
+        state = FilterState(Filters(state="opened", since_yesterday=False, total=True, authors=["u:1"], repos=[3],
+                                    drafts="only", reviewers=["none"], page_size=50))
+        seen: list[str] = []
+        state.subscribe(seen.append)
+        state.reset()
+        self.assertEqual((state.state, state.page_size, state.authors, state.repos, state.drafts, state.reviewers),
+                         ("opened", 50, [], [], "all", []))
+        self.assertTrue(state.since_yesterday)
+        self.assertFalse(state.total)
+        self.assertEqual(seen, ["reset"])
+
+    def test_total_has_no_period_and_is_remembered(self) -> None:
+        """FI-19."""
+        state = FilterState(Filters(since_yesterday=False, total=True))
+        self.assertIsNone(state.period())
+        self.assertTrue(state.to_settings().total)
+        self.assertIsNotNone(FilterState(Filters(since_yesterday=True, total=True)).period())
+
+
 class VisibleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.open = [

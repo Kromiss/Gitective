@@ -33,10 +33,12 @@ class Column:
     'avatar' (value = (PhotoImage | None, initials, color, name)),
     'people' (value = (includes the user, other names): "Moi" first, in the accent color),
     'flag' (value = (text, warning): warning color and "≠" when the warning is set, tooltip = warning),
-    'dot' (value = True: small accent dot, e.g. a new MR).
+    'dot' (value = True: small accent dot, e.g. a new MR),
+    'links' (value = [(text, url, tooltip)]: several links in one cell, e.g. the MRs of a branch),
+    'pill' (value = (text, (background, foreground)): colored label, e.g. a branch state).
 
     Row keys starting with "_" style the whole row: "_muted" (dimmed text),
-    "_tag" (label drawn before the link text, e.g. BROUILLON), "_selected".
+    "_tag" (label drawn before the link text: BROUILLON, or the SHA a search found), "_selected".
     """
 
     key: str
@@ -74,6 +76,9 @@ class DataGrid(ttk.Frame):
         self._sort_key: str | None = None
         self._ascending = True
         self._x: list[tuple[int, int]] = []
+        # Clickable parts of 'links' cells: (row index, column key) → [(x0, x1, url, tooltip)].
+        self._spans: dict[tuple[int, str], list[tuple[float, float, str, str]]] = {}
+        self._row_index = 0
         # Widths set by the user (dragged), by column key; saved in config.json.
         self._user_widths: dict[str, int] = dict(widths or {})
         self._on_widths_changed = on_widths_changed
@@ -192,6 +197,7 @@ class DataGrid(ttk.Frame):
         font, bold, mono = fonts
         self.body.configure(background=theme.surface)
         self.body.delete("all")
+        self._spans = {}
         if not self._rows:
             self.body.create_text(width / 2, 40, text=self._empty_text, fill=theme.muted, font=font)
             self.body.configure(scrollregion=(0, 0, width, 80))
@@ -201,6 +207,7 @@ class DataGrid(ttk.Frame):
             if row.get("_selected"):
                 self.body.create_rectangle(0, top, width, top + ROW_HEIGHT - 1, fill=theme.selected_row, outline="")
                 self.body.create_rectangle(0, top, 3, top + ROW_HEIGHT - 1, fill=theme.accent, outline="")
+            self._row_index = index
             for col, (x0, x1) in zip(self.columns, self._x):
                 self._draw_cell(col, row.get(col.key), x0, x1, top + ROW_HEIGHT / 2, theme, fonts, row)
             self.body.create_line(0, top + ROW_HEIGHT - 1, width, top + ROW_HEIGHT - 1, fill=theme.header)
@@ -215,11 +222,14 @@ class DataGrid(ttk.Frame):
         text_color = theme.muted if row.get("_muted") else theme.text
         if col.kind == "link" and row.get("_tag"):
             tag = row["_tag"]
+            muted = bool(row.get("_muted"))
             small = tkfont.Font(font=(theme.font[0], max(7, theme.font[1] - 2), "bold"))
             w = small.measure(tag) + 10
-            self.body.create_rectangle(x0, mid - 9, x0 + w, mid + 9, fill=theme.na[0], outline=theme.na[0])
-            self.body.create_text(x0 + w / 2, mid, text=tag, fill=theme.na[1], font=small)
-            self._text(self.body, x0 + w + 6, x1, mid, value[0], font, theme.muted, col.align, underline=True)
+            bg, fg = theme.na if muted else theme.info
+            self.body.create_rectangle(x0, mid - 9, x0 + w, mid + 9, fill=bg, outline=bg)
+            self.body.create_text(x0 + w / 2, mid, text=tag, fill=fg, font=small)
+            self._text(self.body, x0 + w + 6, x1, mid, value[0], font, theme.muted if muted else theme.link,
+                       col.align, underline=True)
             return
         if col.kind == "people":
             includes_me, others = value
@@ -243,6 +253,12 @@ class DataGrid(ttk.Frame):
         if col.kind == "dot":
             cx = (x0 + x1 - 8) / 2 if col.align == "center" else x0 + 6
             self.body.create_oval(cx - 5, mid - 5, cx + 5, mid + 5, fill=theme.second, outline="")
+            return
+        if col.kind == "links":
+            self._links(col, value, x0, x1, mid, font, theme.muted if row.get("_muted") else theme.link)
+            return
+        if col.kind == "pill":
+            self._pill(x0, x1, mid, value[0], value[1], bold, align="w")
             return
         if col.kind == "status":
             self._pill(x0, x1, mid, STATUS_TEXT.get(value[0], value[0]), theme.status_colors(value[0]), bold)
@@ -287,10 +303,29 @@ class DataGrid(ttk.Frame):
             if bbox:
                 canvas.create_line(bbox[0], bbox[3] - 1, bbox[2], bbox[3] - 1, fill=color)
 
+    def _links(self, col: Column, value: list[tuple[str, str, str]], x0: int, x1: int, mid: float,
+               font: tkfont.Font, color: str) -> None:
+        """Several underlined links separated by commas; each keeps its own click area."""
+        x, spans = float(x0), []
+        for index, (text, url, tip) in enumerate(value):
+            label = text + ("," if index < len(value) - 1 else "")
+            width = font.measure(text)
+            if x + width > x1 - 8:
+                self.body.create_text(x, mid, text="…", fill=color, font=font, anchor="w")
+                break
+            self.body.create_text(x, mid, text=label, fill=color, font=font, anchor="w")
+            self.body.create_line(x, mid + 8, x + width, mid + 8, fill=color)
+            spans.append((x, x + width, url, tip))
+            x += font.measure(label + " ")
+        self._spans[(self._row_index, col.key)] = spans
+
+    def _span_at(self, index: int, col: Column, x: float) -> tuple[float, float, str, str] | None:
+        return next((s for s in self._spans.get((index, col.key), []) if s[0] <= x <= s[1]), None)
+
     def _pill(self, x0: int, x1: int, y: float, text: str, colors: tuple[str, str], font: tkfont.Font,
-              minimum: int = 44) -> None:
+              minimum: int = 44, align: str = "center") -> None:
         w = max(minimum, font.measure(text) + 14)
-        cx = (x0 + x1 - 8) / 2
+        cx = x0 + w / 2 if align == "w" else (x0 + x1 - 8) / 2
         self.body.create_rectangle(cx - w / 2, y - 11, cx + w / 2, y + 11, fill=colors[0], outline=colors[0])
         self.body.create_text(cx, y, text=text, fill=colors[1], font=font)
 
@@ -328,6 +363,11 @@ class DataGrid(ttk.Frame):
             if value and value[1]:
                 self._on_link(value[1])
                 return
+        if hit and hit[1].kind == "links" and self._on_link:
+            span = self._span_at(self._row_at(event) or 0, hit[1], self.body.canvasx(event.x))
+            if span:
+                self._on_link(span[2])
+                return
         index = self._row_at(event)
         if index is not None and self._on_select:
             self.body.focus_set()
@@ -342,6 +382,10 @@ class DataGrid(ttk.Frame):
             value = row.get(col.key)
             if col.kind == "link" and value:
                 cursor = "hand2"
+            if col.kind == "links" and value:
+                span = self._span_at(self._row_at(event) or 0, col, self.body.canvasx(event.x))
+                if span:
+                    cursor, tip = "hand2", span[3]
             if col.kind == "status" and value and value[0] in ("ko", "na") and value[1]:
                 tip = value[1]
             if col.kind in ("tip", "flag") and value and value[1]:

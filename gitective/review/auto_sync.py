@@ -27,6 +27,7 @@ from gitective.review.profile import (
 from gitective.review.rules import RuleSet
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.dates import now_local
+from gitective.shared.parallel import run_parallel
 from gitective.shared.people import PersonDirectory
 
 NOTIFIED_ONCE = "notified_once"  # meta key: a first synchronisation already happened (no notification before)
@@ -80,6 +81,7 @@ def synchronise(
             continue
         if project.id in known_ids:
             fresh += [(project, mr) for mr in mrs]
+    errors += _refresh_repositories(data, projects, settings.parallel_requests)
     profile = previous
     try:
         user = data.client.current_user() if data.client else None
@@ -106,6 +108,18 @@ def synchronise(
         notices = _with_scores(data, notices, projects, settings, people, errors)
     store.set_meta(NOTIFIED_ONCE, "1")
     return SyncOutcome(profile, mine, notices, errors)
+
+
+def _refresh_repositories(data: ForgeData, projects: Sequence[TrackedProject], workers: int) -> list[ForgeError]:
+    """Complete branch and tag lists of every project, several repositories at a time (BR-10, TG-08, CH-06)."""
+    def refresh(project: TrackedProject) -> ForgeError | None:
+        try:
+            data.refresh_repository(project.id)
+        except ForgeError as exc:
+            return exc
+        return None
+
+    return [e for e in run_parallel(refresh, list(projects), workers) if e is not None]
 
 
 def _with_scores(

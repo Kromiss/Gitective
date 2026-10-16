@@ -17,6 +17,7 @@ class NumberFields:
     orange: str
     parallel: str
     sync_minutes: str
+    dead_branch_days: str = "30"
 
 
 def _number(text: str) -> float:
@@ -36,7 +37,8 @@ def apply_numbers(settings: Settings, fields: NumberFields) -> str:
     Nothing must be saved when a message is returned.
     """
     checks = [(f"de la règle « {r.name} »", r.pattern) for r in settings.rules]
-    checks += [("du lien ticket", settings.link_regex), ("du n° de ticket", settings.ticket_regex)]
+    checks += [("du lien ticket", settings.link_regex), ("du n° de ticket", settings.ticket_regex),
+               ("d'exclusion des branches", settings.branch_exclude_regex)]
     for label, pattern in checks:
         error = validate_regex(pattern)
         if error:
@@ -60,5 +62,8 @@ def apply_numbers(settings: Settings, fields: NumberFields) -> str:
     minutes = _whole(fields.sync_minutes, REFRESH_RANGE)
     if minutes is None:
         return f"Synchronisation automatique : un nombre de minutes entre {REFRESH_RANGE[0]} et {REFRESH_RANGE[1]}."
-    settings.parallel_requests, settings.sync_minutes = parallel, minutes
+    dead_days = _whole(fields.dead_branch_days, (1, 100_000))
+    if dead_days is None:
+        return "Branche morte : un nombre entier de jours, au moins 1."
+    settings.parallel_requests, settings.sync_minutes, settings.dead_branch_days = parallel, minutes, dead_days
     return ""

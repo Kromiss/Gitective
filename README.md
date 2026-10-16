@@ -173,6 +173,12 @@ Press **F11** to toggle full screen.
 - Filter by state (Merged, Open, Closed or Direct commits), dates
   (`DD/MM/YYYY`), "Since yesterday", repositories, authors, assignees and
   reviewers and, for merged MRs, mergers.
+- **Total** (Merged and Direct commits) removes the date limit: only the part
+  of the history missing from the local database is read from GitLab, with a
+  progress bar.
+- **Réinitialiser les filtres**, next to Refresh, sets every filter back to
+  "all", the dates to "Since yesterday" and empties the search. The state,
+  page size and sort are kept.
 - Drafts are shown for open and closed MRs with a **BROUILLON** label; the
   **Brouillons** filter includes, excludes or shows only them. They never
   count in the average score, the statistics or the overview.
@@ -183,8 +189,11 @@ Press **F11** to toggle full screen.
   changed files. Up / Down arrows move to the previous / next MR, Escape
   closes the panel. Drag its border to resize it; the width is remembered.
 - Type in **Search** to filter as you type, case-insensitive. It looks in the
-  title, description, author, merger, repository and branches. In the Direct
-  commits state, it looks in the message, SHA, author and repository.
+  title, description, author, merger, repository and branches, and finds an
+  MR by the start of a SHA, from the first character: merge, squash or head
+  commit, or any commit of the MR already in the local database. The matching
+  SHA is shown before the title. In the Direct commits state, it looks in the
+  message, SHA, author and repository.
 - Click a title to open the MR in your browser.
 - Hover a red **KO** cell to see why the rule failed.
 - Click a column header to sort the whole list.
@@ -221,6 +230,30 @@ by someone else on a tracked repository ("Votre MR a été mergée").
 
 Lists the commits on each watched branch that are not linked to any MR, for
 the chosen dates.
+
+**Branches tab**
+
+Lists the branches of the tracked repositories, to remind their authors to
+open an MR or delete them. Each branch shows its last commit (`12/09/2026 (34 j)`),
+the author of that commit, every MR whose source branch it is (click one to
+open it) and a single state: **Supprimée** (gone from GitLab, dimmed),
+**Mergée non supprimée** (merged, or one of its MRs is merged), **Morte**
+(no commit for more than 30 days, set in the Config tab) or **Active**.
+The default branch, protected branches and names matching the exclusion
+regex (Config tab, `^(main|master|develop.*)$` by default) are hidden.
+Filter by name, author, repository and state; **Copier la liste** copies the
+filtered branches, grouped by author, as Markdown.
+
+**Tags tab**
+
+Lists the tags of the tracked repositories with their message, GitLab release
+notes, date, commit and commit author. Filter by repository, text (name,
+message, notes, start of the SHA) and period. Click a row to open the
+**detail panel**: full message, pointed commit and its MR when known, release
+notes and the latest pipeline of the tag with the end of the first failed
+job's log. Tags deleted from GitLab stay listed, labelled **SUPPRIMÉ**.
+
+Branches and tags are read again at each synchronisation.
 
 **Choosing repositories**
 
@@ -283,12 +316,13 @@ main.py / main.pyw            entry points
 gitective/forge               GitLab requests, isolated: ForgeClient interface, GitLabClient, models, errors
 gitective/database            local SQLite store, synchronisation, accessible projects list
 gitective/review              MR control: rules and score, MR evaluation, direct commits, merge rights
+gitective/repository          Branches and Tags tabs logic
 gitective/reporting           statistics and Overview figures
 gitective/shared              dates, people mapping, text search, parallel requests, avatars
 gitective/settings            config.json loading and saving
 gitective/ui                  Tkinter window, themes, background tasks, first-launch wizard
 gitective/ui/tabs             one module per tab
-gitective/ui/components       grid, pagination, chart, filter bar, dialogs, small widgets
+gitective/ui/components       grid, pagination, chart, filter bar, tab bar, side panel, dialogs, small widgets
 gitective/ui/alerts           error banner, desktop notifications, badges
 gitective/assets              logo (svg, png, ico)
 tests                         unit tests, same folders as gitective/
