@@ -76,11 +76,20 @@ MIGRATIONS: tuple[tuple[str, ...], ...] = (
             project_id INTEGER NOT NULL, name TEXT NOT NULL, commit_sha TEXT NOT NULL, data TEXT NOT NULL,
             PRIMARY KEY (project_id, name))""",
     ),
+    (
+        # Tag comparison (TC-06, TC-10): MRs of a commit, commits between two commits; never read twice.
+        """CREATE TABLE commit_mrs (
+            project_id INTEGER NOT NULL, sha TEXT NOT NULL, data TEXT NOT NULL,
+            PRIMARY KEY (project_id, sha))""",
+        """CREATE TABLE ref_compares (
+            project_id INTEGER NOT NULL, base_sha TEXT NOT NULL, head_sha TEXT NOT NULL, data TEXT NOT NULL,
+            PRIMARY KEY (project_id, base_sha, head_sha))""",
+    ),
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 DATA_TABLES = ("meta", "sync", "projects", "merge_requests", "mr_commits", "mr_statuses",
                "branch_commits", "commit_mr", "project_access", "avatars", "my_mrs", "seen_roles", "mr_details",
-               "branches", "tags", "tag_pipelines")
+               "branches", "tags", "tag_pipelines", "commit_mrs", "ref_compares")
 RoleKey = tuple[int, int, str]  # (project_id, iid, "assignee" | "reviewer")
 NAMED_TABLES = ("branches", "tags")  # lists read whole at each synchronisation and compared with the base
 
@@ -475,3 +484,28 @@ class Store:
         with self.transaction() as tx:
             tx.execute("INSERT OR REPLACE INTO tag_pipelines VALUES (?, ?, ?, ?)",
                        (project_id, name, commit_sha, dumps(data)))
+
+    # ------------------------------------------------------------ Tag comparison (12.1)
+
+    def get_commit_mrs(self, project_id: int, sha: str) -> list[MergeRequest] | None:
+        """MRs GitLab links to a commit, as read once (TC-06); None when never read."""
+        row = self.conn.execute("SELECT data FROM commit_mrs WHERE project_id = ? AND sha = ?",
+                                (project_id, sha)).fetchone()
+        return loads_list(MergeRequest, row[0]) if row else None
+
+    def put_commit_mrs(self, project_id: int, sha: str, mrs: Sequence[MergeRequest]) -> None:
+        with self.transaction() as tx:
+            tx.execute("INSERT OR REPLACE INTO commit_mrs VALUES (?, ?, ?)", (project_id, sha, dumps(list(mrs))))
+            tx.execute("INSERT OR REPLACE INTO commit_mr VALUES (?, ?, ?)", (project_id, sha, int(bool(mrs))))
+
+    def get_compare(self, project_id: int, base_sha: str, head_sha: str) -> list[Commit] | None:
+        """Commits reachable from head and not from base, as read once (TC-10)."""
+        row = self.conn.execute(
+            "SELECT data FROM ref_compares WHERE project_id = ? AND base_sha = ? AND head_sha = ?",
+            (project_id, base_sha, head_sha)).fetchone()
+        return loads_list(Commit, row[0]) if row else None
+
+    def put_compare(self, project_id: int, base_sha: str, head_sha: str, commits: Sequence[Commit]) -> None:
+        with self.transaction() as tx:
+            tx.execute("INSERT OR REPLACE INTO ref_compares VALUES (?, ?, ?, ?)",
+                       (project_id, base_sha, head_sha, dumps(list(commits))))
