@@ -122,6 +122,19 @@ class TagFilters:
 
 
 @dataclass
+class CompareLine:
+    """A line of the Comparer sub-tab: a repository, a "current" tag or branch and a reference tag (TC-02)."""
+
+    project_id: int = 0
+    current: str = ""
+    reference: str = ""
+    id: str = dc_field(default_factory=lambda: uuid.uuid4().hex[:8])
+
+
+TAG_VIEWS = ("browse", "compare")
+
+
+@dataclass
 class Settings:
     """Every user-editable parameter of the application."""
 
@@ -157,6 +170,9 @@ class Settings:
     dead_branch_days: int = 30
     branch_filters: BranchFilters = dc_field(default_factory=BranchFilters)
     tag_filters: TagFilters = dc_field(default_factory=TagFilters)
+    # Tags tab: shown sub-tab and the lines of the Comparer sub-tab (TG-01, TC-02).
+    tags_view: str = "browse"
+    tag_compares: list[CompareLine] = dc_field(default_factory=list)
     # Column widths set by dragging, per table ("mr", "commits", "stats", "stats_repo", "branches", "tags").
     column_widths: dict[str, dict[str, int]] = dc_field(default_factory=dict)
 
@@ -198,6 +214,9 @@ class Settings:
             dead_branch_days=clamp_dead_days(data.get("dead_branch_days", base.dead_branch_days)),
             branch_filters=_branch_filters(data.get("branch_filters")),
             tag_filters=TagFilters(**_pick(_dict(data.get("tag_filters")), TagFilters)),
+            tags_view=data.get("tags_view") if data.get("tags_view") in TAG_VIEWS else base.tags_view,
+            tag_compares=[CompareLine(**_pick(_dict(c), CompareLine)) for c in data.get("tag_compares") or []
+                          if isinstance(c, dict)],
         )
 
     @property

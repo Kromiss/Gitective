@@ -417,3 +417,23 @@ class ForgeData:
         data = TagPipelineData(fetched_at=_now(), pipeline=pipeline, jobs=tuple(jobs), log_job_id=log_job, log=log)
         self.store.put_tag_pipeline(project_id, tag.name, tag.commit_sha, data)
         return data
+
+    # ------------------------------------------------------------ Tag comparison (12.1)
+
+    def commits_between(self, project_id: int, base_sha: str, head_sha: str) -> list[Commit]:
+        """Commits of head missing from base, from the Git graph (TC-05); read once per couple (TC-10)."""
+        stored = self.store.get_compare(project_id, base_sha, head_sha)
+        if stored is not None:
+            return stored
+        commits = self._require_client().list_commits(project_id, f"{base_sha}..{head_sha}")
+        self.store.put_compare(project_id, base_sha, head_sha, commits)
+        return commits
+
+    def commit_mrs(self, project_id: int, sha: str) -> list[MergeRequest]:
+        """MRs GitLab links to a commit; the answer is stored for good (TC-06, like CO-08)."""
+        stored = self.store.get_commit_mrs(project_id, sha)
+        if stored is not None:
+            return stored
+        mrs = self._require_client().list_commit_merge_requests(project_id, sha)
+        self.store.put_commit_mrs(project_id, sha, mrs)
+        return mrs

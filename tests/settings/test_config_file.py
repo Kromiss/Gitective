@@ -58,6 +58,17 @@ class ConfigFileTests(unittest.TestCase):
         self.assertEqual((read.dead_branch_days, read.branch_filters.states, read.tag_filters.total,
                           read.branch_exclude_regex), (1, ["deleted"], True, "^wip/"))
 
+    def test_compare_lines_survive_a_save_and_a_load(self) -> None:
+        """TC-02, TG-01."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "config.json"
+            settings = Settings(tags_view="compare")
+            settings.tag_compares = [config.CompareLine(10, "main", "v1.0", "a1")]
+            config.save(settings, path)
+            again = config.load(path)
+            self.assertEqual((again.tags_view, again.tag_compares), ("compare", settings.tag_compares))
+        self.assertEqual(Settings.from_dict({"tags_view": "x", "tag_compares": ["bad"]}).tags_view, "browse")
+
     def test_unreadable_file_gives_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "config.json"

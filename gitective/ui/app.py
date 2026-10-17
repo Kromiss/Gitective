@@ -452,6 +452,7 @@ class App:
         new.column_widths = self.settings.column_widths
         # Filters remembered by the tabs since the Config form was loaded.
         new.branch_filters, new.tag_filters = self.settings.branch_filters, self.settings.tag_filters
+        new.tags_view, new.tag_compares = self.settings.tags_view, self.settings.tag_compares
         url_changed = new.gitlab_url.rstrip("/") != self.settings.gitlab_url.rstrip("/")
         self.settings = new
         self._save()

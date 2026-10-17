@@ -1,4 +1,4 @@
-"""Tags tab: tags of the tracked repositories with their message, release notes and a detail panel (section 12)."""
+"""Tags tab: Parcourir (tags with their message, release notes and a detail panel) and Comparer sub-tabs (section 12)."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from gitective.ui.components.grid import Column, sort_rows
 from gitective.ui.components.pagination import Pager
 from gitective.ui.components.widgets import MultiSelect
 from gitective.ui.tabs.data_tab import DataTab
+from gitective.ui.tabs.tag_compare import TagCompareView
 from gitective.ui.tabs.tag_detail_panel import TagDetailPanel
 
 if TYPE_CHECKING:
@@ -54,8 +55,8 @@ def _key(row: TagRow) -> Key:
     return row.project.id, row.tag.name
 
 
-class TagsTab(DataTab):
-    """Lists the tags; a click on a line opens its detail panel (TG-01..TG-07)."""
+class TagsBrowseView(DataTab):
+    """Parcourir sub-tab: lists the tags; a click on a line opens its detail panel (TG-02..TG-07)."""
 
     table = "tags"
 
@@ -281,3 +282,55 @@ class TagsTab(DataTab):
         self._render_page()
         if self._panel_open:
             self.panel.render()
+
+
+class TagsTab(ttk.Frame):
+    """Tags tab: a switch between the Parcourir and Comparer sub-tabs, the shown one remembered (TG-01)."""
+
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master)
+        self.app = app
+        self._view = tk.StringVar(value=app.settings.tags_view)
+        switch = ttk.Frame(self)
+        switch.pack(fill="x", padx=16, pady=(12, 0))
+        for value, text in (("browse", "Parcourir"), ("compare", "Comparer")):
+            ttk.Radiobutton(switch, text=text, value=value, variable=self._view, style="Toolbutton",
+                            command=self._switch).pack(side="left")
+        self.browse = TagsBrowseView(self, app)
+        self.compare = TagCompareView(self, app)
+        self._show()
+
+    @property
+    def _current(self) -> TagsBrowseView | TagCompareView:
+        return self.compare if self._view.get() == "compare" else self.browse
+
+    @property
+    def dirty(self) -> bool:
+        return self._current.dirty
+
+    @dirty.setter
+    def dirty(self, value: bool) -> None:
+        self.browse.dirty = self.compare.dirty = value
+
+    def _show(self) -> None:
+        shown, hidden = (self.compare, self.browse) if self._view.get() == "compare" else (self.browse, self.compare)
+        hidden.pack_forget()
+        shown.pack(fill="both", expand=True)
+
+    def _switch(self) -> None:
+        self.app.settings.tags_view = self._view.get()
+        self.app.save_settings()
+        self._show()
+        if self._current.dirty:
+            self._current.reload()
+
+    def reload(self) -> None:
+        self._current.reload()
+
+    def update_repo_items(self) -> None:
+        self.browse.update_repo_items()
+        self.compare.update_repo_items()
+
+    def restyle(self) -> None:
+        self.browse.restyle()
+        self.compare.restyle()
