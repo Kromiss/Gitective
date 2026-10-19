@@ -253,6 +253,16 @@ message, notes, start of the SHA) and period. Click a row to open the
 notes and the latest pipeline of the tag with the end of the first failed
 job's log. Tags deleted from GitLab stay listed, labelled **SUPPRIMÉ**.
 
+The **Comparer** sub-tab lists the MRs delivered between two versions. Add a
+line per repository, then choose **Current** (a tag or a branch) and
+**Référence** (a tag): the line is computed at once from the Git history, not
+from the dates, and shows the number of MRs, commits without MR, their average
+score and a warning when the reference holds commits missing from Current.
+Click a line to see its MRs, commits without MR and that divergence in the side
+panel; **Copier en Markdown** copies every line for release notes. Lines are
+remembered, and a comparison already computed needs no GitLab request.
+A cherry-picked commit is not linked to its original MR.
+
 Branches and tags are read again at each synchronisation.
 
 **Choosing repositories**

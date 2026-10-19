@@ -2,11 +2,11 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.13 (brouillon) — 16/10/2026
+Version : 1.14 (brouillon) — 16/10/2026
 
 ## 1. Objet
 
-**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts. L'interface s'adapte aux droits du token : profil **Développeur** ou **Mergeur** (5.7).
+**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts, et de lister les MR qui séparent deux tags. L'interface s'adapte aux droits du token : profil **Développeur** ou **Mergeur** (5.7).
 
 ## 2. Contraintes techniques
 
@@ -50,6 +50,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Branches : seuil « branche morte », en jours calendaires (BR-04) | 30 |
 | Derniers filtres de l'onglet Branches (auteurs, dépôts, états) | tous, états « Active », « Morte », « Mergée non supprimée » |
 | Derniers filtres de l'onglet Tags (dépôts, période) | tous, « Total » |
+| Lignes de comparaison de tags (dépôt, current, référence, TC-02) | aucune |
 | Vue de l'onglet Statistiques (par personne / par dépôt) | Par personne |
 | Largeurs de colonnes modifiées | aucune (ajustement au titre) |
 | Largeur du panneau de détail (DE-02, TG-07) | 420 px |
@@ -429,7 +430,7 @@ Objectif : consulter les tags des dépôts suivis et leurs informations sans ouv
 
 | Réf. | Exigence |
 |---|---|
-| TG-01 | Onglet « Tags », placé après l'onglet Branches. Tous profils. Couvre les dépôts suivis. |
+| TG-01 | Onglet « Tags », placé après l'onglet Branches. Tous profils. Couvre les dépôts suivis. Deux sous-onglets : **Parcourir** (TG-02 à TG-09) et **Comparer** (12.1). Le sous-onglet affiché est mémorisé. |
 | TG-02 | Colonnes : Dépôt ; Tag (clic = ouverture de la page du tag dans GitLab) ; Message ; Notes de release ; Date (date du commit pointé, heure locale) ; Commit (SHA court, clic = ouverture du commit) ; Auteur du commit (personne, PE-03). Tri par défaut : date décroissante. |
 | TG-03 | **Message** (message du tag annoté, vide pour un tag léger) et **Notes de release** (description de la release GitLab associée, vide s'il n'y en a pas) : deux colonnes distinctes, première ligne seulement, texte complet en infobulle et dans le panneau. |
 | TG-04 | Filtres, combinés (ET) : **Dépôts** (sélection multiple parmi les dépôts suivis) ; **Recherche texte** (nom, message, notes de release, SHA par préfixe dès 1 caractère ; non mémorisée) ; **Période** sur la date (deux dates `JJ/MM/AAAA`, raccourcis et bouton « Total » comme ST-05 ; défaut « Total »). Dépôts et période mémorisés. |
@@ -439,20 +440,38 @@ Objectif : consulter les tags des dépôts suivis et leurs informations sans ouv
 | TG-08 | Données : `GET /projects/:id/repository/tags` (nom, message, commit pointé, release associée). Liste complète relue à chaque synchronisation (CH-05, CH-13) et comparée à la base, comme BR-10 : tag absent de GitLab gardé et marqué supprimé. |
 | TG-09 | Pipeline du tag (`GET /projects/:id/pipelines?ref=<tag>`, puis jobs et fin de log) : lu à l'ouverture du panneau, en tâche de fond, dernière copie en base affichée aussitôt (comme DE-12). Relu si le tag pointe sur un autre commit ou si le pipeline n'est pas terminé ; un pipeline terminé n'est plus relu. |
 
+### 12.1 Comparer des tags
+
+Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dépôts, pour préparer ou vérifier une livraison.
+
+| Réf. | Exigence |
+|---|---|
+| TC-01 | Sous-onglet **Comparer** de l'onglet Tags : un tableau de lignes de comparaison, à gauche, et un panneau de détail à droite (mêmes mécanismes que DE-01 et DE-02 : ligne surlignée, flèches haut / bas, Échap, largeur commune). |
+| TC-02 | Bouton **« + Ajouter une ligne »**. Une ligne = **Dépôt** (liste des dépôts suivis), **Current** (tag ou branche du dépôt) et **Référence** (tag du dépôt). Un même dépôt peut figurer sur plusieurs lignes. Croix de suppression en bout de ligne. Les lignes sont mémorisées dans `config.json` et retrouvées au lancement. |
+| TC-03 | Choix de Current et Référence : listes déroulantes avec recherche, construites depuis la base (TG-08, BR-10) : tags non supprimés du dépôt, du plus récent au plus ancien, puis, pour Current uniquement, ses branches non supprimées. Changer de dépôt vide les deux choix. |
+| TC-04 | Calcul lancé dès que Current et Référence sont choisis, en tâche de fond, ligne par ligne ; indicateur « Calcul… » sur la ligne. Aucun bouton à cliquer. |
+| TC-05 | **Commits de l'écart** : `GET /projects/:id/repository/commits?ref_name=<référence>..<current>` (commits présents dans Current et absents de Référence, d'après le graphe Git, quelles que soient les dates), paginé, sans les diffs. **Divergence** : même requête dans l'autre sens (`<current>..<référence>`). |
+| TC-06 | **Commits → MR**, sans requête d'abord : SHA de merge, de squash ou de tête d'une MR en base, puis commits des MR en base (RP-04, ST-12) ; pour les commits restants, `GET /projects/:id/repository/commits/:sha/merge_requests`, une requête par commit, en parallèle (CH-06), résultat stocké une fois pour toutes (comme CO-08). Une MR est comptée une fois même si plusieurs de ses commits sont dans l'écart. Les commits sans MR sont gardés à part. |
+| TC-07 | Colonnes de la ligne : Dépôt, Current, Référence, **Date current** et **Date référence** (date du commit pointé, heure locale), **MR** (nombre), **Commits hors MR** (nombre), **Score moyen** des MR (couleur selon les seuils), **Divergence** (pastille d'avertissement avec le nombre de commits de Référence absents de Current, vide sinon). Ligne en erreur si un tag ou une branche n'existe plus (« v2.3.0 introuvable »). |
+| TC-08 | **Panneau de détail** (clic sur une ligne) : en-tête `dépôt · référence → current` ; liste des **MR** de l'écart, triées par date de merge décroissante : titre cliquable (ouverture dans GitLab), `!iid`, auteur → mergeur, date de merge, pastille de score ; section **Commits sans MR** (SHA court cliquable, titre, auteur, date) ; section **Divergence**, en couleur d'avertissement, si Référence a des commits absents de Current : « Présents dans la référence mais absents de current », avec les MR et commits concernés. Sections vides masquées. |
+| TC-09 | Bouton **« Copier en Markdown »** : toutes les lignes calculées, un titre par ligne (`dépôt : référence → current`), puis une ligne par MR (`!iid titre — auteur`), puis les commits sans MR. Copie via le presse-papiers `tkinter`. |
+| TC-10 | Données stockées : les commits de l'écart et leurs MR sont stockés par couple (SHA de Référence, SHA de Current) : une comparaison déjà calculée s'affiche sans requête. Current sur une branche : recalculé quand la tête de la branche change (BR-10). Un tag déplacé sur un autre commit est recalculé. |
+| TC-11 | Limites : un commit cherry-pické change de SHA et n'est pas relié à sa MR d'origine (il apparaît dans « Commits sans MR ») ; deux tags très éloignés peuvent demander de nombreuses requêtes la première fois (barre de progression sur la ligne) ; les deux références doivent appartenir au même dépôt. |
+
 ## 13. Chargement, base locale et rafraîchissement
 
 | Réf. | Exigence |
 |---|---|
 | CH-01 | Les appels GitLab s'exécutent en tâche de fond ; l'IHM reste réactive. |
 | CH-02 | Indicateur de chargement visible pendant les appels. |
-| CH-03 | Base locale persistante `gitective.db` (SQLite, `sqlite3`) : projets accessibles, MR (dont assignés et relecteurs), commits de MR, commits des branches surveillées, résultats de détection hors MR, statuts CI, membres et branches protégées, utilisateurs et avatars, branches (dernier commit, indicateurs, date de suppression constatée, BR-10), tags (message, release, commit pointé, date de suppression constatée, TG-08), pipelines des tags (TG-09), utilisateur du token et profil (5.7), détails de MR du panneau (état de merge, approbations, discussions, pipeline et jobs, fin des logs en échec, fichiers modifiés, DE-12), MR ouvertes de tous les dépôts où l'utilisateur est assigné ou relecteur, et couples MR / rôle déjà vus (AM-02, AM-04). Le changement de page, de tri ou de filtre lit la base sans réinterroger GitLab. |
+| CH-03 | Base locale persistante `gitective.db` (SQLite, `sqlite3`) : projets accessibles, MR (dont assignés et relecteurs), commits de MR, commits des branches surveillées, résultats de détection hors MR, statuts CI, membres et branches protégées, utilisateurs et avatars, branches (dernier commit, indicateurs, date de suppression constatée, BR-10), tags (message, release, commit pointé, date de suppression constatée, TG-08), pipelines des tags (TG-09), commits et MR des comparaisons de tags et MR liées à chaque commit (TC-06, TC-10), utilisateur du token et profil (5.7), détails de MR du panneau (état de merge, approbations, discussions, pipeline et jobs, fin des logs en échec, fichiers modifiés, DE-12), MR ouvertes de tous les dépôts où l'utilisateur est assigné ou relecteur, et couples MR / rôle déjà vus (AM-02, AM-04). Le changement de page, de tri ou de filtre lit la base sans réinterroger GitLab. |
 | CH-04 | Un changement de filtre ou de dates ne déclenche une requête GitLab que pour la partie de la période absente de la base. |
 | CH-05 | Bouton **Rafraîchir** : mise à jour incrémentale depuis la dernière synchronisation de chaque dépôt (MR via `updated_after`, commits via `since`), relecture des branches et des tags (BR-10, TG-08), retéléchargement des avatars et recalcul du profil (PR-04). |
 | CH-13 | **Synchronisation automatique**, tous profils : toutes les N minutes (réglable dans l'onglet Config, défaut 5), même fenêtre réduite, la mise à jour incrémentale des MR et commits de CH-05, la relecture des branches et des tags (BR-10, TG-08) et le recalcul du profil s'exécutent en tâche de fond (avatars : au bouton Rafraîchir uniquement). Puis rafraîchissement de l'affichage, des badges (BA-04) et des notifications (NO-04). Ignorée si une synchronisation est déjà en cours. Instance injoignable : nouvel essai au cycle suivant, bandeau CH-08. |
 | CH-06 | Les requêtes « une par commit » (commits hors MR) et « une par MR » (règles sur les commits, RC-05, ST-12) partent en parallèle, comme les lectures de branches et tags des différents dépôts ; le nombre de requêtes simultanées se règle dans l'onglet Config (1 à 16, défaut 6). |
 | CH-07 | Les règles sont évaluées localement à partir des données en base : modifier une règle, une pondération ou une correspondance de personnes recalcule l'affichage sans requête GitLab. Idem pour la regex d'exclusion et le seuil des branches. |
 | CH-08 | Mode hors ligne : si l'instance est injoignable, l'application affiche les données en base et un bandeau indique la date de dernière synchronisation. |
-| CH-09 | Données immuables jamais relues : commits d'une MR mergée, statuts CI d'une MR mergée (PI-05), résultat de détection d'un commit (CO-08), pipeline terminé d'un tag (TG-09). |
+| CH-09 | Données immuables jamais relues : comparaison de deux commits (TC-10), MR d'un commit (TC-06), commits d'une MR mergée, statuts CI d'une MR mergée (PI-05), résultat de détection d'un commit (CO-08), pipeline terminé d'un tag (TG-09). |
 | CH-10 | La base est liée à l'URL de l'instance. Un changement d'URL dans l'onglet Config propose de vider la base. |
 | CH-11 | La base porte un numéro de version de schéma ; une version de l'application plus récente migre le schéma au démarrage. |
 | CH-12 | Accès concurrents : une connexion SQLite par thread ; les écritures sont faites par les tâches de fond, en transactions. |
@@ -480,7 +499,7 @@ Objectif : consulter les tags des dépôts suivis et leurs informations sans ouv
 | AR-02 | Code, noms et commentaires en anglais. |
 | AR-03 | Commentaires synthétiques et logiques : docstring courte pour chaque module, classe et fonction publique ; commentaire en ligne uniquement pour la logique non évidente. |
 | AR-04 | Annotations de type partout. |
-| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04, NO-09), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08). |
+| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04, NO-09), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08), comparaison de tags (commits → MR sans requête puis par requête, MR comptée une fois, divergence, texte copié, recalcul d'une branche dont la tête a changé, TC-05 à TC-10). |
 | AR-06 | `README.md` en anglais : prérequis, installation, configuration, utilisation. |
 
 ### 15.2 Arborescence
@@ -513,7 +532,8 @@ gitective/
 │   │   └── profile.py          # Token user, Developer / Merger profile, my open MRs, "new" flags
 │   ├── repository/             # Branches and tags tabs logic
 │   │   ├── branches.py         # Branch state, exclusions, related MRs, copied list, deleted marking
-│   │   └── tags.py             # Tag list, deleted marking, pointed-commit MR, tag pipeline
+│   │   ├── tags.py             # Tag list, deleted marking, pointed-commit MR, tag pipeline
+│   │   └── tag_compare.py      # Commits and MRs between two references, divergence, copied text
 │   ├── reporting/              # Figures shown to the user
 │   │   ├── statistics.py       # Per-person and per-repository statistics, lead times
 │   │   └── overview_figures.py # Overview tab figures
@@ -537,7 +557,8 @@ gitective/
 │       │   ├── mr_detail_panel.py # Side panel with the selected MR details (6.6)
 │       │   ├── direct_commits.py # Direct commits view of the MR tab
 │       │   ├── branches.py     # Branches tab, filters, copy list
-│       │   ├── tags.py         # Tags tab, filters
+│       │   ├── tags.py         # Tags tab: Parcourir / Comparer sub-tabs, filters
+│       │   ├── tag_compare.py  # Comparer sub-tab: comparison lines, detail panel, copy (12.1)
 │       │   ├── tag_detail_panel.py # Side panel with the selected tag details (TG-07)
 │       │   ├── statistics.py   # Per-person / per-repository switch
 │       │   └── config.py       # Config tab, connection test, rule tester, branches, profile, notifications
@@ -558,7 +579,7 @@ gitective/
     ├── forge/       test_gitlab_client.py
     ├── database/    test_store.py, test_project_list.py
     ├── review/      test_rules.py, test_pipeline.py, test_merge_rights.py, test_profile.py, test_mr_detail.py
-    ├── repository/  test_branches.py, test_tags.py
+    ├── repository/  test_branches.py, test_tags.py, test_tag_compare.py
     ├── reporting/   test_statistics.py, test_overview_figures.py
     └── shared/      test_parallel.py, test_search.py
 ```
@@ -574,7 +595,7 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 | API-03 | Gestion transparente de la pagination GitLab. |
 | API-04 | Renvoie des objets métier typés et neutres (`Project`, `MergeRequest`, `Commit`, `CommitStatus`, `User`, `ProtectedBranch`, `Branch`, `Tag`, `Pipeline`, `Job`), pas de JSON brut ni de champ propre à GitLab. |
 | API-05 | Lève des exceptions dédiées, définies au niveau de l'interface : authentification, droits, ressource introuvable, réseau, SSL. |
-| API-06 | Méthodes minimales : lire l'utilisateur du token ; lister les projets accessibles ; lire le niveau d'accès du token sur un projet ; lister les MR d'un projet (état, dates, mises à jour depuis une date) ; lister les MR ouvertes de toute l'instance où un utilisateur est assigné, ou relecteur ; lister les commits d'une MR ; lister les commits d'une branche (dates) ; lister les MR associées à un commit ; lister les statuts CI d'un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet ; lister les branches d'un projet (dernier commit, mergée, protégée, par défaut) ; lister les tags d'un projet (message, commit pointé, release associée) ; lire une branche (protégée, merge autorisé aux développeurs) ; lister les pipelines d'une référence ; pour le panneau de détail (6.6) : lire une MR (état de merge détaillé, conflits, retard sur la cible), lister ses approbations, ses discussions, ses fichiers modifiés (lignes ajoutées / retirées), les jobs d'un pipeline et la fin du log d'un job. `Project` porte la branche par défaut ; `MergeRequest` porte ses assignés, ses relecteurs et les SHA de tête, de merge et de squash ; `User` porte l'indicateur administrateur. |
+| API-06 | Méthodes minimales : lire l'utilisateur du token ; lister les projets accessibles ; lire le niveau d'accès du token sur un projet ; lister les MR d'un projet (état, dates, mises à jour depuis une date) ; lister les MR ouvertes de toute l'instance où un utilisateur est assigné, ou relecteur ; lister les commits d'une MR ; lister les commits d'une branche (dates) ou d'un intervalle `référence..current` (TC-05) ; lister les MR associées à un commit ; lister les statuts CI d'un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet ; lister les branches d'un projet (dernier commit, mergée, protégée, par défaut) ; lister les tags d'un projet (message, commit pointé, release associée) ; lire une branche (protégée, merge autorisé aux développeurs) ; lister les pipelines d'une référence ; pour le panneau de détail (6.6) : lire une MR (état de merge détaillé, conflits, retard sur la cible), lister ses approbations, ses discussions, ses fichiers modifiés (lignes ajoutées / retirées), les jobs d'un pipeline et la fin du log d'un job. `Project` porte la branche par défaut ; `MergeRequest` porte ses assignés, ses relecteurs et les SHA de tête, de merge et de squash ; `User` porte l'indicateur administrateur. |
 | API-07 | `GitLabClient` reste générique et réutilisable, indépendant de l'application. |
 
 ## 16. Jalons

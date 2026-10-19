@@ -44,7 +44,7 @@ class MigrationTests(unittest.TestCase):
             schema_1_database(path)
             store = Store(path)
             self.assertEqual(store.schema_version, SCHEMA_VERSION)
-            self.assertEqual(SCHEMA_VERSION, 3)
+            self.assertEqual(SCHEMA_VERSION, 4)
             # Kept: stored MRs, commits sync state, avatars, instance URL.
             old = store.merge_requests(10)
             self.assertEqual([m.iid for m in old], [4])
