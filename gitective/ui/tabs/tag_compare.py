@@ -13,6 +13,7 @@ from gitective.repository.tag_compare import CompareError, Comparison, compare, 
 from gitective.review.rules import Evaluation, score_level
 from gitective.settings.config_file import CompareLine, TrackedProject
 from gitective.shared.dates import format_datetime
+from gitective.shared.repo_names import short_names
 from gitective.ui.components.side_panel import SidePanel
 from gitective.ui.components.widgets import Tooltip
 from gitective.ui.themes import Theme
@@ -24,20 +25,21 @@ if TYPE_CHECKING:
 HEADERS = (("Dépôt", 14), ("Current", 12), ("Référence", 12), ("Date current", 16), ("Date référence", 16),
            ("MR", 5), ("Hors MR", 8), ("Score", 7), ("Divergence", 10))
 COMBO_COLUMNS = 3  # Dépôt, Current, Référence are combo boxes, the others labels
-COMBO_MAX = 32  # characters: wider names are cut in the field, the list shows them whole
+COMBO_MAX = 22  # characters: wider names are cut in the field, the list shows them whole
+COMBO_MAX_PANEL = 14  # while the detail panel takes room on the right
 DATE_COLUMNS = (4, 5)  # hidden while the detail panel is open, which shows them (like DE-03)
 
 
 def repo_labels(projects: Sequence[TrackedProject]) -> list[str]:
     """Repository name, or its whole path when another tracked repository has the same name."""
-    names = [p.path.split("/")[-1] for p in projects]
-    return [p.path if names.count(n) > 1 else n for p, n in zip(projects, names)]
+    names = short_names(p.path for p in projects)
+    return [names[p.path] for p in projects]
 
 
-def fit_combo(combo: ttk.Combobox, values: Sequence[str], minimum: int) -> None:
+def fit_combo(combo: ttk.Combobox, values: Sequence[str], minimum: int, maximum: int = COMBO_MAX) -> None:
     """Field as wide as its longest choice (capped), drop-down list always wide enough for every choice."""
     longest = max((len(v) for v in values), default=0)
-    combo.configure(width=max(minimum, min(longest + 1, COMBO_MAX)))
+    combo.configure(width=min(maximum, max(minimum, longest + 1)))
 
     def widen() -> None:
         # ttk sizes the list like the field; its style's postoffset adds the missing pixels.
@@ -174,7 +176,7 @@ class TagCompareView(ttk.Frame):
         item.marker.grid(row=row, column=0, sticky="ns", pady=2)
         names = repo_labels(projects)
         repo = ttk.Combobox(self._table, state="readonly", values=names)
-        fit_combo(repo, names, HEADERS[0][1])
+        fit_combo(repo, names, HEADERS[0][1], self._combo_max)
         project = self._project(item.line.project_id)
         repo.set(names[projects.index(project)] if project else "")
         repo.bind("<<ComboboxSelected>>", lambda e: self._repo_chosen(item, projects[repo.current()].id))
@@ -195,10 +197,14 @@ class TagCompareView(ttk.Frame):
         remove.grid(row=row, column=len(HEADERS) + 1, padx=(6, 0), pady=3)
         self._fill(item, theme)
 
+    @property
+    def _combo_max(self) -> int:
+        return COMBO_MAX_PANEL if self._panel_open else COMBO_MAX
+
     def _ref_combo(self, item: _Line, which: int, width: int) -> ttk.Combobox:
         """Combo box with search: typing narrows the list, only a listed value is kept (TC-03)."""
         combo = ttk.Combobox(self._table, values=item.choices[which])
-        fit_combo(combo, item.choices[which], width)
+        fit_combo(combo, item.choices[which], width, self._combo_max)
         combo.set(item.line.current if which == 0 else item.line.reference)
 
         def narrow(event: tk.Event) -> None:
@@ -451,12 +457,12 @@ class TagCompareDetail(SidePanel):
                  foreground=theme.text, font=(theme.mono[0], theme.mono[1] + 3, "bold"), anchor="w",
                  wraplength=self._wrap - 30, justify="left").pack(fill="x")
         kind = "branche" if result.current.is_branch else "tag"
-        lines = (f"{result.project.path.split('/')[-1]} · current : {kind}",
+        lines = (f"{self.app.repo_label(result.project.path)} · current : {kind}",
                  f"{result.reference.name} : {format_datetime(result.reference.date)}",
                  f"{result.current.name} : {format_datetime(result.current.date)}")
         for text in lines:
-            tk.Label(head, text=text, background=theme.bg, foreground=theme.muted,
-                     font=(theme.mono[0], theme.mono[1] - 1), anchor="w").pack(fill="x")
+            tk.Label(head, text=text, background=theme.bg, foreground=theme.muted, justify="left",
+                     wraplength=self._wrap - 30, font=(theme.mono[0], theme.mono[1] - 1), anchor="w").pack(fill="x")
         tags = tk.Frame(inner, background=theme.bg)
         tags.pack(fill="x", padx=12, pady=(8, 0))
         self._tag(tags, f"{len(result.ahead.mrs)} MR", theme.info, theme)

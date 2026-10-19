@@ -106,10 +106,11 @@ class TagDetailPanel(SidePanel):
         head = tk.Frame(parent, background=theme.bg)
         head.pack(fill="x", padx=12, pady=(12, 0))
         self._close_button(head, theme, self._on_close)
-        tk.Label(head, text=tag.name, background=theme.bg, foreground=theme.text, anchor="w",
-                 font=(theme.mono[0], theme.mono[1] + 4, "bold")).pack(fill="x")
+        tk.Label(head, text=tag.name, background=theme.bg, foreground=theme.text, anchor="w", justify="left",
+                 wraplength=self._wrap - 30, font=(theme.mono[0], theme.mono[1] + 4, "bold")).pack(fill="x")
         kind = "annoté" if tag.annotated else "léger"
-        tk.Label(head, text=f"{row.project.path.split('/')[-1]} · tag {kind} · {format_datetime(tag.committed_date)}",
+        meta = f"{self.app.repo_label(row.project.path)} · tag {kind} · {format_datetime(tag.committed_date)}"
+        tk.Label(head, text=meta,
                  background=theme.bg, foreground=theme.muted, font=(theme.mono[0], theme.mono[1] - 1),
                  anchor="w", wraplength=self._wrap, justify="left").pack(fill="x", pady=(2, 0))
         if row.deleted_at is not None:

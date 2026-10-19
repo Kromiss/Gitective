@@ -20,6 +20,7 @@ from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.avatars import AvatarStore
 from gitective.shared.dates import format_datetime, now_local
 from gitective.shared.people import PersonDirectory
+from gitective.shared.repo_names import short_name
 from gitective.review.auto_sync import SyncOutcome, synchronise
 from gitective.review.profile import (
     ASSIGNEE,
@@ -167,7 +168,8 @@ class App:
         logo = ASSETS / "logo.png"
         self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
         self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests,
-                             self._open_notification_settings, self._score_colors, self._toast_logo)
+                             self._open_notification_settings, self._score_colors, self._toast_logo,
+                             repo_label=self.repo_label)
 
         self.notebook = ttk.Notebook(self.root, style="Pages.TNotebook")
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
@@ -206,6 +208,11 @@ class App:
     def me_key(self) -> str | None:
         """Person key of the token owner, to show "Moi" (AM-07)."""
         return self.people.for_user(self.profile.user).key if self.profile.user else None
+
+    def repo_label(self, path: str) -> str:
+        """Short name of a repository, its whole path when another known repository has the same name."""
+        paths = [p.path for p in self.settings.projects] + [mr.project_path for mr, _ in self.my_mrs]
+        return short_name(path, paths)
 
     def me_name(self) -> str:
         return self.people.for_user(self.profile.user).name if self.profile.user else ""
