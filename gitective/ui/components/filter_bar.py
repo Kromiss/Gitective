@@ -11,6 +11,7 @@ from gitective.settings.filter_state import (
     DATED_STATES,
     DRAFT_LABELS,
     DRAFT_STATES,
+    MERGER_STATES,
     PEOPLE_STATES,
     STATES,
     FilterState,
@@ -167,7 +168,7 @@ class MrFilterBar(ttk.Frame):
         for widget in (*self._date_entries, self._apply, self._yesterday):
             widget.state(["!disabled"] if dated else ["disabled"])
         # Only merged MRs have a merger (FI-13); direct commits have no assignee or reviewer (FI-14, FI-15).
-        self.mergers.state(["!disabled"] if state == "merged" else ["disabled"])
+        self.mergers.state(["!disabled"] if state in MERGER_STATES else ["disabled"])
         for widget in (self.assignees, self.reviewers):
             widget.state(["!disabled"] if state in PEOPLE_STATES else ["disabled"])
         self._drafts.state(["!disabled"] if state in DRAFT_STATES else ["disabled"])

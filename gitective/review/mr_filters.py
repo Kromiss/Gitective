@@ -6,7 +6,7 @@ from collections.abc import Hashable, Iterable, Mapping, Sequence
 
 from gitective.shared.i18n import t
 from gitective.review.rules import Evaluation
-from gitective.settings.filter_state import DRAFT_STATES, PEOPLE_STATES, FilterState
+from gitective.settings.filter_state import DRAFT_STATES, MERGER_STATES, PEOPLE_STATES, FilterState
 from gitective.shared.people import PersonRef
 from gitective.shared.search import matches, sha_hit
 
@@ -39,14 +39,14 @@ def visible(evaluations: Iterable[Evaluation], filters: FilterState, needle: str
             commit_shas: CommitShas | None = None) -> list[Evaluation]:
     """MRs kept by the author, merger, assignee, reviewer, draft and text filters.
 
-    The merger filter applies to merged MRs only (FI-13), the assignee and
-    reviewer filters to merged, open and closed MRs (FI-14, FI-15), the draft
-    filter to open and closed MRs (FI-17). Every filter combines (AND). The
+    The merger filter keeps merged MRs only (FI-13), the assignee and
+    reviewer filters apply to every MR state (FI-14, FI-15), the draft filter
+    to open and closed MRs (FI-17). Every filter combines (AND). The
     text also finds an MR by a SHA prefix (FI-20).
     """
     state = filters.state
     authors = set(filters.authors)
-    mergers = set(filters.mergers) if state == "merged" else set()
+    mergers = set(filters.mergers) if state in MERGER_STATES else set()
     assignees = set(filters.assignees) if state in PEOPLE_STATES else set()
     reviewers = set(filters.reviewers) if state in PEOPLE_STATES else set()
     drafts = filters.drafts if state in DRAFT_STATES else "all"

@@ -12,10 +12,13 @@ from gitective.shared.dates import Period, day_range, format_date, now_local, pa
 Listener = Callable[[str], None]
 
 # "direct" lists the commits pushed without a merge request (CO-01).
-STATES = (("merged", t("Mergées")), ("opened", t("Ouvertes")), ("closed", t("Fermées")), ("direct", t("Commits directs")))
-DATED_STATES = ("merged", "direct")
-PEOPLE_STATES = ("merged", "opened", "closed")  # assignee and reviewer filters (FI-14, FI-15)
-DRAFT_STATES = ("opened", "closed")  # a merged MR is never a draft (FI-17)
+# "all" lists merged, open and closed MRs together (FI-21); "direct" the commits pushed without a merge request (CO-01).
+STATES = (("merged", t("Mergées")), ("opened", t("Ouvertes")), ("closed", t("Fermées")), ("all", t("Toutes")),
+          ("direct", t("Commits directs")))
+DATED_STATES = ("merged", "all", "direct")  # "all" filters on the creation date (FI-21)
+MERGER_STATES = ("merged", "all")  # merger filter (FI-13)
+PEOPLE_STATES = ("merged", "opened", "closed", "all")  # assignee and reviewer filters (FI-14, FI-15)
+DRAFT_STATES = ("opened", "closed", "all")  # a merged MR is never a draft (FI-17)
 DRAFT_LABELS = {"all": t("Inclus"), "exclude": t("Exclus"), "only": t("Seulement")}
 
 

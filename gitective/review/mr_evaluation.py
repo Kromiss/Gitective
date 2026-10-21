@@ -43,6 +43,17 @@ def load_merge_requests(
     return [m for m in mrs if m.state == state]
 
 
+def load_created(
+    data: ForgeData,
+    project: TrackedProject,
+    period: Period | None,
+) -> list[MergeRequest]:
+    """MRs of every state created within period (None = all time), drafts included: the "Toutes" state (FI-21)."""
+    start = period[0] if period else None
+    mrs = data.merge_requests(project.id, start, created_after=start)
+    return [m for m in mrs if in_period(m.created_at, period)]
+
+
 def load_all_states(
     data: ForgeData,
     project: TrackedProject,

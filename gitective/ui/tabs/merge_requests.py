@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from gitective.shared.i18n import t
 from gitective.reporting.statistics import average
-from gitective.review.mr_evaluation import Pair, evaluate_all, load_merge_requests, load_pairs
+from gitective.review.mr_evaluation import Pair, evaluate_all, load_created, load_merge_requests, load_pairs
 from gitective.review.mr_filters import mr_shas, names, people_cell, people_choices, step_selection, visible
 from gitective.review.rules import Evaluation, score_level
 from gitective.settings.config_file import TrackedProject
@@ -27,7 +27,9 @@ if TYPE_CHECKING:
     from gitective.ui.app import App
 
 STATE_WORDS = {"merged": t("{count} MR mergée(s)"), "opened": t("{count} MR ouverte(s)"), "closed": t("{count} MR fermée(s)"),
-               "direct": "{count} MR"}
+               "all": t("{count} MR"), "direct": "{count} MR"}
+STATE_LABELS = {"merged": t("Mergée"), "opened": t("Ouverte"), "closed": t("Fermée")}
+STATE_COLUMN = Column("state", t("État"), 80)  # only in the "Toutes" state (FI-21)
 STATUS_ORDER = {"ok": 0, "na": 1, "ko": 2}
 NOT_TRACKED = t(" (non suivi)")
 
@@ -54,6 +56,7 @@ BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
     "merger": lambda e: e.merger.name.casefold() if e.merger else None,
     "created": lambda e: e.mr.created_at,
     "merged": lambda e: e.mr.merged_at,
+    "state": lambda e: STATE_LABELS.get(e.mr.state, e.mr.state),
     "score": lambda e: e.score,
 }
 
@@ -152,10 +155,11 @@ class MrTab(DataTab):
         self._criteria_ids = [c.id for c in criteria]
         shown = [] if self._panel_open else criteria
         new = [NEW_COLUMN] if self._shows_new else []
-        columns = [*new, *BASE_COLUMNS,
+        states = [STATE_COLUMN] if self.app.filters.state == "all" else []
+        columns = [*new, *BASE_COLUMNS[:2], *states, *BASE_COLUMNS[2:],
                    *(Column(f"c:{c.id}", c.label, 60, kind="status", align="center") for c in shown),
                    SCORE_COLUMN]
-        if self._sort_key not in self._sort_keys():
+        if self._sort_key not in self._sort_keys() or (self._sort_key == "state" and not states):
             self._sort_key, self._ascending = "merged", False
         self.grid_view.set_columns(columns)
         self.grid_view.set_sort(self._sort_key, self._ascending)
@@ -212,7 +216,7 @@ class MrTab(DataTab):
             return
         state = self.app.filters.state
         try:
-            period = self.app.filters.period() if state == "merged" else None
+            period = self.app.filters.period() if state in ("merged", "all") else None
         except ValueError:
             self.app.notify("error", t("Dates invalides : utilisez le format JJ/MM/AAAA."))
             return
@@ -228,13 +232,15 @@ class MrTab(DataTab):
         assert rules is not None
         workers = self.app.settings.parallel_requests
         # "Total" reads the history missing from the base, repository by repository (FI-19).
-        phase = [t("Chargement de l'historique absent de la base") if period is None and state == "merged"
+        phase = [t("Chargement de l'historique absent de la base") if period is None and state in ("merged", "all")
                  else t("Chargement des MR")]
         self._show_progress(phase[0], 0, len(projects))
         store = self.app.store
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
-            pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data, p, state, period), progress)
+            load = ((lambda p: load_created(data, p, period)) if state == "all"
+                    else (lambda p: load_merge_requests(data, p, state, period)))
+            pairs, errors = load_pairs(projects, load, progress)
             phase[0] = t("Lecture des commits des MR")
             evaluations = evaluate_all(data, [*pairs, *extra], rules, people, progress, workers)
             return evaluations, list(errors), store.mr_commit_shas({e.mr.project_id for e in evaluations})
@@ -328,6 +334,7 @@ class MrTab(DataTab):
                 "merger": (ev.merger.name, ev.merger_not_assignee) if ev.merger else "",
                 "created": format_datetime(mr.created_at),
                 "merged": format_datetime(mr.merged_at),
+                "state": STATE_LABELS.get(mr.state, mr.state),
                 "score": (f"{ev.score:.0f} %", score_level(ev.score, settings.green_threshold, settings.orange_threshold)),
                 "_selected": _key(ev) == self._selected,
             }

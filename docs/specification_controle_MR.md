@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.16 (brouillon) — 21/10/2026
+Version : 1.17 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -199,25 +199,26 @@ Les profils Développeur / Mergeur (v1.14) sont supprimés : badges, MR des dép
 
 | Réf. | Exigence |
 |---|---|
-| FI-01 | Filtre d'état exclusif (un seul à la fois) : **Mergées**, **Ouvertes**, **Fermées**, **Commits directs** (voir section 10). |
+| FI-01 | Filtre d'état exclusif (un seul à la fois) : **Mergées**, **Ouvertes**, **Fermées**, **Toutes** (FI-21), **Commits directs** (voir section 10). |
 | FI-02 | **Mergées** : filtre entre deux dates, appliqué sur la date de merge. |
 | FI-03 | Saisie des dates au format `JJ/MM/AAAA`, journées entières : date de début 00:00:00 → date de fin 23:59:59 incluses. |
 | FI-04 | **Mergées** : raccourci « Depuis hier » = hier 00:00 → maintenant. |
 | FI-19 | **Mergées** et **Commits directs** : bouton « Total » = période sans limite de date, même logique que le bouton « Total » des Statistiques (ST-05). Les champs de dates sont vidés. Seule la partie de l'historique absente de la base est chargée (CH-04), avec la barre de progression ; pour Commits directs, la détection (CO-08) couvre tout l'historique de la branche surveillée. Mémorisé (FI-06). |
 | FI-05 | **Ouvertes** et **Fermées** : aucun filtre de date, liste complète. |
+| FI-21 | **Toutes** : MR mergées, ouvertes et fermées ensemble, brouillons compris. Les dates, « Depuis hier » et « Total » filtrent sur la **date de création**. Colonne « État » (Mergée / Ouverte / Fermée), triable, présente dans cet état uniquement, après Titre. Les filtres auteur, mergeur (seules les MR mergées ont un mergeur), assigné, relecteur, dépôt et brouillons s'appliquent. Données déjà en base (CH-03) ; seule la partie de la période absente est lue (CH-04). Les MR des dépôts non suivis (AM-08) restent propres à l'état Ouvertes. |
 | FI-06 | Les derniers filtres sont mémorisés dans `config.json` et restaurés au lancement. |
 | FI-07 | Sans filtre mémorisé, la vue de lancement est **Mergées « Depuis hier »**. |
 | FI-18 | Bouton **« Réinitialiser les filtres »**, à côté du bouton Rafraîchir. Conserve l'état affiché, la taille de page et le tri. Remet à « tous » les filtres auteur, mergeur, assigné, relecteur et dépôt ; brouillons à « Inclus » ; recherche vidée ; dates à « Depuis hier » (Mergées, Commits directs). Aucune requête GitLab hors CH-04. Le résultat est mémorisé (FI-06). |
-| FI-08 | MR en brouillon (Draft) : affichées dans l'onglet Merge Requests (états **Ouvertes** et **Fermées**), jamais comptées ailleurs (score moyen TA-03, Statistiques, Vue d'ensemble, badges, notifications). |
+| FI-08 | MR en brouillon (Draft) : affichées dans l'onglet Merge Requests (états **Ouvertes**, **Fermées** et **Toutes**), jamais comptées ailleurs (score moyen TA-03, Statistiques, Vue d'ensemble, badges, notifications). |
 | FI-16 | Indicateur Draft : étiquette « BROUILLON » devant le titre, couleur N/A du thème, et ligne entière en texte atténué. Infobulle : « MR en brouillon : pas prête à merger ». Score affiché pour information. |
-| FI-17 | Filtre **Brouillons**, choix exclusif : **Inclus** (défaut), **Exclus**, **Seulement**. Actif pour **Ouvertes** et **Fermées** (grisé sinon, une MR mergée n'étant jamais en brouillon). Se combine avec les autres filtres (ET). Mémorisé (FI-06). Le clic sur un badge (BA-02) le remet à « Inclus ». |
+| FI-17 | Filtre **Brouillons**, choix exclusif : **Inclus** (défaut), **Exclus**, **Seulement**. Actif pour **Ouvertes**, **Fermées** et **Toutes** (grisé sinon, une MR mergée n'étant jamais en brouillon). Se combine avec les autres filtres (ET). Mémorisé (FI-06). Le clic sur un badge (BA-02) le remet à « Inclus ». |
 | FI-09 | Filtre par auteur, sélection multiple (tous par défaut), avec l'utilisateur en tête de liste sous la forme « Moi (nom) » (comme AM-07). Actif pour tous les états (**Mergées**, **Ouvertes**, **Fermées**, **Commits directs**), jamais grisé ; liste des auteurs construite depuis les MR (ou commits) de l'état affiché. S'applique aussi à l'onglet Statistiques. |
 | FI-10 | Raccourci **F5** = Rafraîchir. |
 | FI-11 | Filtre par dépôt, sélection multiple parmi les dépôts suivis (tous par défaut). S'applique aussi à l'état Commits directs. Mémorisé comme les autres filtres (FI-06). |
 | FI-12 | Recherche texte instantanée, insensible à la casse : MR (titre, description, auteur, mergeur, dépôt, branches, SHA) et état Commits directs (message, SHA, auteur, dépôt). Non mémorisée. |
 | FI-20 | Recherche par SHA (FI-12), par préfixe, **dès 1 caractère**, sur : commit de merge (`merge_commit_sha`), commit de squash (`squash_commit_sha`), commit de tête (`sha`) et commits de la MR présents en base (RP-04, ST-12). Aucune requête supplémentaire. Limite : les commits d'une MR dont les commits n'ont jamais été lus ne sont pas trouvés. |
-| FI-13 | Filtre par mergeur, sélection multiple regroupée par personne (toutes par défaut), parmi les mergeurs des MR chargées. Actif uniquement pour l'état **Mergées** (grisé sinon). Se combine avec le filtre auteur (ET). Mémorisé (FI-06). |
-| FI-14 | Filtre par **assigné**, sélection multiple regroupée par personne (tous par défaut), parmi les assignés des MR chargées, plus l'entrée « Non assignée ». Actif pour les états **Mergées**, **Ouvertes** et **Fermées** (grisé pour Commits directs). Une MR est retenue si l'un de ses assignés est sélectionné. Mémorisé (FI-06). |
+| FI-13 | Filtre par mergeur, sélection multiple regroupée par personne (toutes par défaut), parmi les mergeurs des MR chargées. Actif pour les états **Mergées** et **Toutes** (grisé sinon ; dans Toutes, il ne garde que des MR mergées). Se combine avec le filtre auteur (ET). Mémorisé (FI-06). |
+| FI-14 | Filtre par **assigné**, sélection multiple regroupée par personne (tous par défaut), parmi les assignés des MR chargées, plus l'entrée « Non assignée ». Actif pour les états **Mergées**, **Ouvertes**, **Fermées** et **Toutes** (grisé pour Commits directs). Une MR est retenue si l'un de ses assignés est sélectionné. Mémorisé (FI-06). |
 | FI-15 | Filtre par **relecteur**, mêmes règles que FI-14 (entrée « Sans relecteur », mêmes états). Les filtres auteur, assigné, relecteur et dépôt se combinent (ET). Données déjà lues par la synchronisation (champs assignés et relecteurs des MR, CH-03) : aucune requête supplémentaire. |
 
 ### 6.2 Tableau
@@ -228,6 +229,7 @@ Grille personnalisée (cellules colorées individuellement). Colonnes :
 |---|---|
 | Dépôt | Nom du dépôt de la MR |
 | Titre | Titre de la MR — **simple clic = ouverture de la MR dans le navigateur web par défaut** |
+| État | Mergée / Ouverte / Fermée — état **Toutes** uniquement (FI-21) |
 | Auteur | Auteur de la MR |
 | Assignés | Personnes assignées à la MR, séparées par des virgules (vide si aucune) |
 | Relecteurs | Relecteurs de la MR, séparés par des virgules (vide si aucun) |

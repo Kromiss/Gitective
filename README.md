@@ -172,10 +172,12 @@ Press **F11** to toggle full screen, on the screen holding the window.
 
 **Merge Requests tab**
 
-- Filter by state (Merged, Open, Closed or Direct commits), dates
+- Filter by state (Merged, Open, Closed, All or Direct commits), dates
   (`DD/MM/YYYY`), "Since yesterday", repositories, authors, assignees and
   reviewers and, for merged MRs, mergers.
-- **Total** (Merged and Direct commits) removes the date limit: only the part
+- **All** lists merged, open and closed MRs together, with a State column;
+  its dates filter on the creation date.
+- **Total** (Merged, All and Direct commits) removes the date limit: only the part
   of the history missing from the local database is read from GitLab, with a
   progress bar.
 - **Réinitialiser les filtres**, next to Refresh, sets every filter back to
