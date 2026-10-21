@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from gitective.shared.i18n import t
@@ -19,6 +20,8 @@ class NumberFields:
     parallel: str
     sync_minutes: str
     dead_branch_days: str = "30"
+    link_group: str = "0"
+    ticket_group: str = "0"
 
 
 def _number(text: str) -> float:
@@ -67,7 +70,25 @@ def apply_numbers(settings: Settings, fields: NumberFields) -> str:
     dead_days = _whole(fields.dead_branch_days, (1, 100_000))
     if dead_days is None:
         return t("Branche morte : un nombre entier de jours, au moins 1.")
+    groups = [(t("Regex de la règle « {name} »", name=r.name), r.pattern, str(r.group)) for r in settings.rules]
+    groups += [(t("Regex du lien ticket"), settings.link_regex, fields.link_group),
+               (t("Regex du n° de ticket"), settings.ticket_regex, fields.ticket_group)]
+    for label, pattern, group in groups:
+        error = group_error(pattern, group)
+        if error:
+            return t("{label} : {error}", label=label, error=error)
+    settings.link_group, settings.ticket_group = int(fields.link_group), int(fields.ticket_group)
     settings.parallel_requests, settings.sync_minutes, settings.dead_branch_days = parallel, minutes, dead_days
+    return ""
+
+
+def group_error(pattern: str, group: str) -> str:
+    """The capturing group to extract must exist in the (valid) regex; "" when it does (RP-09)."""
+    if not group.isdigit():
+        return t("groupe à récupérer : un nombre entier, 0 pour toute la correspondance.")
+    groups = re.compile(pattern).groups if pattern else 0
+    if int(group) > groups:
+        return t("groupe {group} demandé, la regex n'a que {count} groupe(s).", group=group, count=groups)
     return ""
 
 

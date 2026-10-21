@@ -58,6 +58,10 @@ class CustomRule:
     weight: float = 25.0
     active: bool = True
     id: str = dc_field(default_factory=new_rule_id)
+    group: int = 0  # capturing group to extract, 0 = the whole match (RP-09)
+
+    def __post_init__(self) -> None:
+        self.group = regex_group(self.group)
 
 
 def default_rules() -> list[CustomRule]:
@@ -149,6 +153,9 @@ class Settings:
     rules: list[CustomRule] = dc_field(default_factory=default_rules)
     link_regex: str = ""
     ticket_regex: str = ""
+    # Capturing group extracted by the link and ticket regexes; 0 = the whole match (RC-03).
+    link_group: int = 0
+    ticket_group: int = 0
     weights: dict[str, float] = dc_field(default_factory=lambda: {c: 25.0 for c in FIXED_CRITERIA})
     # RC-06 "merged by the assignee" counts only when checked in the Config tab.
     assignee_rule: bool = False
@@ -203,6 +210,8 @@ class Settings:
             rules=[CustomRule(**_pick(r, CustomRule)) for r in rules] if rules is not None else base.rules,
             link_regex=str(data.get("link_regex", "")),
             ticket_regex=str(data.get("ticket_regex", "")),
+            link_group=regex_group(data.get("link_group", 0)),
+            ticket_group=regex_group(data.get("ticket_group", 0)),
             weights={**base.weights, **weights},
             green_threshold=float(data.get("green_threshold", base.green_threshold)),
             orange_threshold=float(data.get("orange_threshold", base.orange_threshold)),
@@ -248,6 +257,11 @@ def clamp_parallel(value: Any) -> int:
     except (TypeError, ValueError):
         number = Settings.parallel_requests
     return max(PARALLEL_RANGE[0], min(PARALLEL_RANGE[1], number))
+
+
+def regex_group(value: Any) -> int:
+    """Non-negative whole number, else the whole match (0)."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
 def clamp_dead_days(value: Any) -> int:

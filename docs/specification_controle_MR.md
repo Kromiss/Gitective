@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.19 (brouillon) — 21/10/2026
+Version : 1.20 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -328,7 +328,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 
 | Réf. | Exigence |
 |---|---|
-| RP-01 | Une règle = nom, champ inspecté, regex, condition, pondération, case « Active ». |
+| RP-01 | Une règle = nom, champ inspecté, regex, groupe à récupérer (RP-09), condition, pondération, case « Active ». |
 | RP-02 | Champs inspectables : titre, description, branche source, branche cible, messages des commits de la MR. |
 | RP-03 | Condition : « doit correspondre » ou « ne doit pas correspondre ». |
 | RP-04 | Messages de commits : OK seulement si **tous** les commits de la MR respectent la condition ; l'infobulle du KO liste les SHA fautifs. Nécessite une requête GitLab par MR (stockée en base, voir CH-09). |
@@ -336,6 +336,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 | RP-06 | Chaque règle active a sa colonne OK / KO dans le tableau, compte dans le score selon sa pondération et dans les statistiques (nombre de KO). |
 | RP-07 | Règles pré-remplies à la création : « Titre conforme » (titre, doit correspondre) et « Lien ticket » (description, doit correspondre), regex à compléter. Elles remplacent les anciennes RC-01 et RC-02. |
 | RP-08 | Regex validées avant enregistrement (OC-07). Une règle active sans regex est KO (« regex non configurée »). |
+| RP-09 | **Groupe à récupérer** sur chaque regex qui lit une valeur : règles personnalisées, lien ticket et n° de ticket (RC-03). 0 (défaut) = toute la correspondance, N = le groupe capturant N (ex. `(#)(\d+)` sur « #42 » : groupe 2 = « 42 »). Le groupe doit exister dans la regex, sinon l'enregistrement est refusé (OC-07). Règle « doit correspondre » : la valeur récupérée est affichée par le testeur ; règle « ne doit pas correspondre » : elle est citée dans le KO. Un groupe facultatif non trouvé compte comme absent. Pas de groupe pour la regex d'exclusion des branches (filtre, aucune valeur lue). |
 
 ### 7.2 Règles fixes
 
@@ -346,7 +347,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 | RC-05 | Pipeline vert | Au moment du merge, tous les statuts CI du dernier commit de la MR sont terminés en succès. | Au moins un statut en échec, annulé, ou encore en cours au moment du merge ; ou aucun statut. | MR non mergée, ou dépôt sans « CI attendue ». |
 | RC-06 | Mergée par l'assigné (activable, désactivée par défaut) | Le mergeur est l'un des assignés de la MR (comparaison par personne, 5.4). | Le mergeur n'est aucun des assignés (infobulle : « Mergée par X, assignée à Y »). | MR non mergée, ou MR sans assigné. |
 
-Les regex du lien et du n° de ticket de RC-03 sont dans un bloc dédié « Correspondance ticket » de l'onglet Config. Le bloc « Règles fixes » de l'onglet Config affiche la pondération de RC-03 à RC-06 et la case « Active » de RC-06.
+Les regex du lien et du n° de ticket de RC-03, chacune avec son groupe à récupérer (RP-09), sont dans un bloc dédié « Correspondance ticket » de l'onglet Config. Le n° de ticket est cherché dans le texte récupéré par la regex du lien. Le bloc « Règles fixes » de l'onglet Config affiche la pondération de RC-03 à RC-06 et la case « Active » de RC-06.
 
 **Détail de RC-05 :**
 

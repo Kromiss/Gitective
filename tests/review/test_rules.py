@@ -93,8 +93,29 @@ class TicketRuleTests(unittest.TestCase):
         self.assertIn("absent du lien", self.check("[PROJ-1] x", "no link")[1])
         self.assertIn("titre et du lien", self.check("x", "y")[1])
 
-    def test_named_group_extracts_ticket(self) -> None:
-        rules = RuleSet([], r"https://jira\.test/browse/\S+", r"(?:#|/)(?P<ticket>\d+)", WEIGHTS)
+    def test_group_zero_takes_the_whole_match(self) -> None:
+        rules = RuleSet([], r"https://jira\.test/browse/\S+", r"(#|/)(\d+)", WEIGHTS)
+        result = rules.check_fields(MrFields("Fix #42", "https://jira.test/browse/#42"))[TICKET]
+        self.assertEqual((result.status, result.detail), (OK, "#42"))
+
+    def test_link_group_narrows_the_link(self) -> None:
+        # Group 1 of the link keeps only the key, so the ticket regex cannot match the host name.
+        rules = RuleSet([], r"browse/(\S+)", r"\d+", WEIGHTS, link_group=1)
+        result = rules.check_fields(MrFields("Fix 42", "https://jira9.test/browse/42"))[TICKET]
+        self.assertEqual((result.status, result.detail), (OK, "42"))
+
+    def test_custom_rule_extracts_its_group(self) -> None:
+        rule = CustomRule(name="N°", field="title", pattern=r"(#)(\d+)", id="r_n", group=2)
+        forbidden = CustomRule(name="WIP", field="title", pattern=r"(WIP)-(\d+)", mode="no_match", id="r_w",
+                               group=2)
+        results = RuleSet([rule, forbidden], "", "", WEIGHTS).check_fields(MrFields("WIP-7 Fix #42", ""))
+        self.assertEqual((results["r_n"].status, results["r_n"].detail), (OK, "42"))
+        self.assertEqual(results["r_w"].status, KO)
+        self.assertIn("(7)", results["r_w"].detail)
+
+    def test_chosen_group_extracts_ticket(self) -> None:
+        # Group 1 is the "#": the number is in group 2.
+        rules = RuleSet([], r"https://jira\.test/browse/\S+", r"(#|/)(\d+)", WEIGHTS, ticket_group=2)
         result = rules.check_fields(MrFields("Fix #42", "https://jira.test/browse/42"))[TICKET]
         self.assertEqual((result.status, result.detail), (OK, "42"))
 
