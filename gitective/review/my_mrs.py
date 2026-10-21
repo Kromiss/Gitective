@@ -1,4 +1,4 @@
-"""Token owner, Developer / Merger profile, own open MRs, "new" flags and notifications (5.7, 5.8, 6.4, 6.5)."""
+"""Token owner, own open MRs, "new" flags and notifications (5.7, 5.8, 6.4, 6.5)."""
 
 from __future__ import annotations
 
@@ -8,52 +8,36 @@ from dataclasses import dataclass
 
 from gitective.forge.models import MergeRequest, User
 from gitective.database.store import RoleKey, Store, decode, encode
-from gitective.database.sync import ForgeData
-from gitective.review.merge_rights import merge_rights
 from gitective.settings.config_file import TrackedProject
 from gitective.shared.people import PersonDirectory
 
-ASSIGNEE, REVIEWER = "assignee", "reviewer"
+ASSIGNEE, REVIEWER, AUTHOR = "assignee", "reviewer", "author"
 MyMr = tuple[MergeRequest, frozenset[str]]
+Key = tuple[int, int]
 
 
-@dataclass(frozen=True)
-class Profile:
-    """Who owns the token and whether the Merger interface applies (PR-02)."""
-
-    user: User | None = None
-    merger: bool = False
-    merge_projects: tuple[str, ...] = ()  # paths of the tracked repositories the user can merge into
-
-    @property
-    def label(self) -> str:
-        return "Mergeur" if self.merger else "Développeur"
+def save_user(store: Store, user: User) -> None:
+    """Last known token owner, used when the instance is unreachable (PR-07)."""
+    store.set_meta("token_user", json.dumps(encode(user)))
 
 
-def compute_profile(data: ForgeData, user: User, projects: Sequence[TrackedProject], workers: int) -> Profile:
-    """Merger when the user can merge into the watched branch of a tracked repository (PR-02, PR-03).
-
-    Rights come from the project members (inherited memberships included) and
-    the branch protections; an instance administrator is always a Merger.
-    """
-    targets = [p for p in projects if p.branch]
-    if user.is_admin:
-        return Profile(user, True, tuple(p.path for p in targets))
-    rights, errors = merge_rights(data, targets, workers)
-    paths = next((paths for account, paths in rights.items() if account.id == user.id), [])
-    if errors and not rights:
-        raise errors[0]
-    return Profile(user, bool(paths), tuple(sorted(paths)))
+def load_user(store: Store) -> User | None:
+    text = store.get_meta("token_user")
+    if text:
+        return decode(User, json.loads(text))
+    # Bases written before v1.15 kept the user inside the Developer / Merger profile.
+    old = json.loads(store.get_meta("profile") or "{}").get("user")
+    return decode(User, old) if old else None
 
 
-def save_profile(store: Store, profile: Profile) -> None:
-    """Last known profile, used when the instance is unreachable (PR-07)."""
-    store.set_meta("profile", json.dumps(encode(profile)))
-
-
-def load_profile(store: Store) -> Profile:
-    text = store.get_meta("profile")
-    return decode(Profile, json.loads(text)) if text else Profile()
+def authored_open_mrs(store: Store, project_ids: Iterable[int], people: PersonDirectory,
+                      me: User | None) -> list[MergeRequest]:
+    """Open MRs of the tracked repositories written by the user, any of their accounts (AM-09)."""
+    if me is None:
+        return []
+    mine = people.for_user(me).key
+    return [mr for pid in project_ids for mr in store.merge_requests(pid, state="opened")
+            if people.for_user(mr.author).key == mine]
 
 
 # ---------------------------------------------------------------- Own open MRs
@@ -79,6 +63,12 @@ def badge_counts(items: Sequence[MyMr], seen: set[RoleKey], role: str) -> BadgeC
     ready = [mr for mr in mine if not mr.draft]
     new = sum(1 for mr in ready if (mr.project_id, mr.iid, role) not in seen)
     return BadgeCounts(total=len(ready), new=new, drafts=len(mine) - len(ready))
+
+
+def author_counts(mrs: Sequence[MergeRequest]) -> BadgeCounts:
+    """Own open MRs, drafts apart; the author badge has no "new" dot (BA-01)."""
+    ready = sum(1 for mr in mrs if not mr.draft)
+    return BadgeCounts(total=ready, new=0, drafts=len(mrs) - ready)
 
 
 def unseen_keys(items: Sequence[MyMr], seen: set[RoleKey]) -> set[RoleKey]:
@@ -112,13 +102,14 @@ def new_count(items: Sequence[MyMr], seen: set[RoleKey]) -> int:
 class Notice:
     """One desktop notification (NO-03)."""
 
-    kind: str  # "merge", "own" (my MR merged, NO-09) or "role"
+    kind: str  # "merge", "own" (my MR merged, NO-09), "role" or "new" (any new MR, NO-11)
     title: str
     mr: MergeRequest
     repo: str
     author: str
     merger: str = ""
     score: float | None = None  # process score of the MR, shown and used as the color (NO-03)
+    roles: frozenset[str] = frozenset()  # assignee / reviewer, for a "role" notice
 
 
 def role_title(roles: Iterable[str]) -> str:
@@ -166,6 +157,36 @@ def role_notices(previous: set[RoleKey], items: Sequence[MyMr], people: PersonDi
         added.setdefault((project_id, iid), set()).add(role)
     by_key = {(mr.project_id, mr.iid): mr for mr, _ in items}
     notices = [Notice("role", role_title(roles), by_key[key], by_key[key].project_path,
-                      people.for_user(by_key[key].author).name)
+                      people.for_user(by_key[key].author).name, roles=frozenset(roles))
                for key, roles in added.items()]
+    return sorted(notices, key=lambda n: n.mr.created_at)
+
+
+def open_ready_keys(store: Store, project_ids: Iterable[int]) -> set[Key]:
+    """Stored open MRs that are not drafts, before a synchronisation (NO-11)."""
+    return {(mr.project_id, mr.iid) for pid in project_ids for mr in store.merge_requests(pid, state="opened")
+            if not mr.draft}
+
+
+def new_mr_notices(
+    before: set[Key],
+    synced: Iterable[tuple[TrackedProject, MergeRequest]],
+    me: User | None,
+    people: PersonDirectory,
+    skip: set[Key],
+) -> list[Notice]:
+    """Open MRs ready to merge that were not before: just created, or just out of draft (NO-11).
+
+    The user's own MRs are left out, and so are those in `skip` (already notified as
+    assigned or in review).
+    """
+    mine = people.for_user(me).key if me else None
+    notices = []
+    for project, mr in synced:
+        key = (mr.project_id, mr.iid)
+        if mr.state != "opened" or mr.draft or key in before or key in skip:
+            continue
+        author = people.for_user(mr.author)
+        if author.key != mine:
+            notices.append(Notice("new", "Nouvelle MR", mr, project.path, author.name))
     return sorted(notices, key=lambda n: n.mr.created_at)

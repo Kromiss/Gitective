@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import math
+import sys
 import tkinter as tk
 import webbrowser
 from tkinter import messagebox
@@ -14,26 +15,28 @@ from tkinter import ttk
 
 from gitective import APP_NAME, __version__
 from gitective.forge.gitlab_client import GitLabClient
-from gitective.forge.models import User
+from gitective.forge.models import MergeRequest, User
 from gitective.settings import config_file as config
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.avatars import AvatarStore
-from gitective.shared.dates import format_datetime, now_local
+from gitective.shared.dates import format_datetime, now_local, to_local
 from gitective.shared.people import PersonDirectory
 from gitective.review.auto_sync import SyncOutcome, synchronise
-from gitective.review.profile import (
+from gitective.review.my_mrs import (
     ASSIGNEE,
+    AUTHOR,
     REVIEWER,
     MyMr,
-    Profile,
+    author_counts,
+    authored_open_mrs,
     badge_counts,
     badge_tip,
-    load_profile,
+    load_user,
     new_count,
     seen_on_click,
     unseen_keys,
 )
-from gitective.review.rules import RuleSet, score_level
+from gitective.review.rules import Evaluation, RuleSet, score_level
 from gitective.database.store import Store, StoreError
 from gitective.database.sync import ForgeData
 from gitective.settings.filter_state import FilterState
@@ -54,6 +57,37 @@ ASSETS = Path(__file__).resolve().parents[1] / "assets"
 WINDOW_TITLE = f"{APP_NAME} — contrôle des merge requests"
 
 
+def monitor_area(root: tk.Misc) -> tuple[int, int, int, int] | None:
+    """(left, top, right, bottom) of the monitor holding most of the window; None outside Windows (VE-13).
+
+    Same DPI awareness as Tk (set in main.py), so both use the same coordinates.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class MonitorInfo(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT),
+                        ("dwFlags", wintypes.DWORD)]
+
+        user32 = ctypes.windll.user32
+        user32.MonitorFromWindow.restype = wintypes.HANDLE
+        user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+        user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MonitorInfo)]
+        hwnd = user32.GetParent(root.winfo_id())  # the Tk wrapper window
+        monitor = user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        info = MonitorInfo()
+        info.cbSize = ctypes.sizeof(MonitorInfo)
+        if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            return None
+        rect = info.rcMonitor
+        return rect.left, rect.top, rect.right, rect.bottom
+    except (AttributeError, OSError):
+        return None
+
+
 class App:
     """Owns the settings, the GitLab client and every tab."""
 
@@ -71,15 +105,17 @@ class App:
         self.known_users: dict[int, User] = {}
         self._known_people: dict[str, str] = {}
         self._people_listeners: list[Callable[[list[tuple[str, str]]], None]] = []
-        # Last known profile and own open MRs, so the interface is right even offline (PR-07).
-        self.profile: Profile = load_profile(self.store)
+        # Last known token owner and own open MRs, so the interface is right even offline (PR-07).
+        self.user: User | None = load_user(self.store)
         self.my_mrs: list[MyMr] = self.store.my_mrs()
+        self.authored: list[MergeRequest] = []  # own open MRs of the tracked repositories (AM-09)
         self._seen = self.store.seen_roles()
         self._new_at_click: set[tuple[int, int]] = set()  # MRs that were new when a badge was clicked
         self.last_sync: datetime | None = None
         self.next_sync: datetime | None = None
         self._sync_timer: str | None = None
         self._syncing = False
+        self._windowed: tuple[str, str] | None = None  # geometry and state before full screen (VE-13)
         self._build_services()
 
         root.title(WINDOW_TITLE)
@@ -153,14 +189,13 @@ class App:
         ttk.Label(header, text=f"v{__version__}", style="HeaderMuted.TLabel").pack(side="left", padx=(6, 0))
         self.tab_bar = TabBar(header, self.get_theme, lambda i: self.notebook.select(i))
         self.tab_bar.pack(side="left", fill="y", padx=(24, 0))
-        # Merger badges, top right of every tab (BA-01); packed only for the Merger profile.
+        # Assignee, reviewer and author badges, top right of every tab (BA-01).
         self._badges = ttk.Frame(header, style="Header.TFrame")
-        self._badge_assignee = Badge(self._badges, ASSIGNEE, "Assigné", self.get_theme,
-                                     lambda: self.show_mine(ASSIGNEE))
-        self._badge_reviewer = Badge(self._badges, REVIEWER, "Relecteur", self.get_theme,
-                                     lambda: self.show_mine(REVIEWER))
-        self._badge_assignee.pack(side="left", padx=(0, 10))
-        self._badge_reviewer.pack(side="left")
+        self._badges.pack(side="right", padx=(12, 0))
+        self._badge_list = [Badge(self._badges, role, label, self.get_theme, lambda r=role: self.show_mine(r))
+                            for role, label in ((ASSIGNEE, "Assigné"), (REVIEWER, "Relecteur"), (AUTHOR, "Auteur"))]
+        for badge in self._badge_list:
+            badge.pack(side="left", padx=(0, 10))
         self._busy = ttk.Progressbar(header, mode="indeterminate", length=120)
         self._busy_label = ttk.Label(header, text="Chargement…", style="HeaderMuted.TLabel")
         ttk.Separator(self.root, orient="horizontal").pack(side="top", fill="x")
@@ -186,7 +221,8 @@ class App:
             self.tab_bar.add(text)
         self.notebook.bind("<<NotebookTabChanged>>", lambda e: self._tab_changed())
         self._update_repo_items()
-        self._apply_profile()
+        self._update_badges()
+        self.mr_tab.update_columns()
 
     def _start(self, first_launch: bool) -> None:
         if first_launch:
@@ -205,15 +241,13 @@ class App:
 
     def me_key(self) -> str | None:
         """Person key of the token owner, to show "Moi" (AM-07)."""
-        return self.people.for_user(self.profile.user).key if self.profile.user else None
+        return self.people.for_user(self.user).key if self.user else None
 
     def me_name(self) -> str:
-        return self.people.for_user(self.profile.user).name if self.profile.user else ""
+        return self.people.for_user(self.user).name if self.user else ""
 
     def new_mr_keys(self) -> set[tuple[int, int]]:
         """Own open MRs to flag as new: unseen roles, and those that were new at the last badge click."""
-        if not self.profile.merger:
-            return set()
         return {(p, i) for p, i, _ in unseen_keys(self.my_mrs, self._seen)} | self._new_at_click
 
     def notify(self, kind: str, message: str) -> None:
@@ -300,9 +334,16 @@ class App:
         for key, name in people:
             self._known_people[key] = name
         if len(self._known_people) != before:
-            items = sorted(self._known_people.items(), key=lambda i: i[1].casefold())
-            for listener in self._people_listeners:
-                listener(items)
+            self._people_changed()
+
+    def _people_changed(self) -> None:
+        """Author filter entries: the user first as "Moi (nom)", then everyone by name (FI-09)."""
+        me = self.me_key()
+        items = sorted(((k, n) for k, n in self._known_people.items() if k != me), key=lambda i: i[1].casefold())
+        if me is not None:
+            items.insert(0, (me, f"Moi ({self.me_name()})"))
+        for listener in self._people_listeners:
+            listener(items)
 
     def load_avatar_image(self, source: Path | bytes, size: int) -> tk.PhotoImage | None:
         """Load a PNG/GIF file or bytes and shrink it by an integer factor (AV-06)."""
@@ -335,7 +376,7 @@ class App:
         self._sync_timer = self.root.after(minutes * 60_000, lambda: self.sync())
 
     def sync(self, manual: bool = False) -> None:
-        """Update the base incrementally, the profile and the own MRs, then the display (CH-05, CH-13)."""
+        """Update the base incrementally, the token owner and the own MRs, then the display (CH-05, CH-13)."""
         self._schedule_sync()
         if self.client is None or self._syncing:
             if manual and self.client is None:
@@ -345,7 +386,7 @@ class App:
         data, store, people = self.data, self.store, self.people
         settings = self.settings
         projects = list(settings.projects)
-        previous = self.profile
+        previous = self.user
 
         def task(_progress: Callable[[int, int], None]) -> SyncOutcome:
             return synchronise(data, store, projects, settings, people, previous)
@@ -362,15 +403,13 @@ class App:
         self.runner.run("sync", task, done, failed)
 
     def _synced(self, outcome: SyncOutcome, manual: bool) -> None:
-        changed = outcome.profile.merger != self.profile.merger
-        self.profile = outcome.profile
+        if outcome.user != self.user:
+            self.user = outcome.user
+            self._people_changed()
         self.my_mrs = outcome.my_mrs
         self._seen = self.store.seen_roles()
-        if changed:
-            self._apply_profile()
-        else:
-            self._update_badges()
-            self.mr_tab.update_repo_items()
+        self._update_badges()
+        self.mr_tab.update_repo_items()
         if outcome.errors:
             self.report_error(outcome.errors[0], extra=len(outcome.errors) - 1)
         elif manual:
@@ -379,7 +418,7 @@ class App:
             self.toasts.show(outcome.notices)
             if any(n.kind == "role" for n in outcome.notices):
                 flash_taskbar(self.root)
-        self.settings_tab.show_profile()
+        self.settings_tab.show_user()
         for tab in (self.overview_tab, self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
             tab.dirty = True
         current = self.notebook.nametowidget(self.notebook.select())
@@ -388,28 +427,15 @@ class App:
         else:
             self._tab_changed()
 
-    # ------------------------------------------------------- Merger profile
-
-    def _apply_profile(self) -> None:
-        """Show or hide what belongs to the Merger profile, without restarting (PR-04..PR-06)."""
-        if self.profile.merger:
-            self._badges.pack(side="right", padx=(12, 0))
-        else:
-            self._badges.pack_forget()
-        self._update_badges()
-        self.mr_tab.update_repo_items()
-        self.mr_tab.update_columns()
+    # ------------------------------------------------------- Badges (6.5)
 
     def _update_badges(self) -> None:
         """Counts, tooltips and the window title (BA-01, BA-03, BA-04)."""
-        if not self.profile.merger:
-            self.root.title(WINDOW_TITLE)
-            return
-        assigned = badge_counts(self.my_mrs, self._seen, ASSIGNEE)
-        reviewing = badge_counts(self.my_mrs, self._seen, REVIEWER)
-        for badge, counts, word in ((self._badge_assignee, assigned, "assignée(s)"),
-                                    (self._badge_reviewer, reviewing, "en relecture")):
-            badge.update_counts(counts, badge_tip(counts, word))
+        self.authored = authored_open_mrs(self.store, [p.id for p in self.settings.projects], self.people, self.user)
+        counts = (badge_counts(self.my_mrs, self._seen, ASSIGNEE), badge_counts(self.my_mrs, self._seen, REVIEWER),
+                  author_counts(self.authored))
+        for badge, count, word in zip(self._badge_list, counts, ("assignée(s)", "en relecture", "MR ouverte(s)")):
+            badge.update_counts(count, badge_tip(count, word))
         new = new_count(self.my_mrs, self._seen)
         self.root.title(f"{APP_NAME} ({new})" if new else WINDOW_TITLE)
 
@@ -418,13 +444,20 @@ class App:
         me = self.me_key()
         if me is None:
             return
-        keys = seen_on_click(self.my_mrs, self._seen, role)
-        self._new_at_click = {(p, i) for p, i, _ in keys}
-        self.store.mark_seen(keys)
-        self._seen |= keys
-        self._update_badges()
+        if role != AUTHOR:
+            keys = seen_on_click(self.my_mrs, self._seen, role)
+            self._new_at_click = {(p, i) for p, i, _ in keys}
+            self.store.mark_seen(keys)
+            self._seen |= keys
+            self._update_badges()
         self.notebook.select(self.mr_tab)
         self.filters.show_mine(role, me)
+
+    def show_merge_request(self, ev: Evaluation) -> None:
+        """A merge clicked on the overview: that MR selected in the Merge Requests tab (VE-14)."""
+        merged = to_local(ev.mr.merged_at) if ev.mr.merged_at else now_local()
+        self.mr_tab.focus_mr(ev.mr.project_id, ev.mr.iid, merged.date())
+        self.notebook.select(self.mr_tab)
 
     def _open_merge_requests(self) -> None:
         self.root.deiconify()
@@ -470,8 +503,8 @@ class App:
             self.theme = get_theme(new.theme)
             apply_theme(self.root, self.theme)
             self.banner.restyle()
-            self._badge_assignee.redraw()
-            self._badge_reviewer.redraw()
+            for badge in self._badge_list:
+                badge.redraw()
             self.tab_bar.restyle()
             for tab in (self.overview_tab, self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
                 tab.restyle()
@@ -482,7 +515,8 @@ class App:
         for tab in (self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):
             tab.dirty = True
         self.overview_tab.settings_changed()
-        # Token, repositories or period may have changed: profile and own MRs again (PR-04).
+        self._update_badges()
+        # Token, repositories or period may have changed: token owner and own MRs again.
         self.sync()
 
     def clear_store(self) -> None:
@@ -495,8 +529,26 @@ class App:
         self.refresh()
 
     def toggle_fullscreen(self) -> None:
-        """F11: full screen on / off, for a permanent display of the overview (VE-02)."""
-        self.root.attributes("-fullscreen", not bool(self.root.attributes("-fullscreen")))
+        """F11: full screen on / off, on the monitor holding the window (VE-02, VE-13)."""
+        root = self.root
+        if self._windowed is not None:  # leave full screen: borderless window back to its place
+            geometry, state = self._windowed
+            self._windowed = None
+            root.overrideredirect(False)
+            root.geometry(geometry)
+            root.state(state)
+            return
+        area = monitor_area(root)
+        if area is None:  # not Windows: Tk's own full screen
+            root.attributes("-fullscreen", not bool(root.attributes("-fullscreen")))
+            return
+        self._windowed = (root.geometry(), root.state())
+        left, top, right, bottom = area
+        root.state("normal")
+        root.overrideredirect(True)
+        root.geometry(f"{right - left}x{bottom - top}+{left}+{top}")
+        root.lift()
+        root.focus_force()
 
     def open_wizard(self) -> None:
         from gitective.ui.first_launch_wizard import Wizard  # local import: wizard imports App types

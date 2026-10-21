@@ -97,7 +97,7 @@ class DataTab(ttk.Frame):
         self.app.filters.changed("authors")
 
     def _people_changed(self, items: list[tuple[str, str]]) -> None:
-        self.authors.set_items(items)
+        self.authors.set_items(items, keep_order=True)
 
     def restyle(self) -> None:
         self.grid_view.redraw()

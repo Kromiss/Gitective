@@ -1,35 +1,39 @@
-"""Tests of the Developer / Merger profile, own open MRs, "new" flags and notifications (5.7, 5.8, 6.4, 6.5)."""
+"""Tests of the token owner, own open MRs, "new" flags and notifications (5.7, 5.8, 6.4, 6.5)."""
 
 from __future__ import annotations
 
+import json
 import unittest
 from typing import Any
 
-from gitective.database.store import MEMORY, Store
+from gitective.database.store import MEMORY, Store, encode
 from gitective.database.sync import ForgeData
 from gitective.forge.errors import NetworkError
-from gitective.forge.models import MergeRequest, ProtectedBranch, User
-from gitective.review.profile import (
+from gitective.forge.models import MergeRequest, User
+from gitective.review.my_mrs import (
     ASSIGNEE,
     REVIEWER,
-    Profile,
     BadgeCounts,
+    author_counts,
+    authored_open_mrs,
     badge_counts,
     badge_tip,
-    compute_profile,
-    load_profile,
+    load_user,
     merge_notices,
     new_count,
+    new_mr_notices,
+    open_ready_keys,
     role_notices,
     role_title,
-    save_profile,
+    save_user,
     seen_on_click,
 )
 from gitective.settings.config_file import Person, TrackedProject
 from gitective.shared.people import PersonDirectory
 from tests.factories import mr_json, user_json
 
-ME = User.from_json(user_json(7, "me", "Moi Même"))
+ME_JSON = user_json(7, "me", "Moi Même")
+ME = User.from_json(ME_JSON)
 PROJECT = TrackedProject(id=10, path="group/repo", branch="main")
 
 
@@ -41,22 +45,14 @@ def open_mr(iid: int, project_id: int = 10, draft: bool = False, **extra: Any) -
 
 
 class AccessForge:
-    """Forge whose members and protections decide the profile."""
+    """Forge listing the token owner's open MRs."""
 
     base_url = "https://gitlab.test"
 
-    def __init__(self, level: int, protections: list[ProtectedBranch], offline: bool = False) -> None:
-        self.level, self.protections, self.offline = level, protections, offline
+    def __init__(self, offline: bool = False) -> None:
+        self.offline = offline
         self.assigned: list[MergeRequest] = []
         self.reviewing: list[MergeRequest] = []
-
-    def list_project_members(self, project_id: int) -> list[tuple[User, int]]:
-        if self.offline:
-            raise NetworkError("down")
-        return [(ME, self.level), (User.from_json(user_json(8, "other")), 40)]
-
-    def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
-        return self.protections
 
     def list_my_open_merge_requests(self, user_id: int, role: str) -> list[MergeRequest]:
         if self.offline:
@@ -64,46 +60,22 @@ class AccessForge:
         return self.assigned if role == ASSIGNEE else self.reviewing
 
 
-class ProfileTests(unittest.TestCase):
-    def profile(self, forge: AccessForge, user: User = ME) -> Profile:
-        data = ForgeData(forge, Store(MEMORY))  # type: ignore[arg-type]
-        return compute_profile(data, user, [PROJECT], workers=1)
-
-    def test_maintainer_on_protected_branch_is_merger(self) -> None:
-        profile = self.profile(AccessForge(40, [ProtectedBranch("main", merge_levels=(40,))]))
-        self.assertTrue(profile.merger)
-        self.assertEqual(profile.merge_projects, ("group/repo",))
-        self.assertEqual(profile.label, "Mergeur")
-
-    def test_developer_on_protected_branch_is_developer(self) -> None:
-        profile = self.profile(AccessForge(30, [ProtectedBranch("main", merge_levels=(40,))]))
-        self.assertFalse(profile.merger)
-        self.assertEqual(profile.label, "Développeur")
-
-    def test_developers_allowed_to_merge_or_unprotected_branch(self) -> None:
-        self.assertTrue(self.profile(AccessForge(30, [ProtectedBranch("main", merge_levels=(30,))])).merger)
-        self.assertTrue(self.profile(AccessForge(30, [])).merger)
-
-    def test_admin_is_always_merger(self) -> None:
-        admin = User(id=7, username="me", name="Moi", is_admin=True)
-        self.assertTrue(self.profile(AccessForge(10, [ProtectedBranch("main", merge_levels=(40,))]), admin).merger)
-
-    def test_repository_without_watched_branch_is_ignored(self) -> None:
-        data = ForgeData(AccessForge(40, []), Store(MEMORY))  # type: ignore[arg-type]
-        profile = compute_profile(data, ME, [TrackedProject(id=10, path="group/repo", branch="")], workers=1)
-        self.assertFalse(profile.merger)
-
-    def test_profile_is_saved_for_offline_use(self) -> None:
+class TokenUserTests(unittest.TestCase):
+    def test_user_is_saved_for_offline_use(self) -> None:
         store = Store(MEMORY)
-        self.assertEqual(load_profile(store), Profile())
-        saved = Profile(ME, True, ("group/repo",))
-        save_profile(store, saved)
-        self.assertEqual(load_profile(store), saved)
+        self.assertIsNone(load_user(store))
+        save_user(store, ME)
+        self.assertEqual(load_user(store), ME)
+
+    def test_user_of_an_old_profile_is_kept(self) -> None:
+        store = Store(MEMORY)
+        store.set_meta("profile", json.dumps({"user": encode(ME), "merger": True, "merge_projects": []}))
+        self.assertEqual(load_user(store), ME)
 
 
 class MyMrTests(unittest.TestCase):
     def test_both_roles_merged_and_stored_then_offline_fallback(self) -> None:
-        forge = AccessForge(40, [])
+        forge = AccessForge()
         forge.assigned = [open_mr(1), open_mr(2, project_id=99)]
         forge.reviewing = [open_mr(2, project_id=99), open_mr(3, draft=True)]
         store = Store(MEMORY)
@@ -119,7 +91,7 @@ class MyMrTests(unittest.TestCase):
 
     def test_offline_without_stored_data_raises(self) -> None:
         with self.assertRaises(NetworkError):
-            ForgeData(AccessForge(40, [], offline=True), Store(MEMORY)).my_open_mrs(ME.id)  # type: ignore[arg-type]
+            ForgeData(AccessForge(offline=True), Store(MEMORY)).my_open_mrs(ME.id)  # type: ignore[arg-type]
 
     def test_badges_count_ready_mrs_and_new_roles(self) -> None:
         items = [(open_mr(1), frozenset({ASSIGNEE})), (open_mr(2), frozenset({ASSIGNEE, REVIEWER})),
@@ -142,6 +114,17 @@ class MyMrTests(unittest.TestCase):
         self.assertEqual(badge_tip(BadgeCounts(3, 1, 1), "assignée(s)"),
                          "3 assignée(s), dont 1 nouvelle(s) ; 1 brouillon(s)\nClic : voir ces MR ouvertes")
         self.assertEqual(badge_tip(BadgeCounts(0, 0, 0), "en relecture").splitlines()[0], "0 en relecture")
+
+    def test_author_badge_counts_own_open_mrs_of_any_of_my_accounts(self) -> None:
+        store = Store(MEMORY)
+        people = PersonDirectory([Person(name="Moi", account_ids=[7, 70])])
+        store.put_merge_requests(10, [open_mr(1, author=user_json(70, "me-old")), open_mr(2, draft=True, author=ME_JSON),
+                                      open_mr(3, author=user_json(2, "bob")),
+                                      MergeRequest.from_json(mr_json(iid=4, author=ME_JSON))])
+        mine = authored_open_mrs(store, [10], people, ME)
+        self.assertEqual(sorted(m.iid for m in mine), [1, 2])
+        self.assertEqual(author_counts(mine), BadgeCounts(1, 0, 1))
+        self.assertEqual(authored_open_mrs(store, [10], people, None), [])
 
     def test_seen_roles_are_stored(self) -> None:
         store = Store(MEMORY)
@@ -182,6 +165,18 @@ class NoticeTests(unittest.TestCase):
     def test_mr_leaving_draft_is_notified(self) -> None:
         notices = role_notices(set(), [(open_mr(3), frozenset({ASSIGNEE, REVIEWER}))], self.people)
         self.assertEqual([n.title for n in notices], ["MR assignée + relecture"])
+
+    def test_new_mrs_skip_known_drafts_own_and_already_notified(self) -> None:
+        bob = user_json(2, "bob")
+        synced = [(PROJECT, open_mr(n, author=bob)) for n in (1, 2, 3)]
+        synced += [(PROJECT, open_mr(4, draft=True, author=bob)), (PROJECT, open_mr(5, author=user_json(70, "me")))]
+        notices = new_mr_notices({(10, 1)}, synced, ME, self.people, skip={(10, 3)})
+        self.assertEqual([(n.kind, n.mr.iid, n.author) for n in notices], [("new", 2, "Bob")])
+
+    def test_open_ready_keys_leave_drafts_out(self) -> None:
+        store = Store(MEMORY)
+        store.put_merge_requests(10, [open_mr(1), open_mr(2, draft=True)])
+        self.assertEqual(open_ready_keys(store, [10]), {(10, 1)})
 
     def test_role_titles(self) -> None:
         self.assertEqual(role_title({ASSIGNEE}), "MR assignée")

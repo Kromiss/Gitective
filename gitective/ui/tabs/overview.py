@@ -1,4 +1,4 @@
-"""Overview tab: read-only dashboard of every tracked repository, drawn on a Canvas (VE-01..VE-12)."""
+"""Overview tab: dashboard of every tracked repository, drawn on a Canvas (VE-01..VE-14)."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def nice_step(maximum: float, ticks: int = 4) -> int:
 
 
 class OverviewTab(ttk.Frame):
-    """Supervision screen: nothing is clickable, everything is computed from the loaded MRs."""
+    """Supervision screen computed from the loaded MRs; only the latest merges are clickable (VE-14)."""
 
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master)
@@ -81,6 +81,12 @@ class OverviewTab(ttk.Frame):
         self.canvas.self_themed = True  # type: ignore[attr-defined]
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Configure>", lambda e: self.redraw())
+        # Rows of the latest merges: (top, bottom, left, right, hover rectangle, MR) (VE-14).
+        self._feed_rows: list[tuple[float, float, float, float, int, Evaluation]] = []
+        self._hovered: int | None = None
+        self.canvas.bind("<Motion>", lambda e: self._hover(e.x, e.y))
+        self.canvas.bind("<Leave>", lambda e: self._hover(-1, -1))
+        self.canvas.bind("<Button-1>", lambda e: self._click(e.x, e.y))
         self.after(TICK_MS, self._tick)
 
     # ----------------------------------------------------------- Refresh
@@ -234,6 +240,7 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         canvas = self.canvas
         canvas.delete("all")
+        self._feed_rows, self._hovered = [], None
         canvas.configure(background=theme.bg)
         width, height = max(canvas.winfo_width(), 960), max(canvas.winfo_height(), 600)
         self._draw_status(width)
@@ -325,6 +332,9 @@ class OverviewTab(ttk.Frame):
                 cursor += GROUP_H
             if is_today:
                 self.canvas.create_rectangle(x + 1, cursor, x + w - 1, cursor + row_h, fill=band, outline="")
+            hover = self.canvas.create_rectangle(x + 1, cursor, x + w - 1, cursor + row_h, outline="",
+                                                 fill=theme.selected_row, state="hidden")
+            self._feed_rows.append((cursor, cursor + row_h, x, x + w, hover, ev))
             middle = cursor + row_h / 2
             text_w = w - (title_x - x) - INNER - pill_w - 14
             who = ev.author.name + (f" → {ev.merger.name}" if ev.merger else "")
@@ -348,6 +358,28 @@ class OverviewTab(ttk.Frame):
             cursor += row_h
             self.canvas.create_line(x + INNER, cursor, x + w - INNER, cursor,
                                     fill=blend(band, theme.border, 0.6) if theme.relief != "raised" else "#A0A0A0")
+
+    def _row_at(self, x: float, y: float) -> int | None:
+        return next((i for i, (top, bottom, left, right, _, _) in enumerate(self._feed_rows)
+                     if top <= y < bottom and left <= x < right), None)
+
+    def _hover(self, x: float, y: float) -> None:
+        """Hand cursor and hover background on a merge row (VE-14)."""
+        row = self._row_at(x, y)
+        if row == self._hovered:
+            return
+        if self._hovered is not None:
+            self.canvas.itemconfigure(self._feed_rows[self._hovered][4], state="hidden")
+        if row is not None:
+            self.canvas.itemconfigure(self._feed_rows[row][4], state="normal")
+        self._hovered = row
+        self.canvas.configure(cursor="hand2" if row is not None else "")
+
+    def _click(self, x: float, y: float) -> None:
+        """A merge row opens that MR in the Merge Requests tab (VE-14)."""
+        row = self._row_at(x, y)
+        if row is not None:
+            self.app.show_merge_request(self._feed_rows[row][5])
 
     def _draw_daily(self, x: float, y: float, w: float, h: float, data: OverviewData) -> None:
         """Merges per day, this week and last week (VE-06)."""

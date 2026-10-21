@@ -75,9 +75,9 @@ class BranchesTab(DataTab):
         top = ttk.Frame(bar, style="Bar.TFrame")
         top.pack(fill="x")
         ttk.Label(top, text="Nom", style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
-        self._name = tk.StringVar()
-        self._name.trace_add("write", lambda *_: self._apply_view(reset_page=True))
-        ttk.Entry(top, textvariable=self._name, width=26).pack(side="left")
+        self._name_filter = tk.StringVar()
+        self._name_filter.trace_add("write", lambda *_: self._apply_view(reset_page=True))
+        ttk.Entry(top, textvariable=self._name_filter, width=26).pack(side="left")
         self.authors = MultiSelect(top, "Auteurs", self._authors_changed, app.get_theme, all_text="Toutes")
         self.authors.set_selected(saved.authors)
         self.authors.pack(side="left", padx=(12, 0))
@@ -129,7 +129,7 @@ class BranchesTab(DataTab):
         self._save_filters()
 
     def _people_changed(self, items: list[tuple[str, str]]) -> None:
-        self.authors.set_items(items)
+        self.authors.set_items(items, keep_order=True)
 
     def _show_rules(self) -> None:
         s = self.app.settings
@@ -166,7 +166,7 @@ class BranchesTab(DataTab):
     def _filtered(self) -> list[BranchRow]:
         authors, repos = set(self.authors.selected), {int(k) for k in self.repos.selected}
         states = set(self.states.selected)
-        needle = self._name.get().strip().casefold()
+        needle = self._name_filter.get().strip().casefold()
         return [r for r in self._rows
                 if (not authors or r.author.key in authors) and (not repos or r.project.id in repos)
                 and (not states or r.state in states) and matches(needle, r.branch.name)]

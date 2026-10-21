@@ -176,6 +176,10 @@ class MrFilterBar(ttk.Frame):
                                style="Active.TMenubutton" if active else "TMenubutton")
         if what == "reset":
             self._show_yesterday_dates()
+        if what == "focus":  # merge clicked on the overview: its day in the date fields (VE-14)
+            self.search.set("")
+            self._from.set(self.filters.date_from)
+            self._to.set(self.filters.date_to)
         self._total.state(["!disabled"] if dated else ["disabled"])
         self._yesterday.configure(style="Active.TButton" if self.filters.since_yesterday and dated else "TButton")
         self._total.configure(style="Active.TButton" if self.filters.total and dated else "TButton")

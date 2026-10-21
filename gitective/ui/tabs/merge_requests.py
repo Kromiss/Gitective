@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from collections.abc import Callable
+from datetime import date
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
@@ -75,6 +76,7 @@ class MrTab(DataTab):
         self._selected: Key | None = None
         self._commit_shas: dict[Key, list[str]] = {}  # stored commits of the loaded MRs, for the SHA search
         self._soft = False  # reload after a synchronisation: keep page and selection
+        self._focus: Key | None = None  # MR to select once loaded (VE-14)
 
         self.bar = MrFilterBar(self, app.filters, app.get_theme, app.refresh, lambda m: app.notify("error", m),
                                self._search_changed)
@@ -141,7 +143,7 @@ class MrTab(DataTab):
         """One status column per active rule, then the fixed criteria (RP-06).
 
         The rule columns step aside while the detail panel shows them (DE-03);
-        the "Nouvelle" column exists for the Merger's open MRs (AM-04).
+        the "Nouvelle" column exists for the open MRs (AM-04).
         """
         rules = self.app.rules
         criteria = rules.criteria if rules else []
@@ -158,7 +160,7 @@ class MrTab(DataTab):
 
     @property
     def _shows_new(self) -> bool:
-        return self.app.profile.merger and self.app.filters.state == "opened"
+        return self.app.filters.state == "opened"
 
     def _sort_keys(self) -> dict[str, Callable[[Evaluation], Any]]:
         keys = dict(BASE_SORT)
@@ -169,12 +171,11 @@ class MrTab(DataTab):
         return keys
 
     def update_repo_items(self) -> None:
-        """Tracked repositories, plus the untracked ones holding the Merger's open MRs (AM-08)."""
+        """Tracked repositories, plus the untracked ones holding the user's open MRs (AM-08)."""
         items = [(str(p.id), p.path) for p in self.app.settings.projects]
         tracked = {p.id for p in self.app.settings.projects}
-        if self.app.profile.merger:
-            extra = {mr.project_id: mr.project_path for mr, _ in self.app.my_mrs if mr.project_id not in tracked}
-            items += [(str(pid), path + NOT_TRACKED) for pid, path in extra.items()]
+        extra = {mr.project_id: mr.project_path for mr, _ in self.app.my_mrs if mr.project_id not in tracked}
+        items += [(str(pid), path + NOT_TRACKED) for pid, path in extra.items()]
         self.repos.set_items(items)
 
     # ------------------------------------------------------------- Loading
@@ -186,7 +187,7 @@ class MrTab(DataTab):
         self.app.persist_filters()
         if what == "badge":
             self._search.set("")  # BA-02
-        if what in ("state", "badge", "reset"):
+        if what in ("state", "badge", "reset", "focus"):
             self._show_view()
             self.update_columns()
         if what in ("authors", "mergers", "assignees", "reviewers", "drafts"):
@@ -215,10 +216,10 @@ class MrTab(DataTab):
             return
         projects = self.app.selected_projects()
         tracked_ids = {p.id for p in self.app.settings.projects}
-        # The Merger's open MRs of untracked repositories join the open MRs (AM-08).
+        # The user's open MRs of untracked repositories join the open MRs (AM-08).
         wanted = set(self.app.filters.repos)
         extra: list[Pair] = []
-        if state == "opened" and self.app.profile.merger:
+        if state == "opened":
             extra = [(TrackedProject(id=mr.project_id, path=mr.project_path), mr) for mr, _ in self.app.my_mrs
                      if mr.project_id not in tracked_ids and (not wanted or mr.project_id in wanted)]
         data, rules, people = self.app.data, self.app.rules, self.app.people
@@ -264,7 +265,11 @@ class MrTab(DataTab):
         self._evaluations = evaluations
         self.update_columns()
         self._apply_view(reset_page=not soft)
-        if self._panel_open and self._selected is not None:
+        focus, self._focus = self._focus, None
+        target = next((e for e in self._visible_rows if _key(e) == focus), None)
+        if target is not None:
+            self._reveal(target)
+        elif self._panel_open and self._selected is not None:
             current = next((e for e in evaluations if _key(e) == self._selected), None)
             if current is not None:
                 self.panel.show(current, _key(current) in self.app.new_mr_keys())
@@ -358,6 +363,19 @@ class MrTab(DataTab):
             self._place_sash()
         self._render_page(keep_scroll=True)
         self.panel.show(ev, _key(ev) in self.app.new_mr_keys())
+
+    def focus_mr(self, project_id: int, iid: int, day: date) -> None:
+        """Show a merged MR: its day, newest merges first, its page, selected with its panel (VE-14)."""
+        self._focus = (project_id, iid)
+        self._sort_key, self._ascending = "merged", False
+        self.app.filters.show_merged_on(day)
+
+    def _reveal(self, ev: Evaluation) -> None:
+        index = self._visible_rows.index(ev)
+        self.pager.page = index // self.pager.page_size + 1
+        self.pager.update_total(len(self._visible_rows))
+        self.open_detail(ev)
+        self.grid_view.see(index % self.pager.page_size)
 
     def close_detail(self) -> None:
         if self._panel_open:

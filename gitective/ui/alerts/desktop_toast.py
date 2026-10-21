@@ -6,7 +6,7 @@ import sys
 import tkinter as tk
 from collections.abc import Callable, Sequence
 
-from gitective.review.profile import Notice
+from gitective.review.my_mrs import REVIEWER, Notice
 from gitective.ui.themes import Theme
 
 WIDTH = 380
@@ -45,11 +45,15 @@ class Toasts:
         merges = [n for n in notices if n.kind == "merge"]
         roles = [n for n in notices if n.kind == "role"]
         own = [n for n in notices if n.kind == "own"]
+        new = [n for n in notices if n.kind == "new"]
         if own:
             self._popup("Vos MR mergées", "1 de vos MR a été mergée" if len(own) == 1 else f"{len(own)} de vos MR ont été mergées", "", "", theme.ok[1],
                         self._open_tab, "Cliquer pour ouvrir Gitective")
         if roles:
             self._popup("À traiter", "1 MR assignée ou en relecture" if len(roles) == 1 else f"{len(roles)} MR assignées ou en relecture", "", "", theme.accent,
+                        self._open_tab, "Cliquer pour ouvrir Gitective")
+        if new:
+            self._popup("Nouvelles MR", "1 nouvelle MR sur les dépôts suivis" if len(new) == 1 else f"{len(new)} nouvelles MR sur les dépôts suivis", "", "", theme.text,
                         self._open_tab, "Cliquer pour ouvrir Gitective")
         if merges:
             self._popup("Nouveaux merges", "1 MR mergée sur les dépôts suivis" if len(merges) == 1 else f"{len(merges)} MR mergées sur les dépôts suivis", "", "", theme.ok[1],
@@ -63,7 +67,9 @@ class Toasts:
         theme = self._get_theme()
         if notice.kind in ("merge", "own"):
             return theme.ok[1]
-        return theme.second if notice.title == "Relecture demandée" else theme.accent
+        if notice.kind == "new":
+            return theme.text
+        return theme.second if notice.roles == {REVIEWER} else theme.accent
 
     def _popup(self, kind: str, title: str, repo: str, people: str, color: str, on_click: Callable[[], None],
                hint: str, score: float | None = None) -> None:

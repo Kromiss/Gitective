@@ -154,10 +154,11 @@ class Settings:
     theme: str = "default"
     # Automatic synchronisation period of the local base, in minutes (CH-13).
     sync_minutes: int = 5
-    # Desktop notifications (NO-01): new merges and roles for the Merger profile, own MR merged for all.
+    # Desktop notifications (NO-01); every new MR of anyone (NO-11) is off unless checked.
     notify_merges: bool = True
     notify_assigned: bool = True
     notify_own_merged: bool = True
+    notify_new_mrs: bool = False
     # Width of the MR detail panel, in pixels (DE-02).
     detail_width: int = 420
     # View of the Statistics tab: "person" or "repo" (ST-01).
@@ -207,6 +208,7 @@ class Settings:
             notify_merges=bool(data.get("notify_merges", True)),
             notify_assigned=bool(data.get("notify_assigned", True)),
             notify_own_merged=bool(data.get("notify_own_merged", True)),
+            notify_new_mrs=bool(data.get("notify_new_mrs", False)),
             detail_width=clamp_width(data.get("detail_width", base.detail_width)),
             stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
             column_widths=_column_widths(data.get("column_widths")),

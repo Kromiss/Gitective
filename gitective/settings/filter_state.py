@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 
 from gitective.settings.config_file import DRAFT_MODES, Filters
 from gitective.shared.dates import Period, day_range, format_date, now_local, parse_date, since_yesterday
@@ -22,8 +23,8 @@ class FilterState:
 
     Listeners receive the name of what changed: 'state', 'period',
     'authors', 'mergers', 'assignees', 'reviewers', 'drafts', 'repos', or
-    'badge' / 'reset' when a badge or the reset button changed several of
-    them at once (BA-02, FI-18).
+    'badge' / 'reset' / 'focus' when a badge, the reset button or a merge
+    clicked on the overview changed several of them at once (BA-02, FI-18, VE-14).
     """
 
     def __init__(self, saved: Filters) -> None:
@@ -80,8 +81,18 @@ class FilterState:
     def show_mine(self, role: str, me_key: str) -> None:
         """Open MRs where the user has `role`, every other filter reset (BA-02)."""
         self.state = "opened"
-        self.authors, self.repos, self.mergers = [], [], []
+        self.repos, self.mergers = [], []
+        self.authors = [me_key] if role == "author" else []
         self.assignees = [me_key] if role == "assignee" else []
         self.reviewers = [me_key] if role == "reviewer" else []
         self.drafts = "all"
         self.changed("badge")
+
+    def show_merged_on(self, day: date) -> None:
+        """Merged MRs of one day, every other filter reset: a merge clicked on the overview (VE-14)."""
+        self.state = "merged"
+        self.authors, self.mergers, self.assignees, self.reviewers, self.repos = [], [], [], [], []
+        self.drafts = "all"
+        self.since_yesterday = self.total = False
+        self.date_from = self.date_to = format_date(day)
+        self.changed("focus")
