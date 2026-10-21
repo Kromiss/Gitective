@@ -7,6 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.ui.components.gauge import label_text
 from gitective.shared.i18n import t
 from gitective.database.sync import MrDetailData
 from gitective.reporting.statistics import format_days
@@ -176,7 +177,8 @@ class MrDetailPanel(SidePanel):
         ev = self._ev
         settings = self.app.settings
         level = score_level(ev.score, settings.green_threshold, settings.orange_threshold)
-        body = self._card(parent, theme, t("Score"), f"{ev.score:.0f} %", theme.level_colors(level))
+        body = self._card(parent, theme, t("Score"), label_text(f"{ev.score:.0f} %", level, theme.shapes),
+                          theme.level_colors(level))
         labels = {c.id: c.label for c in self.app.rules.criteria} if self.app.rules else {}
         not_applicable = []
         for cid, label in labels.items():

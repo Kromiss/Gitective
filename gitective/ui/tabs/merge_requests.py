@@ -8,6 +8,7 @@ from datetime import date
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
+from gitective.ui.components.gauge import label_text
 from gitective.shared.i18n import t
 from gitective.reporting.statistics import average
 from gitective.review.mr_evaluation import Pair, evaluate_all, load_created, load_merge_requests, load_pairs
@@ -305,9 +306,9 @@ class MrTab(DataTab):
         scores = [e.score for e in self._visible_rows if not e.mr.draft]
         if scores:
             avg = average(scores)
-            bg, fg = theme.level_colors(score_level(round(avg, 6), self.app.settings.green_threshold,
-                                                    self.app.settings.orange_threshold))
-            self._avg.configure(text=f"{avg:.0f} %", background=bg, foreground=fg,
+            level = score_level(round(avg, 6), self.app.settings.green_threshold, self.app.settings.orange_threshold)
+            bg, fg = theme.level_colors(level)
+            self._avg.configure(text=label_text(f"{avg:.0f} %", level, theme.shapes), background=bg, foreground=fg,
                                 font=(theme.font[0], theme.font[1] + 1, "bold"))
         else:
             self._avg.configure(text="—", background=theme.surface, foreground=theme.muted, font=theme.font)

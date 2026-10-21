@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.ui.components.gauge import label_text
 from gitective.shared.i18n import t
 from gitective.forge.models import Commit, MergeRequest
 from gitective.repository.tag_compare import CompareError, Comparison, compare, copied_text, ref_choices
@@ -264,7 +265,7 @@ class TagCompareView(ttk.Frame):
             if result.average is not None:
                 s = self.app.settings
                 level = score_level(round(result.average, 6), s.green_threshold, s.orange_threshold)
-                texts[4], colors[4] = f"{result.average:.0f} %", theme.level_colors(level)
+                texts[4], colors[4] = label_text(f"{result.average:.0f} %", level, theme.shapes), theme.level_colors(level)
             if not result.behind.empty:
                 texts[5], colors[5] = f"⚠ {result.behind.commits}", theme.orange
         elif not item.complete:
@@ -503,8 +504,9 @@ class TagCompareDetail(SidePanel):
         row.pack(fill="x", pady=(4, 0))
         if ev is not None:
             s = self.app.settings
-            bg, fg = theme.level_colors(score_level(ev.score, s.green_threshold, s.orange_threshold))
-            tk.Label(row, text=f"{ev.score:.0f} %", background=bg, foreground=fg, padx=6,
+            level = score_level(ev.score, s.green_threshold, s.orange_threshold)
+            bg, fg = theme.level_colors(level)
+            tk.Label(row, text=label_text(f"{ev.score:.0f} %", level, theme.shapes), background=bg, foreground=fg, padx=6,
                      font=self._font(theme, -1, "bold")).pack(side="right", anchor="n")
         self._link(row, theme, mr.title, mr.web_url).pack(side="left", fill="x")
         people = self.app.people

@@ -20,7 +20,7 @@ DB_PATH = APP_DIR / "gitective.db"
 # Fixed criteria (RC-03 to RC-06); custom rules are identified by their own id.
 FIXED_CRITERIA = ("ticket", "self_merge", "pipeline", "assignee")
 STATS_VIEWS = ("person", "repo")
-THEMES = ("default", "light", "dark", "win95", "matrix")
+THEMES = ("default", "light", "dark", "win95", "matrix", "daltonien")
 REFRESH_RANGE = (1, 120)  # automatic synchronisation period, in minutes (CH-13)
 DRAFT_MODES = ("all", "exclude", "only")  # drafts filter (FI-17)
 PAGE_SIZES = (20, 50, 100)

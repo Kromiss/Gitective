@@ -10,6 +10,7 @@ from tkinter import ttk
 from typing import Any
 
 from gitective.shared.i18n import t
+from gitective.ui.components.gauge import draw_gauge, gauge_width
 from gitective.ui.themes import Theme
 from gitective.ui.components.widgets import Tooltip
 
@@ -20,6 +21,7 @@ GRIP = 5  # px on each side of a header border that start a resize
 TITLE_PAD = 26  # room around a header title, including the sort arrow
 TITLE_MAX = 170  # automatic width given to a long title: beyond, it is cut and shown whole on hover
 PAD = 10
+GAUGE_HEIGHT = 11
 STATUS_TEXT = {"ok": "OK", "ko": "KO", "na": "N/A"}
 
 Row = dict[str, Any]
@@ -273,7 +275,8 @@ class DataGrid(ttk.Frame):
         if col.kind == "status":
             self._pill(x0, x1, mid, STATUS_TEXT.get(value[0], value[0]), theme.status_colors(value[0]), bold)
         elif col.kind == "score":
-            self._pill(x0, x1, mid, value[0], theme.level_colors(value[1]), bold, minimum=52)
+            gauge = (value[1], theme.empty_bar) if theme.shapes else None
+            self._pill(x0, x1, mid, value[0], theme.level_colors(value[1]), bold, minimum=52, gauge=gauge)
         elif col.kind == "link":
             self._text(self.body, x0, x1, mid, value[0], font, theme.muted if row.get("_muted") else theme.link,
                        col.align, underline=True)
@@ -335,11 +338,18 @@ class DataGrid(ttk.Frame):
         return next((s for s in self._spans.get((index, col.key), []) if s[0] <= x <= s[1]), None)
 
     def _pill(self, x0: int, x1: int, y: float, text: str, colors: tuple[str, str], font: tkfont.Font,
-              minimum: int = 44, align: str = "center") -> None:
-        w = max(minimum, font.measure(text) + 14)
+              minimum: int = 44, align: str = "center", gauge: tuple[str, str] | None = None) -> None:
+        """Colored badge; `gauge` = (score level, empty bar color) adds the 3-bar gauge before the text (TH-05)."""
+        extra = gauge_width(GAUGE_HEIGHT) + 6 if gauge else 0
+        w = max(minimum, font.measure(text) + 14 + extra)
         cx = x0 + w / 2 if align == "w" else (x0 + x1 - 8) / 2
         self.body.create_rectangle(cx - w / 2, y - 11, cx + w / 2, y + 11, fill=colors[0], outline=colors[0])
-        self.body.create_text(cx, y, text=text, fill=colors[1], font=font)
+        if gauge:
+            left = cx - (font.measure(text) + extra) / 2
+            draw_gauge(self.body, left, y, gauge[0], colors[1], gauge[1], GAUGE_HEIGHT)
+            self.body.create_text(left + extra, y, text=text, fill=colors[1], font=font, anchor="w")
+        else:
+            self.body.create_text(cx, y, text=text, fill=colors[1], font=font)
 
     def _avatar(self, x0: int, x1: int, y: float, value: tuple[Any, str, str, str], font: tkfont.Font,
                 bold: tkfont.Font, theme: Theme) -> None:

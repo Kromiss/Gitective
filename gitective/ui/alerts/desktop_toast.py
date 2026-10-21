@@ -7,6 +7,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from collections.abc import Callable, Sequence
 
+from gitective.ui.components.gauge import label_text
 from gitective.shared.i18n import t
 from gitective.review.my_mrs import REVIEWER, Notice
 from gitective.ui.components.grid import ellipsize
@@ -24,10 +25,12 @@ class Toasts:
     def __init__(self, root: tk.Tk, get_theme: Callable[[], Theme], open_url: Callable[[str], None],
                  open_merge_requests: Callable[[], None], open_settings: Callable[[], None],
                  score_colors: Callable[[float], tuple[str, str]], logo: tk.PhotoImage | None = None,
-                 repo_label: Callable[[str], str] = lambda path: path.rsplit("/", 1)[-1]) -> None:
+                 repo_label: Callable[[str], str] = lambda path: path.rsplit("/", 1)[-1],
+                 score_level: Callable[[float], str] | None = None) -> None:
         self._root = root
         self._repo_label = repo_label
         self._score_colors = score_colors  # (background, foreground) of a score's level
+        self._score_level = score_level  # "green" / "orange" / "red", for the gauge of a theme with shapes
         self._open_settings = open_settings
         self._get_theme = get_theme
         self._open_url = open_url
@@ -128,6 +131,8 @@ class Toasts:
                 pill_bg, pill_fg = self._score_colors(score)
                 pill_font = tkfont.Font(font=(font, size - 1, "bold"))
                 text = t("Score {score} %", score=f"{score:.0f}")
+                if self._score_level is not None:
+                    text = label_text(text, self._score_level(score), theme.shapes)
                 tk.Label(meta, text=text, background=pill_bg, foreground=pill_fg, padx=9, pady=1,
                          font=pill_font).pack(side="right")
                 room -= pill_font.measure(text) + 30

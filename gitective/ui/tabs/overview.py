@@ -25,6 +25,7 @@ from gitective.reporting.overview_figures import (
     short_title,
 )
 from gitective.review.rules import Evaluation, score_level
+from gitective.ui.components.gauge import draw_dotted, draw_gauge, draw_hatched, gauge_width
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
@@ -214,14 +215,24 @@ class OverviewTab(ttk.Frame):
             self._box(x1, y1, x1 + max(radius * 2, (x2 - x1) * min(ratio, 1)), y2, radius, color)
 
     def _pill(self, x2: float, y: float, text: str, colors: tuple[str, str], size: int = 14,
-              min_width: int = 0) -> float:
-        """Badge right-aligned on x2, vertically centred on y; returns its left edge."""
+              min_width: int = 0, gauge: str | None = None) -> float:
+        """Badge right-aligned on x2, vertically centred on y; returns its left edge.
+
+        `gauge` = the score level: drawn as a 3-bar gauge before the text in a theme with shapes (TH-05).
+        """
         theme = self.app.get_theme()
         font = self._font(size, "bold")
-        width = max(min_width, font.measure(text) + 18)
+        gauge_h = size - 2
+        extra = gauge_width(gauge_h) + 6 if gauge and theme.shapes else 0
+        width = max(min_width, font.measure(text) + 18 + extra)
         height = size + 12
         self._box(x2 - width, y - height / 2, x2, y + height / 2, 6 if theme.radius else 0, colors[0])
-        self.canvas.create_text(x2 - width / 2, y, text=text, font=font, fill=colors[1])
+        if extra:
+            left = x2 - width / 2 - (font.measure(text) + extra) / 2
+            draw_gauge(self.canvas, left, y, gauge or "", colors[1], theme.empty_bar, gauge_h)
+            self.canvas.create_text(left + extra, y, text=text, font=font, fill=colors[1], anchor="w")
+        else:
+            self.canvas.create_text(x2 - width / 2, y, text=text, font=font, fill=colors[1])
         return x2 - width
 
     def _header(self, x: float, y: float, w: float, title: str, subtitle: str = "") -> None:
@@ -231,9 +242,11 @@ class OverviewTab(ttk.Frame):
             self._text(x + w - INNER, y + 20, subtitle, 12, theme.muted, anchor="ne")
 
     def _level(self, score: float) -> tuple[str, str]:
+        return self.app.get_theme().level_colors(self._level_key(score))
+
+    def _level_key(self, score: float) -> str:
         settings = self.app.settings
-        return self.app.get_theme().level_colors(
-            score_level(round(score, 6), settings.green_threshold, settings.orange_threshold))
+        return score_level(round(score, 6), settings.green_threshold, settings.orange_threshold)
 
     # ----------------------------------------------------------- Drawing
 
@@ -349,13 +362,15 @@ class OverviewTab(ttk.Frame):
                 title_w = min(self._font(13, "bold").measure(title), text_w - meta_w - 12)
                 self._text(title_x, middle, title, 13, weight="bold", anchor="w", width=title_w)
                 self._text(title_x + title_w + 12, middle, meta, 11, theme.muted, anchor="w", width=meta_w)
-                self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 12, pill_w)
+                self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 12, pill_w,
+                           gauge=self._level_key(ev.score))
             else:
                 self._text(x + INNER, middle, f"{merged:%H:%M}", 14, theme.muted, "bold", anchor="w")
                 self._text(title_x, middle - 10, short_title(ev.mr.title), 15, weight="bold", anchor="w",
                            width=text_w)
                 self._text(title_x, middle + 11, meta, 12, theme.muted, anchor="w", width=text_w)
-                self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 15, pill_w)
+                self._pill(x + w - INNER, middle, f"{ev.score:.0f} %", self._level(ev.score), 15, pill_w,
+                           gauge=self._level_key(ev.score))
             cursor += row_h
             self.canvas.create_line(x + INNER, cursor, x + w - INNER, cursor,
                                     fill=blend(band, theme.border, 0.6) if theme.relief != "raised" else "#A0A0A0")
@@ -407,7 +422,13 @@ class OverviewTab(ttk.Frame):
                 fill, color = self._level(score) if score is not None else (theme.header, theme.muted)
                 self._box(cx, top, cx + cell_w, top + 30, 6 if theme.radius else 0, fill,
                           theme.border if theme.relief == "raised" or theme.radius == 0 else "")
-                self._text(cx + cell_w / 2, top + 15, str(value), 14, color, "bold", anchor="center")
+                if score is not None and theme.shapes:  # level as a small gauge before the count (TH-05)
+                    width = gauge_width(10) + 4 + self._font(14, "bold").measure(str(value))
+                    start = cx + (cell_w - width) / 2
+                    draw_gauge(self.canvas, start, top + 15, self._level_key(score), color, theme.empty_bar, 10)
+                    self._text(start + gauge_width(10) + 4, top + 15, str(value), 14, color, "bold", anchor="w")
+                else:
+                    self._text(cx + cell_w / 2, top + 15, str(value), 14, color, "bold", anchor="center")
             total = sum(v for v in values if v)
             self._text(x + w - INNER, top + 15, str(total), 18, weight="bold", anchor="e")
 
@@ -427,8 +448,13 @@ class OverviewTab(ttk.Frame):
         number = f"{data.score:.0f}"
         base = y + 50 + big.metrics("ascent")
         self.canvas.create_text(x + INNER, base, text=number, font=big, fill=color, anchor="sw")
-        self._text(x + INNER + big.measure(number) + 4, base - size * 0.12, "%", max(16, size * 2 // 5), color,
+        percent = max(16, size * 2 // 5)
+        self._text(x + INNER + big.measure(number) + 4, base - size * 0.12, "%", percent, color,
                    "bold", anchor="sw")
+        if theme.shapes:
+            gauge_x = x + INNER + big.measure(number) + 4 + self._font(percent, "bold").measure("%") + 14
+            draw_gauge(self.canvas, gauge_x, base - size * 0.42, self._level_key(data.score), color,
+                       theme.empty_bar, size * 0.6)
         bar_y = y + h - 38
         if data.previous_score is not None:
             line_y = (base + bar_y) / 2
@@ -457,11 +483,11 @@ class OverviewTab(ttk.Frame):
                   (theme.orange[1], f"≥ {settings.orange_threshold:g} %"),
                   (theme.red[1], f"< {settings.orange_threshold:g} %"))
         lx = x + w - INNER
-        for color, label in reversed(legend):
+        for level, (color, label) in reversed(list(zip(("green", "orange", "red"), legend))):
             lx -= self._font(12).measure(label)
             self._text(lx, y + 26, label, 12, theme.muted, anchor="w")
-            lx -= 16
-            self.canvas.create_rectangle(lx, y + 21, lx + 10, y + 31, fill=color, outline="")
+            lx -= 20 if theme.shapes else 16
+            self._segment(lx, y + 21, lx + (14 if theme.shapes else 10), y + 31, level, color)
             lx -= 14
         top, bottom = y + 70, y + h - 32
         gap = 10
@@ -472,15 +498,25 @@ class OverviewTab(ttk.Frame):
         for index, week in enumerate(data.quality):
             bx = x + INNER + index * (bar_w + gap)
             cursor = bottom
-            for value, color in ((week.green, theme.green[1]), (week.orange, theme.orange[1]),
-                                 (week.red, theme.red[1])):
+            for level, value, color in (("green", week.green, theme.green[1]), ("orange", week.orange, theme.orange[1]),
+                                        ("red", week.red, theme.red[1])):
                 if value:
                     height = (bottom - top) * value / peak
-                    self.canvas.create_rectangle(bx, cursor - height, bx + bar_w, cursor - 1, fill=color, outline="")
+                    self._segment(bx, cursor - height, bx + bar_w, cursor - 1, level, color)
                     cursor -= height
             if week.total:
                 self._text(bx + bar_w / 2, cursor - 4, str(week.total), 11, theme.muted, anchor="s")
             self._text(bx + bar_w / 2, bottom + 8, week.label, 11, theme.muted, anchor="n")
+
+    def _segment(self, x0: float, y0: float, x1: float, y1: float, level: str, color: str) -> None:
+        """Bar segment of a score level: plain, or plain / dotted / hatched in a theme with shapes (TH-05)."""
+        theme = self.app.get_theme()
+        if theme.shapes and level == "orange":
+            draw_dotted(self.canvas, x0, y0, x1, y1, color, self._card_fill())
+        elif theme.shapes and level == "red":
+            draw_hatched(self.canvas, x0, y0, x1, y1, color, theme.red[0])
+        else:
+            self.canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
 
     def _draw_ranking(self, x: float, y: float, w: float, h: float, data: OverviewData) -> None:
         """Repositories ranked by average score, on two columns (VE-09)."""
@@ -512,8 +548,13 @@ class OverviewTab(ttk.Frame):
                 self._text(cx + col_w, middle, "—", size, theme.muted, anchor="e")
                 continue
             color = self._level(score)[1]
-            self._bar(bar_x, middle - 5, cx + col_w - 60, middle + 5, score / 100, color)
-            self._text(cx + col_w, middle, f"{score:.0f} %", size, color, "bold", anchor="e")
+            room = 60 + (gauge_width(11) + 8 if theme.shapes else 0)
+            self._bar(bar_x, middle - 5, cx + col_w - room, middle + 5, score / 100, color)
+            text = f"{score:.0f} %"
+            self._text(cx + col_w, middle, text, size, color, "bold", anchor="e")
+            if theme.shapes:
+                gauge_x = cx + col_w - self._font(size, "bold").measure(text) - 6 - gauge_width(11)
+                draw_gauge(self.canvas, gauge_x, middle, self._level_key(score), color, theme.empty_bar, 11)
 
     def _draw_kos(self, x: float, y: float, w: float, h: float, data: OverviewData) -> None:
         """KO count per active criterion over 30 days (VE-10)."""
@@ -545,7 +586,9 @@ class OverviewTab(ttk.Frame):
             lx -= self._font(12).measure(label)
             self._text(lx, y + 26, label, 12, theme.muted, anchor="w")
             lx -= 22
-            self.canvas.create_line(lx, y + 26, lx + 16, y + 26, fill=color, width=3)
+            # "Créées" dashed in a theme with shapes, so the two curves differ without color (TH-05).
+            dash = "-" if theme.shapes and color == created_color else ""
+            self.canvas.create_line(lx, y + 26, lx + 16, y + 26, fill=color, width=3, dash=dash)
             lx -= 16
         left, right = x + INNER + 30, x + w - INNER
         top, bottom = y + 62, y + h - 56
@@ -568,7 +611,8 @@ class OverviewTab(ttk.Frame):
                 return [c for i, v in enumerate(values) for c in (left + i * span, y_of(v))]
 
             if count > 1:
-                self.canvas.create_line(*points(data.created), fill=created_color, width=2, joinstyle="round")
+                self.canvas.create_line(*points(data.created), fill=created_color, width=2, joinstyle="round",
+                                        dash="-" if theme.shapes else "")
                 self.canvas.create_line(*points(data.merged), fill=theme.accent, width=3, joinstyle="round")
             for index in range(count):
                 px, py = left + index * span, y_of(data.merged[index])
