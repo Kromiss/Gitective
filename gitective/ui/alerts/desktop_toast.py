@@ -75,6 +75,8 @@ class Toasts:
         """Level color of the MR's score; without a score, the type color (assignee = accent, reviewer =
         secondary accent, merge = green, like the badges)."""
         if notice.score is not None:
+            if self._score_level is not None:  # bar color of the level: never the dark text of an inverse pill
+                return self._get_theme().fill(self._score_level(notice.score))
             return self._score_colors(notice.score)[1]
         theme = self._get_theme()
         if notice.kind in ("merge", "own"):

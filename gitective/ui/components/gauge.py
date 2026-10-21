@@ -1,7 +1,7 @@
-"""Score marks that do not rely on color: 3-bar gauges, hatches and dots (TH-05, 5.2).
+"""Score marks that do not rely on color: 3-bar gauges, hatches and dots (5.2.1).
 
-Drawn only when the theme asks for them (`Theme.shapes`); the color-blind
-theme does, so a score level reads from its shape as well as its color.
+Drawn when the theme asks for them (`Theme.shapes`, true for every built-in
+theme), so a score level reads from its shape as well as its color.
 """
 
 from __future__ import annotations

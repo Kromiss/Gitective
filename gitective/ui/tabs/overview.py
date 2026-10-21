@@ -229,17 +229,25 @@ class OverviewTab(ttk.Frame):
         self._box(x2 - width, y - height / 2, x2, y + height / 2, 6 if theme.radius else 0, colors[0])
         if extra:
             left = x2 - width / 2 - (font.measure(text) + extra) / 2
-            draw_gauge(self.canvas, left, y, gauge or "", colors[1], theme.empty_bar, gauge_h)
+            draw_gauge(self.canvas, left, y, gauge or "", colors[1], blend(colors[0], colors[1], 0.3), gauge_h)
             self.canvas.create_text(left + extra, y, text=text, font=font, fill=colors[1], anchor="w")
         else:
             self.canvas.create_text(x2 - width / 2, y, text=text, font=font, fill=colors[1])
         return x2 - width
 
+    def _title(self, x: float, y: float, text: str, size: int = 14) -> float:
+        """Card title in the theme's heading color, with its prefix ("> " in Matrix); returns its width."""
+        theme = self.app.get_theme()
+        text = theme.heading_prefix + text
+        self._text(x, y, text, size, theme.title_color, "bold")
+        return self._font(size, "bold").measure(text)
+
     def _header(self, x: float, y: float, w: float, title: str, subtitle: str = "") -> None:
         theme = self.app.get_theme()
-        self._text(x + INNER, y + 18, title, 14, weight="bold")
-        if subtitle:
-            self._text(x + w - INNER, y + 20, subtitle, 12, theme.muted, anchor="ne")
+        title_w = self._title(x + INNER, y + 18, title)
+        if subtitle:  # cut rather than overlap the title (wide monospace fonts)
+            self._text(x + w - INNER, y + 20, subtitle, 12, theme.muted, anchor="ne",
+                       width=max(40, w - 2 * INNER - title_w - 16))
 
     def _level(self, score: float) -> tuple[str, str]:
         return self.app.get_theme().level_colors(self._level_key(score))
@@ -313,8 +321,10 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         fill = theme.feature or self._card_fill()
         self._card(x, y, w, h, fill)
-        self._text(x + INNER, y + 18, t("Derniers merges"), 22, weight="bold")
-        self._text(x + INNER, y + 50, t("Tous les dépôts suivis · du plus récent au plus ancien"), 12, theme.muted)
+        self._title(x + INNER, y + 18, t("Derniers merges"), 22)
+        count_w = max(self._font(38, "bold").measure(str(data.today_count)), self._font(12).measure(t("aujourd'hui")))
+        self._text(x + INNER, y + 50, t("Tous les dépôts suivis · du plus récent au plus ancien"), 12, theme.muted,
+                   width=w - 2 * INNER - count_w - 16)
         self._text(x + w - INNER, y + 12, str(data.today_count), 38, theme.accent, "bold", anchor="ne")
         self._text(x + w - INNER, y + 58, t("aujourd'hui"), 12, theme.muted, anchor="ne")
         line = blend(fill, theme.border, 0.8) if theme.relief != "raised" else "#808080"
@@ -425,7 +435,7 @@ class OverviewTab(ttk.Frame):
                 if score is not None and theme.shapes:  # level as a small gauge before the count (TH-05)
                     width = gauge_width(10) + 4 + self._font(14, "bold").measure(str(value))
                     start = cx + (cell_w - width) / 2
-                    draw_gauge(self.canvas, start, top + 15, self._level_key(score), color, theme.empty_bar, 10)
+                    draw_gauge(self.canvas, start, top + 15, self._level_key(score), color, blend(fill, color, 0.3), 10)
                     self._text(start + gauge_width(10) + 4, top + 15, str(value), 14, color, "bold", anchor="w")
                 else:
                     self._text(cx + cell_w / 2, top + 15, str(value), 14, color, "bold", anchor="center")
@@ -441,7 +451,7 @@ class OverviewTab(ttk.Frame):
         if data.score is None:
             self._text(x + w / 2, y + h / 2, t("Aucune MR mergée"), 14, theme.muted, anchor="center")
             return
-        color = self._level(data.score)[1]
+        color = theme.fill(self._level_key(data.score))
         # The number takes whatever height the header, trend and gauge leave (fits small windows).
         size = int(max(32, min(84, (h - 136) / 0.8)))
         big = self._font(size, "bold")
@@ -478,10 +488,10 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         settings = self.app.settings
         self._card(x, y, w, h)
-        self._text(x + INNER, y + 18, t("Qualité des MR mergées par semaine"), 14, weight="bold")
-        legend = ((theme.green[1], f"≥ {settings.green_threshold:g} %"),
-                  (theme.orange[1], f"≥ {settings.orange_threshold:g} %"),
-                  (theme.red[1], f"< {settings.orange_threshold:g} %"))
+        self._title(x + INNER, y + 18, t("Qualité des MR mergées par semaine"))
+        legend = ((theme.fill("green"), f"≥ {settings.green_threshold:g} %"),
+                  (theme.fill("orange"), f"≥ {settings.orange_threshold:g} %"),
+                  (theme.fill("red"), f"< {settings.orange_threshold:g} %"))
         lx = x + w - INNER
         for level, (color, label) in reversed(list(zip(("green", "orange", "red"), legend))):
             lx -= self._font(12).measure(label)
@@ -498,8 +508,9 @@ class OverviewTab(ttk.Frame):
         for index, week in enumerate(data.quality):
             bx = x + INNER + index * (bar_w + gap)
             cursor = bottom
-            for level, value, color in (("green", week.green, theme.green[1]), ("orange", week.orange, theme.orange[1]),
-                                        ("red", week.red, theme.red[1])):
+            for level, value, color in (("green", week.green, theme.fill("green")),
+                                        ("orange", week.orange, theme.fill("orange")),
+                                        ("red", week.red, theme.fill("red"))):
                 if value:
                     height = (bottom - top) * value / peak
                     self._segment(bx, cursor - height, bx + bar_w, cursor - 1, level, color)
@@ -514,7 +525,7 @@ class OverviewTab(ttk.Frame):
         if theme.shapes and level == "orange":
             draw_dotted(self.canvas, x0, y0, x1, y1, color, self._card_fill())
         elif theme.shapes and level == "red":
-            draw_hatched(self.canvas, x0, y0, x1, y1, color, theme.red[0])
+            draw_hatched(self.canvas, x0, y0, x1, y1, color, theme.red[0] if theme.red_fill == "" else self._card_fill())
         else:
             self.canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
 
@@ -547,7 +558,7 @@ class OverviewTab(ttk.Frame):
                 self._bar(bar_x, middle - 5, cx + col_w - 60, middle + 5, 0, theme.muted)
                 self._text(cx + col_w, middle, "—", size, theme.muted, anchor="e")
                 continue
-            color = self._level(score)[1]
+            color = theme.fill(self._level_key(score))
             room = 60 + (gauge_width(11) + 8 if theme.shapes else 0)
             self._bar(bar_x, middle - 5, cx + col_w - room, middle + 5, score / 100, color)
             text = f"{score:.0f} %"
@@ -572,14 +583,14 @@ class OverviewTab(ttk.Frame):
         for index, (label, count) in enumerate(data.kos):
             middle = top + index * row_h + row_h / 2
             self._text(x + INNER, middle, label, 14, anchor="w", width=name_w)
-            self._bar(x + INNER + name_w + 12, middle - 5, x + w - INNER - 40, middle + 5, count / peak, theme.red[1])
+            self._bar(x + INNER + name_w + 12, middle - 5, x + w - INNER - 40, middle + 5, count / peak, theme.fill("red"))
             self._text(x + w - INNER, middle, str(count), 15, weight="bold", anchor="e")
 
     def _draw_flow(self, x: float, y: float, w: float, h: float, data: OverviewData) -> None:
         """Created and merged MRs per week, with an MR-count axis (VE-11)."""
         theme = self.app.get_theme()
         self._card(x, y, w, h)
-        self._text(x + INNER, y + 18, t("MR créées / mergées par semaine"), 14, weight="bold")
+        self._title(x + INNER, y + 18, t("MR créées / mergées par semaine"))
         lx = x + w - INNER
         created_color = blend(theme.muted, self._card_fill(), 0.35) if theme.relief != "raised" else theme.muted
         for color, label in ((theme.accent, t("Mergées")), (created_color, t("Créées"))):
