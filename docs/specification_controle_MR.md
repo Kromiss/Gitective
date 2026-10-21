@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.17 (brouillon) — 21/10/2026
+Version : 1.18 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -100,10 +100,20 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | TH-02 | Sombre | Classique et minimaliste. |
 | TH-03 | Windows 95 | Gris, reliefs biseautés, police système rétro. |
 | TH-04 | Matrix | Fond noir, texte vert, police monospace. |
+| TH-05 | Daltonien | Pour la deutéranopie et la protanopie. Sombre (fond `#0E1117`), accent lavande. Niveaux de score bleu ciel (bon) / jaune (moyen) / vermillon (faible), palette Okabe-Ito, distincts aussi par la luminosité. OK bleu, KO vermillon. Seul thème avec les **indicateurs de forme** (5.2.1). |
 
 Chaque thème définit : fonds, textes, bordures, rayons des coins, police, accent et accent secondaire, couleurs OK / KO / N/A et couleurs des niveaux de score (aussi utilisées par les merges par jour, VE-06). Thèmes non modifiables. Appliqués via `ttk.Style` et la grille personnalisée.
 
 Les couleurs OK / KO / N/A sont adaptées à chaque thème (ex. Matrix : vert vif / vert sombre / gris). Les libellés texte « OK », « KO », « N/A » restent affichés pour garantir la lisibilité quelle que soit la couleur.
+
+#### 5.2.1 Indicateurs de forme (thème Daltonien)
+
+| Réf. | Exigence |
+|---|---|
+| TF-01 | Chaque score coloré porte une **jauge à 3 barres montantes** dessinée en `Canvas` : 3 barres pleines = bon, 2 = moyen, 1 = faible, les autres dans une couleur neutre. Dans les pastilles du tableau MR et des Statistiques, le fil des derniers merges, les cases des merges par jour, le score moyen (grande jauge), le classement des dépôts. Dans les libellés Tk (score moyen de l'onglet MR, panneau de détail, comparaison de tags, notifications), la jauge est écrite en caractères : `▮▮▮`, `▮▮▯`, `▮▯▯`. |
+| TF-02 | Qualité par semaine (VE-08) et sa légende : bon en aplat, moyen à points, faible hachuré. Hachures et points dessinés en lignes (le `stipple` de Tk n'est pas fiable sous Windows). |
+| TF-03 | Courbes : la première série en trait plein, les suivantes en tirets (motifs Tk `-`, `.`, `-.`, `-..`, gérés sous Windows) ; « Créées » en tirets dans « MR créées / mergées ». Légendes avec le même trait. |
+| TF-04 | Test : les trois couleurs de niveau, simulées pour deutéranope et protanope (matrices de Machado 2009), restent séparées d'un écart CIELAB ΔE > 20 ; le texte des pastilles, OK / KO / N/A et le texte atténué gardent un contraste ≥ 4,5:1. |
 
 Badges (6.5) : fond, bordure, coins et police des cartes du thème ; icône Assigné (merge) en couleur d'accent, icône Relecteur (œil) en accent secondaire, icône Auteur (crayon) en couleur de texte ; pastille des nouvelles en couleur « score rouge » ; badge à 0 en couleur N/A. Icônes et libellés identiques dans tous les thèmes, dessinés en `Canvas` (pas de police d'icônes).
 
@@ -114,6 +124,7 @@ Badges (6.5) : fond, bordure, coins et police des cartes du thème ; icône Assi
 | Sombre | bleu / violet clair | rouge | coins légèrement arrondis, fond gris foncé |
 | Windows 95 | bleu marine / sarcelle | rouge vif | bouton biseauté en relief, coins carrés, police système |
 | Matrix | vert vif / vert pâle | vert vif, texte noir | coins carrés, police monospace ; badges distingués par l'icône et le libellé |
+| Daltonien | lavande / blanc lavande | vermillon, texte sombre | coins arrondis |
 
 ### 5.3 Identité visuelle
 
@@ -578,6 +589,7 @@ gitective/
 │       │   ├── statistics.py   # Per-person / per-repository switch
 │       │   └── config.py       # Config tab, connection test, rule tester, branches, token user, notifications, language
 │       ├── components/
+│       │   ├── gauge.py        # Colour-blind theme: 3-bar gauges, hatches, dots, dash patterns (5.2.1)
 │       │   ├── grid.py         # Custom colored grid, sorting, tooltips
 │       │   ├── pagination.py
 │       │   ├── side_panel.py   # Shared side panel frame: resize, scroll, keyboard navigation

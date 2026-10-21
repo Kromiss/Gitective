@@ -1,4 +1,4 @@
-"""Fixed visual themes (TH-00 to TH-04) and their application to Tk/ttk."""
+"""Fixed visual themes (TH-00 to TH-05) and their application to Tk/ttk."""
 
 from __future__ import annotations
 
@@ -53,10 +53,17 @@ class Theme:
     chart: tuple[str, ...] = ("#2B3A5C", "#C9622F", "#2F8F8A", "#5B4A8A", "#2F7A57", "#8A3D5C", "#7A5A1F")
     accent2: str = ""  # secondary accent: reviewer badge (5.2); accent when empty
     selection: str = ""  # background of the selected grid row; header when empty
+    # Score levels also drawn as shapes: 3-bar gauges, hatches, dots and dashed curves (TH-05).
+    shapes: bool = False
+    gauge_empty: str = ""  # unfilled bars of a gauge; border when empty
 
     @property
     def second(self) -> str:
         return self.accent2 or self.accent
+
+    @property
+    def empty_bar(self) -> str:
+        return self.gauge_empty or self.border
 
     @property
     def selected_row(self) -> str:
@@ -120,6 +127,18 @@ THEMES: dict[str, Theme] = {
         tooltip=("#33FF66", "#000000"), font=("Consolas", 10), mono=("Consolas", 10),
         chart=("#33FF66", "#B6FFC8", "#1E9C40", "#7CFF9E", "#0F7A2E", "#D8FFE2", "#5ACC77"),
         accent2="#B6FFC8", selection="#0B3A16",
+    ),
+    # Deuteranopia / protanopia: blue / yellow / vermilion levels (Okabe-Ito), told apart by lightness too,
+    # and every score level doubled by a shape (TH-05).
+    "daltonien": Theme(
+        key="daltonien", label=t("Daltonien"), bg="#0E1117", surface="#161B24", text="#EEF1F6", muted="#A4ADBD",
+        border="#2A3342", header="#1C2330", accent="#C9B6FF", accent_text="#0E1117", highlight="#E2D8FF",
+        link="#C9B6FF", ok=("#0F2A40", "#6CC4F5"), ko=("#3A1D0E", "#F28A4B"), na=("#222A38", "#A4ADBD"),
+        green=("#0F2A40", "#6CC4F5"), orange=("#33300E", "#F0E442"), red=("#3A1D0E", "#F28A4B"),
+        error=("#3A1D0E", "#FFD9C2"), success=("#0F2A40", "#CFEBFB"), info=("#1E2440", "#DCD3FF"),
+        tooltip=("#EEF1F6", "#0E1117"), font=("Segoe UI", 10), mono=("Consolas", 10),
+        chart=("#56B4E9", "#E69F00", "#C9B6FF", "#F0E442", "#CC79A7", "#E8603C", "#A4ADBD"),
+        radius=16, feature="#141A26", accent2="#E6E1F5", selection="#252E40", shapes=True, gauge_empty="#3A4456",
     ),
 }
 

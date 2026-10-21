@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from gitective.shared.i18n import t
+from gitective.ui.components.gauge import DASHES
 from gitective.ui.themes import Theme
 
 MARGIN_LEFT, MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM = 56, 24, 40, 30
@@ -76,11 +77,13 @@ class WeeklyChart(tk.Canvas):
         for number, series in reversed(list(enumerate(self._series))):
             color = theme.chart[number % len(theme.chart)]
             line_width = 4 if series.main else 2
+            # A theme with shapes gives each curve after the first its own dash pattern (TH-05).
+            dash = DASHES[(number - 1) % len(DASHES)] if theme.shapes and number else ""
             segment: list[float] = []
             for index, value in enumerate(series.values):
                 if value is None:
                     if len(segment) >= 4:
-                        self.create_line(*segment, fill=color, width=line_width, joinstyle="round")
+                        self.create_line(*segment, fill=color, width=line_width, joinstyle="round", dash=dash)
                     segment = []
                     continue
                 x, y = x_of(index), y_of(value)
@@ -88,10 +91,10 @@ class WeeklyChart(tk.Canvas):
                 radius = 4 if series.main else 3
                 self.create_oval(x - radius, y - radius, x + radius, y + radius, fill=color, outline=color)
             if len(segment) >= 4:
-                self.create_line(*segment, fill=color, width=line_width, joinstyle="round")
+                self.create_line(*segment, fill=color, width=line_width, joinstyle="round", dash=dash)
             text_width = font.measure(series.label)
             legend_x -= text_width
             self.create_text(legend_x, 16, text=series.label, anchor="w", fill=theme.text, font=font)
             legend_x -= 22
-            self.create_line(legend_x, 16, legend_x + 16, 16, fill=color, width=line_width)
+            self.create_line(legend_x, 16, legend_x + 16, 16, fill=color, width=line_width, dash=dash)
             legend_x -= 16

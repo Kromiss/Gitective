@@ -145,6 +145,7 @@ EN: dict[str, str] = {
     "Créée": "Created",
     "Créées": "Created",
     "Current": "Current",
+    "Daltonien": "Colour-blind",
     "Date": "Date",
     "Date current": "Current date",
     "Date de commit": "Commit date",

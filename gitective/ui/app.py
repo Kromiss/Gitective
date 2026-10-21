@@ -206,7 +206,7 @@ class App:
         self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
         self.toasts = Toasts(self.root, self.get_theme, self.open_url, self._open_merge_requests,
                              self._open_notification_settings, self._score_colors, self._toast_logo,
-                             repo_label=self.repo_label)
+                             repo_label=self.repo_label, score_level=self._score_level)
 
         self.notebook = ttk.Notebook(self.root, style="Pages.TNotebook")
         self.banner = Banner(self.root, lambda: self.theme, before=self.notebook)
@@ -472,6 +472,10 @@ class App:
         self.root.deiconify()
         self.root.lift()
         self.notebook.select(self.mr_tab)
+
+    def _score_level(self, score: float) -> str:
+        s = self.settings
+        return score_level(round(score, 6), s.green_threshold, s.orange_threshold)
 
     def _score_colors(self, score: float) -> tuple[str, str]:
         """(background, foreground) of a score's level, with the configured thresholds."""
