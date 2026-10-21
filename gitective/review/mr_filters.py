@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 
+from gitective.shared.i18n import t
 from gitective.review.rules import Evaluation
-from gitective.settings.filter_state import DRAFT_STATES, PEOPLE_STATES, FilterState
+from gitective.settings.filter_state import DRAFT_STATES, MERGER_STATES, PEOPLE_STATES, FilterState
 from gitective.shared.people import PersonRef
 from gitective.shared.search import matches, sha_hit
 
 NOBODY = "none"  # filter entry for MRs without assignee / reviewer (FI-14, FI-15)
-ROLE_LABELS = {"assignees": "Non assignée", "reviewers": "Sans relecteur"}
+ROLE_LABELS = {"assignees": t("Non assignée"), "reviewers": t("Sans relecteur")}
 CommitShas = Mapping[tuple[int, int], Sequence[str]]  # (project_id, iid) → SHAs of the MR commits in the base
 
 
@@ -29,7 +30,7 @@ def mr_shas(ev: Evaluation, commit_shas: CommitShas | None = None) -> list[tuple
     """(label, SHA) searchable for an MR: merge, squash and head commits, then its stored commits (FI-20)."""
     mr = ev.mr
     shas: list[tuple[str, str | None]] = [("merge", mr.merge_commit_sha), ("squash", mr.squash_commit_sha),
-                                          ("tête", mr.sha)]
+                                          (t("tête"), mr.sha)]
     shas += [("commit", sha) for sha in (commit_shas or {}).get((mr.project_id, mr.iid), ())]
     return shas
 
@@ -38,14 +39,14 @@ def visible(evaluations: Iterable[Evaluation], filters: FilterState, needle: str
             commit_shas: CommitShas | None = None) -> list[Evaluation]:
     """MRs kept by the author, merger, assignee, reviewer, draft and text filters.
 
-    The merger filter applies to merged MRs only (FI-13), the assignee and
-    reviewer filters to merged, open and closed MRs (FI-14, FI-15), the draft
-    filter to open and closed MRs (FI-17). Every filter combines (AND). The
+    The merger filter keeps merged MRs only (FI-13), the assignee and
+    reviewer filters apply to every MR state (FI-14, FI-15), the draft filter
+    to open and closed MRs (FI-17). Every filter combines (AND). The
     text also finds an MR by a SHA prefix (FI-20).
     """
     state = filters.state
     authors = set(filters.authors)
-    mergers = set(filters.mergers) if state == "merged" else set()
+    mergers = set(filters.mergers) if state in MERGER_STATES else set()
     assignees = set(filters.assignees) if state in PEOPLE_STATES else set()
     reviewers = set(filters.reviewers) if state in PEOPLE_STATES else set()
     drafts = filters.drafts if state in DRAFT_STATES else "all"
@@ -66,7 +67,7 @@ def people_choices(evaluations: Iterable[Evaluation], role: str, me_key: str | N
     seen = {p.key: p.name for e in evaluations for p in getattr(e, role)}
     items = []
     if me_key:
-        items.append((me_key, f"Moi ({me_name})"))
+        items.append((me_key, t("Moi ({name})", name=me_name)))
         seen.pop(me_key, None)
     items += sorted(seen.items(), key=lambda i: i[1].casefold())
     items.append((NOBODY, ROLE_LABELS[role]))

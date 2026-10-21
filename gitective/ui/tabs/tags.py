@@ -7,6 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
+from gitective.shared.i18n import t
 from gitective.forge.models import Tag
 from gitective.repository.tags import TagRow, build_rows, first_line, visible_tags
 from gitective.review.mr_filters import step_selection
@@ -31,13 +32,13 @@ if TYPE_CHECKING:
     from gitective.ui.app import App
 
 COLUMNS = [
-    Column("repo", "Dépôt", 120),
-    Column("tag", "Tag", 200, kind="link", stretch=True),
-    Column("message", "Message", 200, kind="tip", stretch=True),
-    Column("notes", "Notes de release", 200, kind="tip", stretch=True),
-    Column("date", "Date", 150, kind="mono"),
-    Column("sha", "Commit", 84, kind="link"),
-    Column("author", "Auteur du commit", 140),
+    Column("repo", t("Dépôt"), 120),
+    Column("tag", t("Tag"), 200, kind="link", stretch=True),
+    Column("message", t("Message"), 200, kind="tip", stretch=True),
+    Column("notes", t("Notes de release"), 200, kind="tip", stretch=True),
+    Column("date", t("Date"), 150, kind="mono"),
+    Column("sha", t("Commit"), 84, kind="link"),
+    Column("author", t("Auteur du commit"), 140),
 ]
 SORT_KEYS: dict[str, Callable[[TagRow], Any]] = {
     "repo": lambda r: r.project.path.casefold(),
@@ -76,25 +77,25 @@ class TagsBrowseView(DataTab):
         top.pack(fill="x")
         dates = ttk.Frame(bar, style="Bar.TFrame")
         dates.pack(fill="x", pady=(10, 0))
-        self.repos = MultiSelect(top, "Dépôts", self._repos_changed, app.get_theme)
+        self.repos = MultiSelect(top, t("Dépôts"), self._repos_changed, app.get_theme)
         self.repos.set_selected([str(r) for r in saved.repos])
         self.repos.pack(side="left")
-        ttk.Label(top, text="Rechercher (nom, message, notes, SHA)", style="BarMuted.TLabel").pack(
+        ttk.Label(top, text=t("Rechercher (nom, message, notes, SHA)"), style="BarMuted.TLabel").pack(
             side="left", padx=(16, 6))
         self._search = tk.StringVar()
         self._search.trace_add("write", lambda *_: self._apply_view(reset_page=True))
         ttk.Entry(top, textvariable=self._search, width=28).pack(side="left")
         self.refresh_button(top).pack(side="right")
-        for label, var, pad in (("Du", self._from, 0), ("au", self._to, 8)):
+        for label, var, pad in ((t("Du"), self._from, 0), (t("au"), self._to, 8)):
             ttk.Label(dates, text=label, style="BarMuted.TLabel").pack(side="left", padx=(pad, 6))
             entry = ttk.Entry(dates, textvariable=var, width=11)
             entry.pack(side="left")
             entry.bind("<Return>", lambda e: self._apply_dates())
-        ttk.Button(dates, text="Appliquer", command=self._apply_dates).pack(side="left", padx=(8, 0))
-        for text, period in (("7 jours", lambda: last_days(7)), ("30 jours", lambda: last_days(30)),
-                             ("Mois en cours", current_month), ("Année en cours", current_year)):
+        ttk.Button(dates, text=t("Appliquer"), command=self._apply_dates).pack(side="left", padx=(8, 0))
+        for text, period in ((t("7 jours"), lambda: last_days(7)), (t("30 jours"), lambda: last_days(30)),
+                             (t("Mois en cours"), current_month), (t("Année en cours"), current_year)):
             ttk.Button(dates, text=text, command=lambda p=period: self._shortcut(p())).pack(side="left", padx=(6, 0))
-        self._total_button = ttk.Button(dates, text="Total", command=self._set_total)
+        self._total_button = ttk.Button(dates, text=t("Total"), command=self._set_total)
         self._total_button.pack(side="left", padx=(6, 0))
 
         # Table card on the left, detail panel on the right when a tag is selected (TG-07).
@@ -108,9 +109,9 @@ class TagsBrowseView(DataTab):
         summary.pack(fill="x")
         self._count = ttk.Label(summary, style="Section.TLabel")
         self._count.pack(side="left")
-        ttk.Label(summary, text="Clic sur un tag ou un commit : ouvre GitLab · sur la ligne : détail",
+        ttk.Label(summary, text=t("Clic sur un tag ou un commit : ouvre GitLab · sur la ligne : détail"),
                   style="BarMuted.TLabel").pack(side="right")
-        self.grid_view = self.make_grid(COLUMNS, "Aucun tag pour ces filtres", links=True, master=card,
+        self.grid_view = self.make_grid(COLUMNS, t("Aucun tag pour ces filtres"), links=True, master=card,
                                         on_select=self._row_selected)
         self.grid_view.pack(fill="both", expand=True)
         self.pager = Pager(left, lambda _p, _s: self._render_page(), page_size=app.filters.page_size)
@@ -145,8 +146,8 @@ class TagsBrowseView(DataTab):
         try:
             day_range(parse_date(self._from.get()), parse_date(self._to.get()))
         except ValueError:
-            self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA, la date de fin après la "
-                                     "date de début.")
+            self.app.notify("error", t("Dates invalides : utilisez le format JJ/MM/AAAA, la date de fin après la "
+                                       "date de début."))
             return
         self._total = False
         self._period_changed()
@@ -211,7 +212,7 @@ class TagsBrowseView(DataTab):
         repos = [int(k) for k in self.repos.selected]
         rows = visible_tags(self._rows, repos, self._search.get(), period)
         self._visible = sort_rows(rows, SORT_KEYS[self._sort_key], self._ascending)
-        self._count.configure(text=f"{len(rows)} tag(s)")
+        self._count.configure(text=t("{count} tag(s)", count=len(rows)))
         self.pager.update_total(len(self._visible), reset=reset_page)
         self._render_page()
 
@@ -233,7 +234,7 @@ class TagsBrowseView(DataTab):
                 "_selected": _key(r) == self._selected,
             }
             if r.deleted_at is not None:
-                row["_muted"], row["_tag"] = True, "SUPPRIMÉ"
+                row["_muted"], row["_tag"] = True, t("SUPPRIMÉ")
             rows.append(row)
         self.grid_view.set_rows(rows, keep_scroll=True)
 
@@ -293,7 +294,7 @@ class TagsTab(ttk.Frame):
         self._view = tk.StringVar(value=app.settings.tags_view)
         switch = ttk.Frame(self)
         switch.pack(fill="x", padx=16, pady=(12, 0))
-        for value, text in (("browse", "Parcourir"), ("compare", "Comparer")):
+        for value, text in (("browse", t("Parcourir")), ("compare", t("Comparer"))):
             ttk.Radiobutton(switch, text=text, value=value, variable=self._view, style="Toolbutton",
                             command=self._switch).pack(side="left")
         self.browse = TagsBrowseView(self, app)

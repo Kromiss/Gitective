@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from gitective.shared.i18n import t
 from gitective.review.rules import validate_regex
 from gitective.settings.config_file import PARALLEL_RANGE, REFRESH_RANGE, Settings
 
@@ -36,34 +37,35 @@ def apply_numbers(settings: Settings, fields: NumberFields) -> str:
 
     Nothing must be saved when a message is returned.
     """
-    checks = [(f"de la règle « {r.name} »", r.pattern) for r in settings.rules]
-    checks += [("du lien ticket", settings.link_regex), ("du n° de ticket", settings.ticket_regex),
-               ("d'exclusion des branches", settings.branch_exclude_regex)]
+    checks = [(t("Regex de la règle « {name} »", name=r.name), r.pattern) for r in settings.rules]
+    checks += [(t("Regex du lien ticket"), settings.link_regex), (t("Regex du n° de ticket"), settings.ticket_regex),
+               (t("Regex d'exclusion des branches"), settings.branch_exclude_regex)]
     for label, pattern in checks:
         error = validate_regex(pattern)
         if error:
-            return f"Regex {label} invalide : {error}. Enregistrement annulé."
+            return t("{label} invalide : {error}. Enregistrement annulé.", label=label, error=error)
     try:
         settings.weights = {c: _number(v) for c, v in fields.weights.items()}
         settings.green_threshold = _number(fields.green)
         settings.orange_threshold = _number(fields.orange)
     except ValueError:
-        return "Pondérations et seuils : saisissez des nombres."
+        return t("Pondérations et seuils : saisissez des nombres.")
     # RC-06 only counts when it is ticked.
     counted = [w for c, w in settings.weights.items() if c != "assignee" or settings.assignee_rule]
     all_weights = [*counted, *(r.weight for r in settings.active_rules)]
     if any(w < 0 for w in all_weights) or sum(all_weights) <= 0:
-        return "Pondérations : valeurs positives avec un total supérieur à 0."
+        return t("Pondérations : valeurs positives avec un total supérieur à 0.")
     if not 0 <= settings.orange_threshold <= settings.green_threshold <= 100:
-        return "Seuils : il faut 0 ≤ orange ≤ vert ≤ 100."
+        return t("Seuils : il faut 0 ≤ orange ≤ vert ≤ 100.")
     parallel = _whole(fields.parallel, PARALLEL_RANGE)
     if parallel is None:
-        return f"Requêtes simultanées : un nombre entier entre {PARALLEL_RANGE[0]} et {PARALLEL_RANGE[1]}."
+        return t("Requêtes simultanées : un nombre entier entre {low} et {high}.", low=PARALLEL_RANGE[0], high=PARALLEL_RANGE[1])
     minutes = _whole(fields.sync_minutes, REFRESH_RANGE)
     if minutes is None:
-        return f"Synchronisation automatique : un nombre de minutes entre {REFRESH_RANGE[0]} et {REFRESH_RANGE[1]}."
+        return t("Synchronisation automatique : un nombre de minutes entre {low} et {high}.", low=REFRESH_RANGE[0],
+                 high=REFRESH_RANGE[1])
     dead_days = _whole(fields.dead_branch_days, (1, 100_000))
     if dead_days is None:
-        return "Branche morte : un nombre entier de jours, au moins 1."
+        return t("Branche morte : un nombre entier de jours, au moins 1.")
     settings.parallel_requests, settings.sync_minutes, settings.dead_branch_days = parallel, minutes, dead_days
     return ""

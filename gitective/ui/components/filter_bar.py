@@ -6,10 +6,12 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from gitective.shared.i18n import t
 from gitective.settings.filter_state import (
     DATED_STATES,
     DRAFT_LABELS,
     DRAFT_STATES,
+    MERGER_STATES,
     PEOPLE_STATES,
     STATES,
     FilterState,
@@ -57,24 +59,24 @@ class MrFilterBar(ttk.Frame):
             entry.pack(side="left", padx=(16 if not index else 0, 0))
             entry.bind("<Return>", lambda e: self._apply_dates())
             self._date_entries.append(entry)
-        self._apply = ttk.Button(top, text="Appliquer", command=self._apply_dates)
+        self._apply = ttk.Button(top, text=t("Appliquer"), command=self._apply_dates)
         self._apply.pack(side="left", padx=(8, 0))
-        self._yesterday = ttk.Button(top, text="Depuis hier", command=self._since_yesterday)
+        self._yesterday = ttk.Button(top, text=t("Depuis hier"), command=self._since_yesterday)
         self._yesterday.pack(side="left", padx=(8, 0))
-        self._total = ttk.Button(top, text="Total", command=self._set_total)
+        self._total = ttk.Button(top, text=t("Total"), command=self._set_total)
         self._total.pack(side="left", padx=(6, 0))
-        ttk.Button(top, text="⟳  Rafraîchir (F5)", style="Accent.TButton", command=on_refresh).pack(side="right")
-        ttk.Button(top, text="↺ Réinitialiser les filtres", command=self._reset).pack(side="right", padx=(0, 8))
+        ttk.Button(top, text=t("⟳  Rafraîchir (F5)"), style="Accent.TButton", command=on_refresh).pack(side="right")
+        ttk.Button(top, text=t("↺ Réinitialiser les filtres"), command=self._reset).pack(side="right", padx=(0, 8))
 
-        self.repos = MultiSelect(bottom, "Dépôts", self._repos_changed, get_theme)
+        self.repos = MultiSelect(bottom, t("Dépôts"), self._repos_changed, get_theme)
         self.repos.pack(side="left")
-        self.authors = MultiSelect(bottom, "Auteurs", self._authors_changed, get_theme, all_text="Toutes")
+        self.authors = MultiSelect(bottom, t("Auteurs"), self._authors_changed, get_theme, all_text=t("Toutes"))
         self.authors.pack(side="left", padx=(8, 0))
-        self.mergers = MultiSelect(bottom, "Mergeurs", self._mergers_changed, get_theme, all_text="Toutes")
+        self.mergers = MultiSelect(bottom, t("Mergeurs"), self._mergers_changed, get_theme, all_text=t("Toutes"))
         self.mergers.pack(side="left", padx=(8, 0))
-        self.assignees = MultiSelect(bottom, "Assigné", self._assignees_changed, get_theme)
+        self.assignees = MultiSelect(bottom, t("Assigné"), self._assignees_changed, get_theme)
         self.assignees.pack(side="left", padx=(8, 0))
-        self.reviewers = MultiSelect(bottom, "Relecteur", self._reviewers_changed, get_theme)
+        self.reviewers = MultiSelect(bottom, t("Relecteur"), self._reviewers_changed, get_theme)
         self.reviewers.pack(side="left", padx=(8, 0))
         self._drafts = ttk.Menubutton(bottom)
         menu = tk.Menu(self._drafts, tearoff=False)
@@ -87,7 +89,7 @@ class MrFilterBar(ttk.Frame):
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *_: on_search())
         ttk.Entry(bottom, textvariable=self.search, width=18).pack(side="right")
-        ttk.Label(bottom, text="Rechercher", style="BarMuted.TLabel").pack(side="right", padx=(16, 6))
+        ttk.Label(bottom, text=t("Rechercher"), style="BarMuted.TLabel").pack(side="right", padx=(16, 6))
 
         filters.subscribe(self._sync)
         if filters.since_yesterday:
@@ -102,7 +104,7 @@ class MrFilterBar(ttk.Frame):
         try:
             day_range(parse_date(self._from.get()), parse_date(self._to.get()))
         except ValueError:
-            self._on_invalid("Dates invalides : utilisez le format JJ/MM/AAAA, la date de fin après la date de début.")
+            self._on_invalid(t("Dates invalides : utilisez le format JJ/MM/AAAA, la date de fin après la date de début."))
             return
         self.filters.date_from = self._from.get().strip()
         self.filters.date_to = self._to.get().strip()
@@ -166,16 +168,20 @@ class MrFilterBar(ttk.Frame):
         for widget in (*self._date_entries, self._apply, self._yesterday):
             widget.state(["!disabled"] if dated else ["disabled"])
         # Only merged MRs have a merger (FI-13); direct commits have no assignee or reviewer (FI-14, FI-15).
-        self.mergers.state(["!disabled"] if state == "merged" else ["disabled"])
+        self.mergers.state(["!disabled"] if state in MERGER_STATES else ["disabled"])
         for widget in (self.assignees, self.reviewers):
             widget.state(["!disabled"] if state in PEOPLE_STATES else ["disabled"])
         self._drafts.state(["!disabled"] if state in DRAFT_STATES else ["disabled"])
         self._draft_var.set(self.filters.drafts)
         active = self.filters.drafts != "all" and state in DRAFT_STATES
-        self._drafts.configure(text=f"Brouillons : {DRAFT_LABELS[self.filters.drafts]}  ▾",
+        self._drafts.configure(text=t("Brouillons : {mode}", mode=DRAFT_LABELS[self.filters.drafts]) + "  ▾",
                                style="Active.TMenubutton" if active else "TMenubutton")
         if what == "reset":
             self._show_yesterday_dates()
+        if what == "focus":  # merge clicked on the overview: its day in the date fields (VE-14)
+            self.search.set("")
+            self._from.set(self.filters.date_from)
+            self._to.set(self.filters.date_to)
         self._total.state(["!disabled"] if dated else ["disabled"])
         self._yesterday.configure(style="Active.TButton" if self.filters.since_yesterday and dated else "TButton")
         self._total.configure(style="Active.TButton" if self.filters.total and dated else "TButton")

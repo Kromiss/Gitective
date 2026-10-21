@@ -7,6 +7,7 @@ import tkinter.font as tkfont
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from gitective.shared.i18n import t
 from gitective.ui.themes import Theme
 
 MARGIN_LEFT, MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM = 56, 24, 40, 30
@@ -46,7 +47,7 @@ class WeeklyChart(tk.Canvas):
         width, height = max(self.winfo_width(), 300), max(self.winfo_height(), 160)
         left, right = MARGIN_LEFT, width - MARGIN_RIGHT
         top, bottom = MARGIN_TOP, height - MARGIN_BOTTOM
-        self.create_text(16, 16, text="Score moyen par semaine", anchor="w", fill=theme.text, font=bold)
+        self.create_text(16, 16, text=t("Score moyen par semaine"), anchor="w", fill=theme.text, font=bold)
 
         def y_of(value: float) -> float:
             return bottom - (bottom - top) * value / 100
@@ -57,7 +58,7 @@ class WeeklyChart(tk.Canvas):
             self.create_text(left - 8, y, text=f"{value} %", anchor="e", fill=theme.muted, font=font)
 
         if not self._weeks:
-            self.create_text((left + right) / 2, (top + bottom) / 2, text="Aucune donnée", fill=theme.muted, font=font)
+            self.create_text((left + right) / 2, (top + bottom) / 2, text=t("Aucune donnée"), fill=theme.muted, font=font)
             return
 
         count = len(self._weeks)

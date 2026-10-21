@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from statistics import median
 
+from gitective.shared.i18n import t
 from gitective.shared.dates import business_days, week_key
 from gitective.shared.people import PersonRef
 from gitective.review.rules import KO, Evaluation
@@ -125,8 +126,8 @@ def delay_details(values: Sequence[float]) -> str:
     """Tooltip of a delay cell: average, minimum and maximum."""
     if not values:
         return ""
-    return (f"Moyenne : {format_days(average(values))}\nMin : {format_days(min(values))}\n"
-            f"Max : {format_days(max(values))}\nSur {len(values)} MR")
+    return t("Moyenne : {average}\nMin : {min}\nMax : {max}\nSur {count} MR", average=format_days(average(values)),
+             min=format_days(min(values)), max=format_days(max(values)), count=len(values))
 
 
 def by_author(ev: Evaluation) -> str:
@@ -164,5 +165,5 @@ def weekly_scores(
 
 
 def format_days(value: float | None) -> str:
-    """Days with one decimal and a French comma, e.g. '2,2 j'."""
-    return "—" if value is None else f"{value:.1f} j".replace(".", ",")
+    """Days with one decimal and a comma in both languages, e.g. '2,2 j' (LG-04)."""
+    return "—" if value is None else t("{days} j", days=f"{value:.1f}".replace(".", ","))

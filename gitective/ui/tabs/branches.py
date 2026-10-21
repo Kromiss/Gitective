@@ -7,6 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
+from gitective.shared.i18n import t
 from gitective.database.store import LinkedMr
 from gitective.forge.models import Branch
 from gitective.repository.branches import (
@@ -33,12 +34,12 @@ if TYPE_CHECKING:
     from gitective.ui.app import App
 
 COLUMNS = [
-    Column("repo", "Dépôt", 130),
-    Column("branch", "Branche", 240, kind="link", stretch=True),
-    Column("last", "Dernier commit", 190, kind="mono"),
-    Column("author", "Auteur du dernier commit", 170),
-    Column("mrs", "MR liées", 150, kind="links"),
-    Column("state", "État", 190, kind="pill"),
+    Column("repo", t("Dépôt"), 130),
+    Column("branch", t("Branche"), 240, kind="link", stretch=True),
+    Column("last", t("Dernier commit"), 190, kind="mono"),
+    Column("author", t("Auteur du dernier commit"), 170),
+    Column("mrs", t("MR liées"), 150, kind="links"),
+    Column("state", t("État"), 190, kind="pill"),
 ]
 SORT_KEYS: dict[str, Callable[[BranchRow], Any]] = {
     "repo": lambda r: r.project.path.casefold(),
@@ -48,8 +49,9 @@ SORT_KEYS: dict[str, Callable[[BranchRow], Any]] = {
     "mrs": lambda r: r.related[0].iid if r.related else None,
     "state": lambda r: STATE_ORDER[r.state],
 }
-STATE_WORDS = {ACTIVE: "active(s)", DEAD: "morte(s)", MERGED: "mergée(s) non supprimée(s)", DELETED: "supprimée(s)"}
-MR_STATES = {"opened": "ouverte", "merged": "mergée", "closed": "fermée", "locked": "verrouillée"}
+STATE_WORDS = {ACTIVE: t("{count} active(s)"), DEAD: t("{count} morte(s)"), MERGED: t("{count} mergée(s) non supprimée(s)"),
+               DELETED: t("{count} supprimée(s)")}
+MR_STATES = {"opened": t("ouverte"), "merged": t("mergée"), "closed": t("fermée"), "locked": t("verrouillée")}
 
 Stored = tuple[list[tuple[int, Branch, float | None]], list[LinkedMr]]
 
@@ -74,22 +76,22 @@ class BranchesTab(DataTab):
         bar.pack(fill="x", padx=16, pady=(12, 0))
         top = ttk.Frame(bar, style="Bar.TFrame")
         top.pack(fill="x")
-        ttk.Label(top, text="Nom", style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
-        self._name = tk.StringVar()
-        self._name.trace_add("write", lambda *_: self._apply_view(reset_page=True))
-        ttk.Entry(top, textvariable=self._name, width=26).pack(side="left")
-        self.authors = MultiSelect(top, "Auteurs", self._authors_changed, app.get_theme, all_text="Toutes")
+        ttk.Label(top, text=t("Nom"), style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
+        self._name_filter = tk.StringVar()
+        self._name_filter.trace_add("write", lambda *_: self._apply_view(reset_page=True))
+        ttk.Entry(top, textvariable=self._name_filter, width=26).pack(side="left")
+        self.authors = MultiSelect(top, t("Auteurs"), self._authors_changed, app.get_theme, all_text=t("Toutes"))
         self.authors.set_selected(saved.authors)
         self.authors.pack(side="left", padx=(12, 0))
-        self.repos = MultiSelect(top, "Dépôts", self._repos_changed, app.get_theme)
+        self.repos = MultiSelect(top, t("Dépôts"), self._repos_changed, app.get_theme)
         self.repos.set_selected([str(r) for r in saved.repos])
         self.repos.pack(side="left", padx=(8, 0))
-        self.states = MultiSelect(top, "États", self._states_changed, app.get_theme)
+        self.states = MultiSelect(top, t("États"), self._states_changed, app.get_theme)
         self.states.set_items([(key, STATE_LABELS[key]) for key in (ACTIVE, DEAD, MERGED, DELETED)], keep_order=True)
         self.states.set_selected(saved.states)
         self.states.pack(side="left", padx=(8, 0))
         self.refresh_button(top).pack(side="right")
-        ttk.Button(top, text="⧉  Copier la liste", command=self._copy).pack(side="right", padx=(0, 8))
+        ttk.Button(top, text=t("⧉  Copier la liste"), command=self._copy).pack(side="right", padx=(0, 8))
         self._rules = ttk.Label(bar, style="BarMuted.TLabel")
         self._rules.pack(anchor="w", pady=(10, 0))
 
@@ -101,9 +103,9 @@ class BranchesTab(DataTab):
         self._count.pack(side="left")
         self._by_state = ttk.Label(summary, style="BarMuted.TLabel")
         self._by_state.pack(side="left", padx=(18, 0))
-        ttk.Label(summary, text="Clic sur une branche ou une MR : ouvre GitLab",
+        ttk.Label(summary, text=t("Clic sur une branche ou une MR : ouvre GitLab"),
                   style="BarMuted.TLabel").pack(side="right")
-        self.grid_view = self.make_grid(COLUMNS, "Aucune branche pour ces filtres", links=True, master=card)
+        self.grid_view = self.make_grid(COLUMNS, t("Aucune branche pour ces filtres"), links=True, master=card)
         self.grid_view.pack(fill="both", expand=True)
         self.pager = Pager(self, lambda _p, _s: self._render_page(), page_size=app.filters.page_size)
         self.pager.pack(fill="x", padx=16, pady=10)
@@ -129,13 +131,15 @@ class BranchesTab(DataTab):
         self._save_filters()
 
     def _people_changed(self, items: list[tuple[str, str]]) -> None:
-        self.authors.set_items(items)
+        self.authors.set_items(items, keep_order=True)
 
     def _show_rules(self) -> None:
         s = self.app.settings
-        regex = f" et les noms correspondant à {s.branch_exclude_regex}" if s.branch_exclude_regex.strip() else ""
-        self._rules.configure(text=f"Masquées : branche par défaut, branches protégées{regex} · branche morte "
-                                   f"après {s.dead_branch_days} jours sans commit · réglages dans l'onglet Config")
+        regex = (t(" et les noms correspondant à {regex}", regex=s.branch_exclude_regex)
+                 if s.branch_exclude_regex.strip() else "")
+        self._rules.configure(text=t("Masquées : branche par défaut, branches protégées{regex} · branche morte "
+                                     "après {days} jours sans commit · réglages dans l'onglet Config",
+                                     regex=regex, days=s.dead_branch_days))
 
     # ------------------------------------------------------------- Loading
 
@@ -166,7 +170,7 @@ class BranchesTab(DataTab):
     def _filtered(self) -> list[BranchRow]:
         authors, repos = set(self.authors.selected), {int(k) for k in self.repos.selected}
         states = set(self.states.selected)
-        needle = self._name.get().strip().casefold()
+        needle = self._name_filter.get().strip().casefold()
         return [r for r in self._rows
                 if (not authors or r.author.key in authors) and (not repos or r.project.id in repos)
                 and (not states or r.state in states) and matches(needle, r.branch.name)]
@@ -174,9 +178,9 @@ class BranchesTab(DataTab):
     def _apply_view(self, reset_page: bool = False) -> None:
         rows = self._filtered()
         self._visible = sort_rows(rows, SORT_KEYS[self._sort_key], self._ascending)
-        self._count.configure(text=f"{len(rows)} branche(s)")
+        self._count.configure(text=t("{count} branche(s)", count=len(rows)))
         counts = {state: sum(r.state == state for r in rows) for state in (ACTIVE, DEAD, MERGED, DELETED)}
-        self._by_state.configure(text=" · ".join(f"{n} {STATE_WORDS[s]}" for s, n in counts.items() if n))
+        self._by_state.configure(text=" · ".join(STATE_WORDS[s].format(count=n) for s, n in counts.items() if n))
         self.pager.update_total(len(self._visible), reset=reset_page)
         self._render_page()
 
@@ -205,11 +209,11 @@ class BranchesTab(DataTab):
         """Filtered branches, grouped by author, as Markdown in the clipboard (BR-08)."""
         text = copied_list(self._visible)
         if not text:
-            self.app.notify("info", "Aucune branche à copier pour ces filtres.")
+            self.app.notify("info", t("Aucune branche à copier pour ces filtres."))
             return
         self.clipboard_clear()
         self.clipboard_append(text)
-        self.app.notify("success", f"{len(self._visible)} branche(s) copiée(s) dans le presse-papiers.")
+        self.app.notify("success", t("{count} branche(s) copiée(s) dans le presse-papiers.", count=len(self._visible)))
 
     def restyle(self) -> None:
         self._render_page()

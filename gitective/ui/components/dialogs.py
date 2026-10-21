@@ -7,6 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.shared.i18n import t
 from gitective.forge.gitlab_client import GitLabClient
 from gitective.forge.models import Project, User
 from gitective.settings.config_file import RULE_FIELDS, RULE_MODES, CustomRule, Person, TrackedProject
@@ -27,7 +28,7 @@ class RuleDialog(tk.Toplevel):
         self.app = app
         self._rule = rule
         self._on_done = on_done
-        self.title("Règle personnalisée")
+        self.title(t("Règle personnalisée"))
         self.geometry("520x380")
         self.transient(master.winfo_toplevel())
         self.configure(background=app.get_theme().bg)
@@ -36,25 +37,28 @@ class RuleDialog(tk.Toplevel):
         frame.columnconfigure(1, weight=1)
 
         self.name = tk.StringVar(value=rule.name)
-        self.field_label = tk.StringVar(value=RULE_FIELDS.get(rule.field, RULE_FIELDS["title"]))
+        # Labels in the interface language; the rule stores the keys (RP-02).
+        self._fields = {key: t(label) for key, label in RULE_FIELDS.items()}
+        self._modes = {key: t(label) for key, label in RULE_MODES.items()}
+        self.field_label = tk.StringVar(value=self._fields.get(rule.field, self._fields["title"]))
         self.pattern = tk.StringVar(value=rule.pattern)
-        self.mode_label = tk.StringVar(value=RULE_MODES.get(rule.mode, RULE_MODES["match"]))
+        self.mode_label = tk.StringVar(value=self._modes.get(rule.mode, self._modes["match"]))
         self.weight = tk.StringVar(value=f"{rule.weight:g}")
         self.active = tk.BooleanVar(value=rule.active)
 
         rows: list[tuple[str, tk.Widget]] = [
-            ("Nom (titre de colonne)", ttk.Entry(frame, textvariable=self.name)),
-            ("Champ inspecté", ttk.Combobox(frame, textvariable=self.field_label, state="readonly",
-                                            values=list(RULE_FIELDS.values()))),
-            ("Condition", ttk.Combobox(frame, textvariable=self.mode_label, state="readonly",
-                                       values=list(RULE_MODES.values()))),
-            ("Regex", ttk.Entry(frame, textvariable=self.pattern, font=app.get_theme().mono)),
-            ("Pondération", ttk.Entry(frame, textvariable=self.weight, width=8)),
+            (t("Nom (titre de colonne)"), ttk.Entry(frame, textvariable=self.name)),
+            (t("Champ inspecté"), ttk.Combobox(frame, textvariable=self.field_label, state="readonly",
+                                               values=list(self._fields.values()))),
+            (t("Condition"), ttk.Combobox(frame, textvariable=self.mode_label, state="readonly",
+                                          values=list(self._modes.values()))),
+            (t("Regex"), ttk.Entry(frame, textvariable=self.pattern, font=app.get_theme().mono)),
+            (t("Pondération"), ttk.Entry(frame, textvariable=self.weight, width=8)),
         ]
         for line, (label, widget) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=line, column=0, sticky="w", pady=6, padx=(0, 12))
-            widget.grid(row=line, column=1, sticky="ew" if label != "Pondération" else "w", pady=6)
-        ttk.Checkbutton(frame, text="Active", variable=self.active).grid(row=len(rows), column=1, sticky="w")
+            widget.grid(row=line, column=1, sticky="w" if line == len(rows) - 1 else "ew", pady=6)
+        ttk.Checkbutton(frame, text=t("Active"), variable=self.active).grid(row=len(rows), column=1, sticky="w")
         self._hint = ttk.Label(frame, style="Muted.TLabel", wraplength=470)
         self._hint.grid(row=len(rows) + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
         self.field_label.trace_add("write", lambda *_: self._update_hint())
@@ -63,35 +67,35 @@ class RuleDialog(tk.Toplevel):
         buttons = ttk.Frame(frame)
         buttons.grid(row=len(rows) + 2, column=0, columnspan=2, sticky="se", pady=(16, 0))
         frame.rowconfigure(len(rows) + 2, weight=1)
-        ttk.Button(buttons, text="Annuler", command=self.destroy).pack(side="left", padx=8)
-        ttk.Button(buttons, text="OK", style="Accent.TButton", command=self._validate).pack(side="left")
+        ttk.Button(buttons, text=t("Annuler"), command=self.destroy).pack(side="left", padx=8)
+        ttk.Button(buttons, text=t("OK"), style="Accent.TButton", command=self._validate).pack(side="left")
 
     def _update_hint(self) -> None:
-        if self.field_label.get() == RULE_FIELDS["commits"]:
-            self._hint.configure(text="Tous les commits de la MR doivent respecter la condition. "
-                                      "Coût : une requête GitLab de plus par MR.")
+        if self.field_label.get() == self._fields["commits"]:
+            self._hint.configure(text=t("Tous les commits de la MR doivent respecter la condition. "
+                                      "Coût : une requête GitLab de plus par MR."))
         else:
-            self._hint.configure(text="La regex est cherchée n'importe où dans le champ "
-                                      "(utilisez ^ et $ pour l'ancrer).")
+            self._hint.configure(text=t("La regex est cherchée n'importe où dans le champ "
+                                      "(utilisez ^ et $ pour l'ancrer)."))
 
     def _validate(self) -> None:
         name = self.name.get().strip()
         if not name:
-            self.app.notify("error", "Le nom de la règle est obligatoire.")
+            self.app.notify("error", t("Le nom de la règle est obligatoire."))
             return
         error = validate_regex(self.pattern.get())
         if error:
-            self.app.notify("error", f"Regex invalide : {error}")
+            self.app.notify("error", t("Regex invalide : {error}", error=error))
             return
         try:
             weight = float(self.weight.get().replace(",", "."))
             if weight < 0:
                 raise ValueError
         except ValueError:
-            self.app.notify("error", "Pondération : saisissez un nombre positif.")
+            self.app.notify("error", t("Pondération : saisissez un nombre positif."))
             return
-        fields = {v: k for k, v in RULE_FIELDS.items()}
-        modes = {v: k for k, v in RULE_MODES.items()}
+        fields = {v: k for k, v in self._fields.items()}
+        modes = {v: k for k, v in self._modes.items()}
         self._on_done(CustomRule(name=name, field=fields[self.field_label.get()], pattern=self.pattern.get(),
                                  mode=modes[self.mode_label.get()], weight=weight, active=self.active.get(),
                                  id=self._rule.id))
@@ -108,7 +112,7 @@ class ProjectsDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, app: App, client: GitLabClient, tracked: list[TrackedProject],
                  on_done: Callable[[list[Project]], None]) -> None:
         super().__init__(master)
-        self.title("Choisir les dépôts")
+        self.title(t("Choisir les dépôts"))
         self.geometry("520x560")
         self.transient(master.winfo_toplevel())
         self.configure(background=app.get_theme().bg)
@@ -119,14 +123,14 @@ class ProjectsDialog(tk.Toplevel):
         top.pack(fill="x", padx=12, pady=(12, 4))
         self._status = ttk.Label(top)
         self._status.pack(side="left")
-        self._reload_button = ttk.Button(top, text="⟳  Recharger la liste", command=self._reload)
+        self._reload_button = ttk.Button(top, text=t("⟳  Recharger la liste"), command=self._reload)
         self._reload_button.pack(side="right")
         self.picker = ProjectPicker(self, app.get_theme)
         self.picker.pack(fill="both", expand=True, padx=12)
         buttons = ttk.Frame(self, padding=12)
         buttons.pack(fill="x")
-        ttk.Button(buttons, text="Valider", style="Accent.TButton", command=self._validate).pack(side="right")
-        ttk.Button(buttons, text="Annuler", command=self.destroy).pack(side="right", padx=8)
+        ttk.Button(buttons, text=t("Valider"), style="Accent.TButton", command=self._validate).pack(side="right")
+        ttk.Button(buttons, text=t("Annuler"), command=self.destroy).pack(side="right", padx=8)
         self._checked = [p.id for p in tracked]
 
         # The store belongs to the configured instance: another URL typed in the form is read from GitLab.
@@ -139,13 +143,13 @@ class ProjectsDialog(tk.Toplevel):
 
     def _show(self, projects: list[Project], saved_at: str) -> None:
         self._projects = projects
-        self._status.configure(text=f"{len(projects)} projet(s) accessible(s) — liste du {saved_at}")
+        self._status.configure(text=t("{count} projet(s) accessible(s) — liste du {date}", count=len(projects), date=saved_at))
         self.picker.set_projects([(p.id, p.path_with_namespace) for p in projects], self._checked)
 
     def _reload(self) -> None:
         if self._projects:
             self._checked = self.picker.checked()  # keep ticks made before reloading
-        self._status.configure(text="Chargement des projets…")
+        self._status.configure(text=t("Chargement des projets…"))
         self._reload_button.state(["disabled"])
         client, workers, store = self._client, self._app.settings.parallel_requests, self._app.store
         use_store = self._use_store
@@ -182,7 +186,7 @@ class PersonDialog(tk.Toplevel):
         self.app = app
         self._on_done = on_done
         theme = app.get_theme()
-        self.title("Personne")
+        self.title(t("Personne"))
         self.geometry("640x560")
         self.transient(master.winfo_toplevel())
         self.configure(background=theme.bg)
@@ -191,34 +195,34 @@ class PersonDialog(tk.Toplevel):
 
         frame = ttk.Frame(self, padding=14)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Nom affiché").pack(anchor="w")
+        ttk.Label(frame, text=t("Nom affiché")).pack(anchor="w")
         self.name = tk.StringVar(value=person.name)
         ttk.Entry(frame, textvariable=self.name).pack(fill="x", pady=(2, 10))
 
-        ttk.Label(frame, text="Comptes GitLab").pack(anchor="w")
+        ttk.Label(frame, text=t("Comptes GitLab")).pack(anchor="w")
         search_row = ttk.Frame(frame)
         search_row.pack(fill="x", pady=(2, 4))
         self.query = tk.StringVar()
         search = ttk.Entry(search_row, textvariable=self.query)
         search.pack(side="left", fill="x", expand=True)
         search.bind("<Return>", lambda e: self._search())
-        ttk.Button(search_row, text="Rechercher sur GitLab", command=self._search).pack(side="left", padx=(6, 0))
+        ttk.Button(search_row, text=t("Rechercher sur GitLab"), command=self._search).pack(side="left", padx=(6, 0))
         lists = ttk.Frame(frame)
         lists.pack(fill="both", expand=True)
         lists.columnconfigure((0, 2), weight=1)
         lists.rowconfigure(1, weight=1)
-        ttk.Label(lists, text="Disponibles", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(lists, text="Associés à la personne", style="Muted.TLabel").grid(row=0, column=2, sticky="w")
+        ttk.Label(lists, text=t("Disponibles"), style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(lists, text=t("Associés à la personne"), style="Muted.TLabel").grid(row=0, column=2, sticky="w")
         self.available_list = tk.Listbox(lists, selectmode="extended", height=8, exportselection=False)
         self.chosen_list = tk.Listbox(lists, selectmode="extended", height=8, exportselection=False)
         self.available_list.grid(row=1, column=0, sticky="nsew")
         self.chosen_list.grid(row=1, column=2, sticky="nsew")
         middle = ttk.Frame(lists)
         middle.grid(row=1, column=1, padx=8)
-        ttk.Button(middle, text="Ajouter →", command=self._add).pack(pady=4)
-        ttk.Button(middle, text="← Retirer", command=self._remove).pack(pady=4)
+        ttk.Button(middle, text=t("Ajouter →"), command=self._add).pack(pady=4)
+        ttk.Button(middle, text=t("← Retirer"), command=self._remove).pack(pady=4)
 
-        ttk.Label(frame, text="Identités Git pour les commits (nom ou e-mail, une par ligne)").pack(anchor="w", pady=(10, 2))
+        ttk.Label(frame, text=t("Identités Git pour les commits (nom ou e-mail, une par ligne)")).pack(anchor="w", pady=(10, 2))
         self.identities = tk.Text(frame, height=4, relief="solid", borderwidth=1)
         self.identities.insert("1.0", "\n".join(person.git_identities))
         self.identities.pack(fill="x")
@@ -228,8 +232,8 @@ class PersonDialog(tk.Toplevel):
 
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x", pady=(12, 0))
-        ttk.Button(buttons, text="OK", style="Accent.TButton", command=self._validate).pack(side="right")
-        ttk.Button(buttons, text="Annuler", command=self.destroy).pack(side="right", padx=8)
+        ttk.Button(buttons, text=t("OK"), style="Accent.TButton", command=self._validate).pack(side="right")
+        ttk.Button(buttons, text=t("Annuler"), command=self.destroy).pack(side="right", padx=8)
         self._refresh_lists()
 
     def _label(self, user_id: int) -> str:
@@ -273,7 +277,7 @@ class PersonDialog(tk.Toplevel):
     def _validate(self) -> None:
         name = self.name.get().strip()
         if not name:
-            self.app.notify("error", "Le nom de la personne est obligatoire.")
+            self.app.notify("error", t("Le nom de la personne est obligatoire."))
             return
         identities = [line.strip() for line in self.identities.get("1.0", "end").splitlines() if line.strip()]
         self._on_done(Person(name=name, account_ids=self._accounts, git_identities=identities))

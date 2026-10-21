@@ -10,6 +10,8 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
+from gitective.shared.i18n import t
+
 # Application root: the folder holding main.py, config.json and gitective.db.
 APP_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_DIR / "config.json"
@@ -28,7 +30,8 @@ DEFAULT_BRANCH_STATES = ["active", "dead", "merged"]
 DEFAULT_BRANCH_EXCLUDE = r"^(main|master|develop.*)$"
 PARALLEL_RANGE = (1, 16)
 
-# Fields a custom rule can inspect (RP-02).
+# Fields a custom rule can inspect (RP-02). French labels, translated where shown: this module is
+# read before the language is chosen (LG-02).
 RULE_FIELDS = {
     "title": "Titre",
     "description": "Description",
@@ -59,8 +62,8 @@ class CustomRule:
 def default_rules() -> list[CustomRule]:
     """Pre-filled rules replacing the former RC-01 and RC-02 (RP-07)."""
     return [
-        CustomRule(name="Titre conforme", field="title", id="r_title"),
-        CustomRule(name="Lien ticket", field="description", id="r_link"),
+        CustomRule(name=t("Titre conforme"), field="title", id="r_title"),
+        CustomRule(name=t("Lien ticket"), field="description", id="r_link"),
     ]
 
 
@@ -152,12 +155,15 @@ class Settings:
     orange_threshold: float = 50.0
     people: list[Person] = dc_field(default_factory=list)
     theme: str = "default"
+    # Language of the interface, applied at the next start (5.9).
+    language: str = "fr"
     # Automatic synchronisation period of the local base, in minutes (CH-13).
     sync_minutes: int = 5
-    # Desktop notifications (NO-01): new merges and roles for the Merger profile, own MR merged for all.
+    # Desktop notifications (NO-01); every new MR of anyone (NO-11) is off unless checked.
     notify_merges: bool = True
     notify_assigned: bool = True
     notify_own_merged: bool = True
+    notify_new_mrs: bool = False
     # Width of the MR detail panel, in pixels (DE-02).
     detail_width: int = 420
     # View of the Statistics tab: "person" or "repo" (ST-01).
@@ -199,6 +205,7 @@ class Settings:
             orange_threshold=float(data.get("orange_threshold", base.orange_threshold)),
             people=[Person(**_pick(p, Person)) for p in data.get("people") or []],
             theme=theme if theme in THEMES else base.theme,
+            language=data.get("language") if data.get("language") in ("fr", "en") else base.language,
             assignee_rule=bool(data.get("assignee_rule", False)),
             filters=_filters(data.get("filters")),
             parallel_requests=clamp_parallel(data.get("parallel_requests", base.parallel_requests)),
@@ -207,6 +214,7 @@ class Settings:
             notify_merges=bool(data.get("notify_merges", True)),
             notify_assigned=bool(data.get("notify_assigned", True)),
             notify_own_merged=bool(data.get("notify_own_merged", True)),
+            notify_new_mrs=bool(data.get("notify_new_mrs", False)),
             detail_width=clamp_width(data.get("detail_width", base.detail_width)),
             stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
             column_widths=_column_widths(data.get("column_widths")),

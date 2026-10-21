@@ -114,5 +114,13 @@ class FormValidationTests(unittest.TestCase):
         self.assertIn("Synchronisation automatique", apply_numbers(Settings(), fields(sync_minutes="2.5")))
 
 
+class LanguageAndNewMrSettingsTests(unittest.TestCase):
+    def test_language_defaults_to_french_and_new_mr_notifications_off(self) -> None:
+        self.assertEqual((Settings().language, Settings().notify_new_mrs), ("fr", False))
+        loaded = Settings.from_dict({"language": "en", "notify_new_mrs": True})
+        self.assertEqual((loaded.language, loaded.notify_new_mrs), ("en", True))
+        self.assertEqual(Settings.from_dict({"language": "de"}).language, "fr")
+
+
 if __name__ == "__main__":
     unittest.main()

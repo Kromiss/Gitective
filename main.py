@@ -6,13 +6,18 @@ import tkinter as tk
 if sys.version_info < (3, 11):
     sys.exit("Gitective requires Python 3.11 or newer.")
 
-from gitective.settings.config_file import config_exists  # noqa: E402
+from gitective.settings import config_file  # noqa: E402
+from gitective.shared import i18n  # noqa: E402
 from gitective.shared.autostart import MINIMIZED  # noqa: E402
+
+# The interface modules translate their texts when imported: choose the language first (LG-02).
+i18n.use(config_file.load().language)
+
 from gitective.ui.app import App  # noqa: E402
 
 
 def main() -> None:
-    first_launch = not config_exists()
+    first_launch = not config_file.config_exists()
     # Sharp rendering on high-DPI Windows screens.
     try:
         import ctypes

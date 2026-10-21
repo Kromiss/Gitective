@@ -5,6 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from collections.abc import Callable
 
+from gitective.shared.i18n import t
 from gitective.forge.errors import (
     AuthenticationError,
     GitLabError,
@@ -19,24 +20,25 @@ from gitective.ui.themes import Theme
 
 
 def describe_error(exc: BaseException) -> str:
-    """Clear French message for an exception (ER-02)."""
+    """Clear message for an exception, in the interface language (ER-02)."""
     if isinstance(exc, AuthenticationError):
-        return "Token invalide ou expiré : vérifiez le token dans l'onglet Config."
+        return t("Token invalide ou expiré : vérifiez le token dans l'onglet Config.")
     if isinstance(exc, PermissionDeniedError):
-        return "Droits insuffisants : le token doit avoir le droit read_api sur ce dépôt."
+        return t("Droits insuffisants : le token doit avoir le droit read_api sur ce dépôt.")
     if isinstance(exc, NotFoundError):
-        return "Ressource introuvable : un dépôt suivi n'existe plus ou n'est plus visible avec ce token."
+        return t("Ressource introuvable : un dépôt suivi n'existe plus ou n'est plus visible avec ce token.")
     if isinstance(exc, BranchNotFoundError):
-        return f"Branche introuvable : « {exc.branch} » n'existe pas sur {exc.project_path}. Corrigez-la dans l'onglet Config."
+        return t("Branche introuvable : « {branch} » n'existe pas sur {repo}. Corrigez-la dans l'onglet Config.",
+                 branch=exc.branch, repo=exc.project_path)
     if isinstance(exc, RateLimitError):
-        return "GitLab limite le nombre de requêtes (HTTP 429), même après 3 nouvelles tentatives. Réessayez plus tard."
+        return t("GitLab limite le nombre de requêtes (HTTP 429), même après 3 nouvelles tentatives. Réessayez plus tard.")
     if isinstance(exc, SSLVerificationError):
-        return "Certificat SSL non vérifiable. Vous pouvez désactiver la vérification SSL dans l'onglet Config."
+        return t("Certificat SSL non vérifiable. Vous pouvez désactiver la vérification SSL dans l'onglet Config.")
     if isinstance(exc, NetworkError):
-        return f"Instance GitLab injoignable (réseau coupé ou délai dépassé). Détail : {exc}"
+        return t("Instance GitLab injoignable (réseau coupé ou délai dépassé). Détail : {detail}", detail=exc)
     if isinstance(exc, GitLabError):
-        return f"Erreur GitLab : {exc}"
-    return f"Erreur inattendue : {exc}"
+        return t("Erreur GitLab : {detail}", detail=exc)
+    return t("Erreur inattendue : {detail}", detail=exc)
 
 
 class Banner(tk.Frame):

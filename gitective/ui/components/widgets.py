@@ -7,6 +7,7 @@ import tkinter.font as tkfont
 from collections.abc import Callable, Sequence
 from tkinter import ttk
 
+from gitective.shared.i18n import t
 from gitective.ui.themes import Theme
 
 ThemeGetter = Callable[[], Theme]
@@ -80,10 +81,10 @@ class MultiSelect(ttk.Button):
     """Button opening a checklist popup; an empty selection means 'all'."""
 
     def __init__(self, master: tk.Misc, label: str, on_change: Callable[[list[str]], None],
-                 get_theme: ThemeGetter, all_text: str = "Tous") -> None:
+                 get_theme: ThemeGetter, all_text: str | None = None) -> None:
         super().__init__(master, command=self._open)
         self._label = label
-        self._all_text = all_text
+        self._all_text = all_text or t("Tous")
         self._on_change = on_change
         self._get_theme = get_theme
         self._items: list[tuple[str, str]] = []
@@ -107,12 +108,12 @@ class MultiSelect(ttk.Button):
 
     def _refresh_text(self) -> None:
         if not self._selected:
-            text = f"{self._label} : {self._all_text} ({len(self._items)})"
+            text = t("{label} : {value}", label=self._label, value=f"{self._all_text} ({len(self._items)})")
         elif len(self._selected) == 1:
             labels = dict(self._items)
-            text = f"{self._label} : {labels.get(self._selected[0], '1 sélection')}"
+            text = t("{label} : {value}", label=self._label, value=labels.get(self._selected[0], t("1 sélection")))
         else:
-            text = f"{self._label} : {len(self._selected)} sélection(s)"
+            text = t("{label} : {value}", label=self._label, value=t("{count} sélection(s)", count=len(self._selected)))
         # An active filter stands out (accent border and text).
         self.configure(text=text + "  ▾", style="Active.TButton" if self._selected else "TButton")
 
@@ -152,9 +153,9 @@ class MultiSelect(ttk.Button):
             self._popup = None
             self._on_change(self.selected)
 
-        ttk.Button(buttons, text="Tout", command=lambda: set_all(True)).pack(side="left")
-        ttk.Button(buttons, text="Aucun", command=lambda: set_all(False)).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Appliquer", style="Accent.TButton", command=apply).pack(side="right")
+        ttk.Button(buttons, text=t("Tout"), command=lambda: set_all(True)).pack(side="left")
+        ttk.Button(buttons, text=t("Aucun"), command=lambda: set_all(False)).pack(side="left", padx=6)
+        ttk.Button(buttons, text=t("Appliquer"), style="Accent.TButton", command=apply).pack(side="right")
         popup.bind("<Escape>", lambda e: popup.destroy())
 
 
@@ -170,7 +171,7 @@ class ProjectPicker(ttk.Frame):
         super().__init__(master, style="Surface.TFrame")
         self._search = tk.StringVar()
         self._search.trace_add("write", lambda *_: self._render())
-        ttk.Label(self, text="Rechercher", style="BarMuted.TLabel").pack(anchor="w")
+        ttk.Label(self, text=t("Rechercher"), style="BarMuted.TLabel").pack(anchor="w")
         ttk.Entry(self, textvariable=self._search).pack(fill="x", pady=(2, 6))
         self._tree = ttk.Treeview(self, show="tree", selectmode="browse")
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=self._tree.yview)

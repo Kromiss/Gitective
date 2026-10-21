@@ -1,4 +1,4 @@
-"""One synchronisation round: base, profile, own MRs and desktop notifications (CH-05, CH-13, NO-04).
+"""One synchronisation round: base, token owner, own MRs and desktop notifications (CH-05, CH-13, NO-04).
 
 Runs in a background thread; the interface only shows its outcome.
 """
@@ -12,17 +12,17 @@ from datetime import datetime, timezone
 from gitective.database.store import Store
 from gitective.database.sync import MR_OVERLAP, ForgeData
 from gitective.forge.errors import ForgeError
-from gitective.forge.models import MergeRequest
+from gitective.forge.models import MergeRequest, User
 from gitective.review.mr_evaluation import evaluate_all
-from gitective.review.profile import (
+from gitective.review.my_mrs import (
     MyMr,
     Notice,
-    Profile,
-    compute_profile,
     merge_notices,
+    new_mr_notices,
+    open_ready_keys,
     role_keys,
     role_notices,
-    save_profile,
+    save_user,
 )
 from gitective.review.rules import RuleSet
 from gitective.settings.config_file import Settings, TrackedProject
@@ -37,7 +37,7 @@ NOTIFIED_ONCE = "notified_once"  # meta key: a first synchronisation already hap
 class SyncOutcome:
     """What a synchronisation brings back to the interface."""
 
-    profile: Profile
+    user: User | None
     my_mrs: list[MyMr] = field(default_factory=list)
     notices: list[Notice] = field(default_factory=list)
     errors: list[ForgeError] = field(default_factory=list)
@@ -49,26 +49,26 @@ def synchronise(
     projects: Sequence[TrackedProject],
     settings: Settings,
     people: PersonDirectory,
-    previous: Profile,
+    previous: User | None,
 ) -> SyncOutcome:
-    """Bring the base up to date, recompute the profile, read the own MRs and list what to notify.
+    """Bring the base up to date, read the token owner and the own MRs, and list what to notify.
 
-    A failing project, profile or MR list is reported in `errors`, never fatal
-    (ER-03): the last known profile and MRs are kept. Notifications are for
-    the Merger profile only ("my MR merged" for every profile, NO-09), never at
-    the very first synchronisation, and new
-    merges only on repositories already in the base (otherwise their whole
-    history would look new).
+    A failing project, user or MR list is reported in `errors`, never fatal
+    (ER-03): the last known user and MRs are kept. Never any notification at
+    the very first synchronisation, and new merges and MRs only on repositories
+    already in the base (otherwise their whole history would look new).
     """
     known = [p for p in projects if store.sync_state(f"mr:{p.id}") is not None]
     known_ids = {p.id for p in known}
     before = store.merged_keys(known_ids)
+    open_before = open_ready_keys(store, known_ids) if settings.notify_new_mrs else set()
     first = store.get_meta(NOTIFIED_ONCE) is None
     had_mine = store.get_meta("my_mrs_synced") is not None
     previous_roles = role_keys(store.my_mrs())
     data.new_session()
     errors: list[ForgeError] = []
     fresh: list[tuple[TrackedProject, MergeRequest]] = []
+    fresh_open: list[tuple[TrackedProject, MergeRequest]] = []
     for project in projects:
         state = store.sync_state(f"mr:{project.id}")
         # A merge new to the base was read by this round, so it was updated after the previous one:
@@ -81,33 +81,38 @@ def synchronise(
             continue
         if project.id in known_ids:
             fresh += [(project, mr) for mr in mrs]
+            if settings.notify_new_mrs:
+                fresh_open += [(project, mr) for mr in store.merge_requests(project.id, state="opened",
+                                                                               updated_after=changed)]
     errors += _refresh_repositories(data, projects, settings.parallel_requests)
-    profile = previous
+    user = previous
     try:
-        user = data.client.current_user() if data.client else None
-        if user is not None:
-            profile = compute_profile(data, user, projects, settings.parallel_requests)
-            save_profile(store, profile)
+        current = data.client.current_user() if data.client else None
+        if current is not None:
+            user = current
+            save_user(store, user)
     except ForgeError as exc:
         errors.append(exc)
     mine: list[MyMr] = []
-    if profile.merger and profile.user is not None:
+    if user is not None:
         try:
-            mine = data.my_open_mrs(profile.user.id)
+            mine = data.my_open_mrs(user.id)
         except ForgeError as exc:
             errors.append(exc)
             mine = store.my_mrs()
     notices: list[Notice] = []
     if not first:
-        others = profile.merger and settings.notify_merges
-        if others or settings.notify_own_merged:
-            notices += merge_notices(before, fresh, profile.user, people, others, settings.notify_own_merged)
-        if profile.merger and settings.notify_assigned and had_mine:
+        if settings.notify_merges or settings.notify_own_merged:
+            notices += merge_notices(before, fresh, user, people, settings.notify_merges, settings.notify_own_merged)
+        if settings.notify_assigned and had_mine:
             notices += role_notices(previous_roles, mine, people)
+        if settings.notify_new_mrs:
+            notified = {(n.mr.project_id, n.mr.iid) for n in notices}
+            notices += new_mr_notices(open_before, fresh_open, user, people, notified)
     if notices:
         notices = _with_scores(data, notices, projects, settings, people, errors)
     store.set_meta(NOTIFIED_ONCE, "1")
-    return SyncOutcome(profile, mine, notices, errors)
+    return SyncOutcome(user, mine, notices, errors)
 
 
 def _refresh_repositories(data: ForgeData, projects: Sequence[TrackedProject], workers: int) -> list[ForgeError]:

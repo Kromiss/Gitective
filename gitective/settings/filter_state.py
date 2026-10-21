@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 
+from gitective.shared.i18n import t
 from gitective.settings.config_file import DRAFT_MODES, Filters
 from gitective.shared.dates import Period, day_range, format_date, now_local, parse_date, since_yesterday
 
 Listener = Callable[[str], None]
 
 # "direct" lists the commits pushed without a merge request (CO-01).
-STATES = (("merged", "Mergées"), ("opened", "Ouvertes"), ("closed", "Fermées"), ("direct", "Commits directs"))
-DATED_STATES = ("merged", "direct")
-PEOPLE_STATES = ("merged", "opened", "closed")  # assignee and reviewer filters (FI-14, FI-15)
-DRAFT_STATES = ("opened", "closed")  # a merged MR is never a draft (FI-17)
-DRAFT_LABELS = {"all": "Inclus", "exclude": "Exclus", "only": "Seulement"}
+# "all" lists merged, open and closed MRs together (FI-21); "direct" the commits pushed without a merge request (CO-01).
+STATES = (("merged", t("Mergées")), ("opened", t("Ouvertes")), ("closed", t("Fermées")), ("all", t("Toutes")),
+          ("direct", t("Commits directs")))
+DATED_STATES = ("merged", "all", "direct")  # "all" filters on the creation date (FI-21)
+MERGER_STATES = ("merged", "all")  # merger filter (FI-13)
+PEOPLE_STATES = ("merged", "opened", "closed", "all")  # assignee and reviewer filters (FI-14, FI-15)
+DRAFT_STATES = ("opened", "closed", "all")  # a merged MR is never a draft (FI-17)
+DRAFT_LABELS = {"all": t("Inclus"), "exclude": t("Exclus"), "only": t("Seulement")}
 
 
 class FilterState:
@@ -22,8 +27,8 @@ class FilterState:
 
     Listeners receive the name of what changed: 'state', 'period',
     'authors', 'mergers', 'assignees', 'reviewers', 'drafts', 'repos', or
-    'badge' / 'reset' when a badge or the reset button changed several of
-    them at once (BA-02, FI-18).
+    'badge' / 'reset' / 'focus' when a badge, the reset button or a merge
+    clicked on the overview changed several of them at once (BA-02, FI-18, VE-14).
     """
 
     def __init__(self, saved: Filters) -> None:
@@ -59,9 +64,9 @@ class FilterState:
 
     def period_text(self) -> str:
         if self.total:
-            return "Total (sans limite de date)"
+            return t("Total (sans limite de date)")
         if self.since_yesterday:
-            return "Depuis hier (hier 00:00 → maintenant)"
+            return t("Depuis hier (hier 00:00 → maintenant)")
         return f"{self.date_from} → {self.date_to}"
 
     def to_settings(self) -> Filters:
@@ -80,8 +85,18 @@ class FilterState:
     def show_mine(self, role: str, me_key: str) -> None:
         """Open MRs where the user has `role`, every other filter reset (BA-02)."""
         self.state = "opened"
-        self.authors, self.repos, self.mergers = [], [], []
+        self.repos, self.mergers = [], []
+        self.authors = [me_key] if role == "author" else []
         self.assignees = [me_key] if role == "assignee" else []
         self.reviewers = [me_key] if role == "reviewer" else []
         self.drafts = "all"
         self.changed("badge")
+
+    def show_merged_on(self, day: date) -> None:
+        """Merged MRs of one day, every other filter reset: a merge clicked on the overview (VE-14)."""
+        self.state = "merged"
+        self.authors, self.mergers, self.assignees, self.reviewers, self.repos = [], [], [], [], []
+        self.drafts = "all"
+        self.since_yesterday = self.total = False
+        self.date_from = self.date_to = format_date(day)
+        self.changed("focus")

@@ -1,4 +1,4 @@
-"""Assignee and reviewer badges of the Merger profile, drawn on a Canvas (6.5, 5.2)."""
+"""Assignee, reviewer and author badges, drawn on a Canvas (6.5, 5.2)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from collections.abc import Callable
 
-from gitective.review.profile import BadgeCounts
+from gitective.review.my_mrs import BadgeCounts
 from gitective.ui.components.widgets import Tooltip
 from gitective.ui.themes import Theme
 
@@ -41,7 +41,8 @@ class Badge(tk.Canvas):
         font = tkfont.Font(font=theme.font)
         bold = tkfont.Font(font=(theme.font[0], theme.font[1] + 2, "bold"))
         idle = self._counts.total == 0
-        color = theme.muted if idle else (theme.accent if self._kind == "assignee" else theme.second)
+        kind_color = {"assignee": theme.accent, "reviewer": theme.second}.get(self._kind, theme.text)
+        color = theme.muted if idle else kind_color
         text_color = theme.muted if idle else theme.text
         count = str(self._counts.total)
         width = 12 + ICON + 7 + font.measure(self._label) + 8 + bold.measure(count) + 12
@@ -75,9 +76,15 @@ class Badge(tk.Canvas):
         _round_rect(self, x0, y0, x1, y1, (y1 - y0) / 2, fill, ring)
 
     def _icon(self, x: float, y: float, color: str, theme: Theme) -> None:
-        """Merge arrows for the assignee, an eye for the reviewer; plain lines so every theme draws them."""
+        """Merge arrows for the assignee, an eye for the reviewer, a pencil for the author; plain lines so
+        every theme draws them."""
         w = 2
-        if self._kind == "assignee":
+        if self._kind == "author":
+            self.create_line(x + 2, y + 7, x + 13, y - 4, fill=color, width=w)
+            self.create_line(x + 6, y + 9, x + 17, y - 2, fill=color, width=w)
+            self.create_line(x + 13, y - 4, x + 15, y - 6, x + 19, y - 2, x + 17, y - 2, fill=color, width=w)
+            self.create_line(x + 2, y + 7, x + 1, y + 10, x + 6, y + 9, fill=color, width=w)
+        elif self._kind == "assignee":
             self.create_oval(x + 1, y - 8, x + 5, y - 4, outline=color, width=w)
             self.create_oval(x + 1, y + 4, x + 5, y + 8, outline=color, width=w)
             self.create_oval(x + 12, y - 2, x + 16, y + 2, outline=color, width=w)

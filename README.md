@@ -83,8 +83,9 @@ next to `main.py`.
 | Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR, and a **CI attendue** box for repositories that run a CI (see "Green pipeline"). |
 | People | Groups several GitLab accounts and Git identities under one person. |
 | Theme | Default, Light, Dark, Windows 95 or Matrix. Default is a dark navy theme with a turquoise accent. |
+| Language | Français (default) or English. Applied at the next start of Gitective. |
 | Automatic synchronisation | How often Gitective updates its database from GitLab, in minutes (default 5), even when minimized. |
-| Desktop notifications | Your own MR merged (every profile); for the Merger profile, also new merges on the tracked repositories and MRs assigned to you or awaiting your review. |
+| Desktop notifications | New merges on the tracked repositories, MRs assigned to you or awaiting your review, your own MR merged, and (off by default) every new MR of the tracked repositories. |
 | Merged by the assignee | Tick to count the RC-06 rule (see below) in the score; off by default. |
 | Start with Windows | Starts Gitective minimized when you log in to Windows, so the synchronisation and notifications run all day. Stored in your user's registry (`HKCU\...\Run`), no admin rights needed. |
 
@@ -149,13 +150,14 @@ The score is the weighted share of passing rules among the applicable ones.
 
 **Overview tab**
 
-The first tab, shown at launch. It is a read-only dashboard of every tracked
+The first tab, shown at launch. It is a dashboard of every tracked
 repository, designed to stay on screen; it fits a 1920 × 1080 display.
 
 - **Latest merges**: the most recent merged MRs, grouped by day, with their
   repository, author → merger and score. Today's merges are highlighted. On
   a busy day, each merge takes one line so the whole day fits; long titles
-  are cut so the repository and people stay visible.
+  are cut so the repository and people stay visible. Click a merge to open it
+  in the Merge Requests tab, selected with its detail panel.
 - **Merges per day**: this week and last week, Monday to Sunday.
 - **Average score** of the MRs merged in the last 30 days, with the change
   from the 30 days before.
@@ -166,14 +168,16 @@ repository, designed to stay on screen; it fits a 1920 × 1080 display.
 - **Created / merged MRs per week** over the last 12 complete weeks.
 
 The tab is redrawn after each automatic synchronisation (see Configuration).
-Press **F11** to toggle full screen.
+Press **F11** to toggle full screen, on the screen holding the window.
 
 **Merge Requests tab**
 
-- Filter by state (Merged, Open, Closed or Direct commits), dates
+- Filter by state (Merged, Open, Closed, All or Direct commits), dates
   (`DD/MM/YYYY`), "Since yesterday", repositories, authors, assignees and
   reviewers and, for merged MRs, mergers.
-- **Total** (Merged and Direct commits) removes the date limit: only the part
+- **All** lists merged, open and closed MRs together, with a State column;
+  its dates filter on the creation date.
+- **Total** (Merged, All and Direct commits) removes the date limit: only the part
   of the history missing from the local database is read from GitLab, with a
   progress bar.
 - **Réinitialiser les filtres**, next to Refresh, sets every filter back to
@@ -201,30 +205,26 @@ Press **F11** to toggle full screen.
   resize a column and double-click the border to fit it again. Widths are
   saved in `config.json`; this works in every table.
 
-**Developer and Merger profiles**
+**Your MRs: badges and notifications**
 
-Gitective reads who owns the token. You are a **Merger** when you can merge
-into the watched branch of at least one tracked repository (or are an
-instance administrator); otherwise a **Developer**. The Config tab shows the
-detected profile. It is checked again at each synchronisation.
+Gitective reads who owns the token (shown in the Config tab) and gives everyone:
 
-A Merger also gets:
-
-- two **badges** at the top right, **Assigné** and **Relecteur**: open MRs
-  where you have that role, drafts apart, with a red dot counting the new
-  ones. Click a badge to see those MRs in the Open state, from every
-  repository you can read, tracked or not ("(non suivi)"). The window title
-  shows the number of new MRs, e.g. "Gitective (3)";
-- a **Nouvelle** column on the open MRs;
+- three **badges** at the top right, **Assignee**, **Reviewer** and
+  **Author**: open MRs where you have that role, drafts apart. Assignee and
+  Reviewer show a red dot counting the new ones and cover every repository
+  you can read, tracked or not ("(not tracked)"); Author covers your open MRs
+  of the tracked repositories. Click a badge to see those MRs in the Open
+  state. The window title shows the number of new MRs, e.g. "Gitective (3)";
+- a **New** column on the open MRs;
 - **desktop notifications** in the bottom-right corner of the screen, even
-  when Gitective is minimized: new merges, and MRs assigned to you or
-  awaiting your review. Each one shows the people, the repository and the
-  MR's score, its left stripe in the score's color. Click one to open the MR; its gear icon (⚙, under the
-  close cross) opens the Config tab with the notification switches
-  highlighted. The taskbar button also flashes. Notifications only appear while Gitective is running.
-
-Every profile gets a desktop notification when one of **your MRs is merged**
-by someone else on a tracked repository ("Votre MR a été mergée").
+  when Gitective is minimized: new merges, MRs assigned to you or awaiting
+  your review, your own MR merged by someone else, and, if you tick it,
+  every new MR of the tracked repositories (checked at each automatic
+  synchronisation). Each one shows the people, the repository and the MR's
+  score, its left stripe in the score's color. Click one to open the MR;
+  its gear icon (⚙, under the close cross) opens the Config tab with the
+  notification switches highlighted. The taskbar button also flashes for
+  assigned MRs. Notifications only appear while Gitective is running.
 
 **Direct commits** (a state of the Merge Requests tab)
 

@@ -7,7 +7,8 @@ import tkinter as tk
 import tkinter.font as tkfont
 from collections.abc import Callable, Sequence
 
-from gitective.review.profile import Notice
+from gitective.shared.i18n import t
+from gitective.review.my_mrs import REVIEWER, Notice
 from gitective.ui.components.grid import ellipsize
 from gitective.ui.themes import Theme
 
@@ -40,24 +41,32 @@ class Toasts:
             return
         if len(notices) <= MAX_SHOWN:
             for notice in notices:
-                people = f"{notice.author} → {notice.merger}" if notice.merger else f"par {notice.author}"
+                people = f"{notice.author} → {notice.merger}" if notice.merger else t("par {author}", author=notice.author)
                 self._popup(notice.title, notice.mr.title, self._repo_label(notice.repo), people,
                             self._color(notice), lambda n=notice: self._open_url(n.mr.web_url),
-                            "Cliquer pour ouvrir dans GitLab", notice.score)
+                            t("Cliquer pour ouvrir dans GitLab"), notice.score)
             return
         theme = self._get_theme()
         merges = [n for n in notices if n.kind == "merge"]
         roles = [n for n in notices if n.kind == "role"]
         own = [n for n in notices if n.kind == "own"]
+        new = [n for n in notices if n.kind == "new"]
         if own:
-            self._popup("Vos MR mergées", "1 de vos MR a été mergée" if len(own) == 1 else f"{len(own)} de vos MR ont été mergées", "", "", theme.ok[1],
-                        self._open_tab, "Cliquer pour ouvrir Gitective")
+            self._popup(t("Vos MR mergées"), t("1 de vos MR a été mergée") if len(own) == 1
+                        else t("{count} de vos MR ont été mergées", count=len(own)), "", "", theme.ok[1],
+                        self._open_tab, t("Cliquer pour ouvrir Gitective"))
         if roles:
-            self._popup("À traiter", "1 MR assignée ou en relecture" if len(roles) == 1 else f"{len(roles)} MR assignées ou en relecture", "", "", theme.accent,
-                        self._open_tab, "Cliquer pour ouvrir Gitective")
+            self._popup(t("À traiter"), t("1 MR assignée ou en relecture") if len(roles) == 1
+                        else t("{count} MR assignées ou en relecture", count=len(roles)), "", "", theme.accent,
+                        self._open_tab, t("Cliquer pour ouvrir Gitective"))
+        if new:
+            self._popup(t("Nouvelles MR"), t("1 nouvelle MR sur les dépôts suivis") if len(new) == 1
+                        else t("{count} nouvelles MR sur les dépôts suivis", count=len(new)), "", "", theme.text,
+                        self._open_tab, t("Cliquer pour ouvrir Gitective"))
         if merges:
-            self._popup("Nouveaux merges", "1 MR mergée sur les dépôts suivis" if len(merges) == 1 else f"{len(merges)} MR mergées sur les dépôts suivis", "", "", theme.ok[1],
-                        self._open_tab, "Cliquer pour ouvrir Gitective")
+            self._popup(t("Nouveaux merges"), t("1 MR mergée sur les dépôts suivis") if len(merges) == 1
+                        else t("{count} MR mergées sur les dépôts suivis", count=len(merges)), "", "", theme.ok[1],
+                        self._open_tab, t("Cliquer pour ouvrir Gitective"))
 
     def _color(self, notice: Notice) -> str:
         """Level color of the MR's score; without a score, the type color (assignee = accent, reviewer =
@@ -67,7 +76,9 @@ class Toasts:
         theme = self._get_theme()
         if notice.kind in ("merge", "own"):
             return theme.ok[1]
-        return theme.second if notice.title == "Relecture demandée" else theme.accent
+        if notice.kind == "new":
+            return theme.text
+        return theme.second if notice.roles == {REVIEWER} else theme.accent
 
     def _popup(self, kind: str, title: str, repo: str, people: str, color: str, on_click: Callable[[], None],
                hint: str, score: float | None = None) -> None:
@@ -98,7 +109,7 @@ class Toasts:
             tk.Label(head, image=self._logo, background=theme.surface).pack(side="left", padx=(0, 10))
         names = tk.Frame(head, background=theme.surface)
         names.pack(side="left", fill="x")
-        tk.Label(names, text="GITECTIVE · à l'instant", background=theme.surface, foreground=theme.muted,
+        tk.Label(names, text=t("GITECTIVE · à l'instant"), background=theme.surface, foreground=theme.muted,
                  font=(font, size - 2, "bold"), anchor="w").pack(fill="x")
         tk.Label(names, text=kind, background=theme.surface, foreground=color, font=(font, size + 1, "bold"),
                  anchor="w").pack(fill="x")
@@ -116,7 +127,7 @@ class Toasts:
             if score is not None:
                 pill_bg, pill_fg = self._score_colors(score)
                 pill_font = tkfont.Font(font=(font, size - 1, "bold"))
-                text = f"Score {score:.0f} %"
+                text = t("Score {score} %", score=f"{score:.0f}")
                 tk.Label(meta, text=text, background=pill_bg, foreground=pill_fg, padx=9, pady=1,
                          font=pill_font).pack(side="right")
                 room -= pill_font.measure(text) + 30

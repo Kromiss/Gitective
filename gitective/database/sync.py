@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
 
+from gitective.shared.i18n import t
 from gitective.forge.errors import NetworkError
 from gitective.forge.protocol import ForgeClient
 from gitective.forge.models import (
@@ -128,7 +129,7 @@ class ForgeData:
 
     def _require_client(self) -> ForgeClient:
         if self.client is None:
-            raise NetworkError("Connexion GitLab non configurée")
+            raise NetworkError(t("Connexion GitLab non configurée"))
         return self.client
 
     # ------------------------------------------------------------ Merge requests

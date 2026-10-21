@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 from typing import Any
 
+from gitective.database.store import MEMORY, Store
+from gitective.database.sync import ForgeData
 from gitective.forge.models import MergeRequest
+from gitective.review.mr_evaluation import load_created
 from gitective.review.mr_filters import NOBODY, people_cell, people_choices, step_selection, visible
 from gitective.review.rules import Evaluation, RuleSet
-from gitective.settings.config_file import Filters, Person
+from gitective.settings.config_file import Filters, Person, TrackedProject
 from gitective.settings.filter_state import FilterState
 from gitective.shared.people import PersonDirectory
 from tests.factories import mr_json, user_json
@@ -106,6 +110,14 @@ class VisibleTests(unittest.TestCase):
         self.assertEqual(iids(visible(rows, filters("merged", mergers=["u:3"], authors=["u:2"]))), [7])
         self.assertEqual(iids(visible(self.open, filters(mergers=["u:3"]))), [1, 2, 3, 4])  # open: no merger
 
+    def test_all_state_mixes_states_with_every_filter(self) -> None:
+        """FI-21: merged, open and closed together; drafts, people and merger filters all apply."""
+        rows = [*self.open, evaluation(5, state="merged", merger=CAROL), evaluation(6, state="closed")]
+        self.assertEqual(iids(visible(rows, filters("all"))), [1, 2, 3, 4, 5, 6])
+        self.assertEqual(iids(visible(rows, filters("all", drafts="only"))), [2])
+        self.assertEqual(iids(visible(rows, filters("all", mergers=["u:3"]))), [5])  # only merged MRs have one
+        self.assertEqual(iids(visible(rows, filters("all", assignees=[NOBODY]))), [3, 4, 5, 6])
+
     def test_direct_commits_state_ignores_people_and_draft_filters(self) -> None:
         self.assertEqual(iids(visible(self.open, filters("direct", assignees=[NOBODY], drafts="only"))),
                          [1, 2, 3, 4])
@@ -163,6 +175,23 @@ class FilterStateTests(unittest.TestCase):
         state.show_mine("assignee", "p:kevin")
         self.assertEqual((state.assignees, state.reviewers), (["p:kevin"], []))
 
+
+
+class LoadCreatedTests(unittest.TestCase):
+    def test_every_state_created_in_the_period_drafts_included(self) -> None:
+        """FI-21: the "Toutes" state reads the stored MRs by creation date."""
+        store = Store(MEMORY)
+        mrs = [mr_json(iid=1, state="merged", created_at="2026-10-06T08:00:00Z"),
+               mr_json(iid=2, state="opened", draft=True, created_at="2026-10-08T08:00:00Z"),
+               mr_json(iid=3, state="closed", created_at="2026-10-09T08:00:00Z"),
+               mr_json(iid=4, state="opened", created_at="2026-09-01T08:00:00Z")]
+        store.put_merge_requests(10, [MergeRequest.from_json(m) for m in mrs])
+        store.set_sync("mr:10", 0, datetime(2026, 10, 10, tzinfo=timezone.utc).timestamp())
+        data = ForgeData(None, store)  # offline: the stored MRs are used
+        project = TrackedProject(id=10, path="group/repo")
+        period = (datetime(2026, 10, 1, tzinfo=timezone.utc), datetime(2026, 10, 31, tzinfo=timezone.utc))
+        self.assertEqual(sorted(m.iid for m in load_created(data, project, period)), [1, 2, 3])
+        self.assertEqual(sorted(m.iid for m in load_created(data, project, None)), [1, 2, 3, 4])
 
 if __name__ == "__main__":
     unittest.main()

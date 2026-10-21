@@ -1,4 +1,4 @@
-"""One synchronisation round: profile, own MRs and which desktop notifications to show (CH-13, NO-04)."""
+"""One synchronisation round: token owner, own MRs and which desktop notifications to show (CH-13, NO-04)."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from typing import Any
 from gitective.database.store import MEMORY, Store
 from gitective.database.sync import ForgeData
 from gitective.forge.errors import AuthenticationError, NetworkError
-from gitective.forge.models import Branch, MergeRequest, ProtectedBranch, Tag, User
+from gitective.forge.models import Branch, MergeRequest, Tag, User
 from gitective.review.auto_sync import synchronise
-from gitective.review.profile import ASSIGNEE, REVIEWER, Profile
+from gitective.review.my_mrs import ASSIGNEE, REVIEWER
 from gitective.review.rules import RuleSet
 from gitective.settings.config_file import Settings, TrackedProject
 from gitective.shared.people import PersonDirectory
@@ -36,19 +36,18 @@ def merged(iid: int, project_id: int = 10, merger: dict[str, Any] = BOB,
     return MergeRequest.from_json(data)
 
 
-def opened(iid: int, draft: bool = False) -> MergeRequest:
-    data = mr_json(iid=iid, state="opened", draft=draft, created_at=iso(60))
+def opened(iid: int, draft: bool = False, author: dict[str, Any] | None = None) -> MergeRequest:
+    data = mr_json(iid=iid, state="opened", draft=draft, created_at=iso(60), author=author)
     data["updated_at"] = iso(1)
     return MergeRequest.from_json(data)
 
 
 class Forge:
-    """GitLab stand-in: the token owner, MRs per project, own open MRs, merge rights."""
+    """GitLab stand-in: the token owner, MRs per project, own open MRs."""
 
     base_url = "https://gitlab.test"
 
-    def __init__(self, level: int = 40) -> None:
-        self.level = level
+    def __init__(self) -> None:
         self.mrs: dict[int, list[MergeRequest]] = {10: [], 11: [], 12: []}
         self.assigned: list[MergeRequest] = []
         self.reviewing: list[MergeRequest] = []
@@ -67,12 +66,6 @@ class Forge:
         if project_id in self.down:
             raise NetworkError("down")
         return [m for m in self.mrs[project_id] if state is None or m.state == state]
-
-    def list_project_members(self, project_id: int) -> list[tuple[User, int]]:
-        return [(User.from_json(ME), self.level)]
-
-    def list_protected_branches(self, project_id: int) -> list[ProtectedBranch]:
-        return [ProtectedBranch("main", merge_levels=(40,))]
 
     def list_branches(self, project_id: int) -> list[Branch]:
         if project_id in self.down:
@@ -94,20 +87,20 @@ class AutoSyncTests(unittest.TestCase):
         # One worker: the shared in-memory test base has no busy timeout between threads.
         self.settings = Settings(projects=[BILLING, PORTAL], parallel_requests=1)
         self.people = PersonDirectory([])
-        self.profile = Profile()
+        self.user: User | None = None
 
     def run_sync(self, projects: list[TrackedProject] | None = None) -> Any:
         data = ForgeData(self.forge, self.store)  # type: ignore[arg-type]
         outcome = synchronise(data, self.store, projects or [BILLING, PORTAL], self.settings, self.people,
-                              self.profile)
-        self.profile = outcome.profile
+                              self.user)
+        self.user = outcome.user
         return outcome
 
     def test_first_synchronisation_reads_everything_but_notifies_nothing(self) -> None:
         self.forge.mrs[10] = [merged(1)]
         self.forge.assigned = [opened(5)]
         outcome = self.run_sync()
-        self.assertTrue(outcome.profile.merger)
+        self.assertEqual(outcome.user, User.from_json(ME))
         self.assertEqual([(m.iid, r) for m, r in outcome.my_mrs], [(5, frozenset({ASSIGNEE}))])
         self.assertEqual((outcome.notices, outcome.errors), ([], []))
 
@@ -152,24 +145,27 @@ class AutoSyncTests(unittest.TestCase):
         self.forge.assigned = [opened(6)]
         self.assertEqual(self.run_sync().notices, [])
 
-    def test_developer_gets_no_own_mrs_and_no_notifications(self) -> None:
-        self.forge.level = 30
+    def test_my_merged_mr_is_notified_once(self) -> None:
         self.run_sync()
-        self.forge.mrs[10] = [merged(1)]
-        outcome = self.run_sync()
-        self.assertFalse(outcome.profile.merger)
-        self.assertEqual((outcome.my_mrs, outcome.notices, self.forge.my_calls), ([], [], 0))
-
-    def test_my_merged_mr_is_notified_once_for_every_profile(self) -> None:
-        self.forge.level = 30  # Developer
-        self.run_sync()
+        self.settings.notify_merges = False
         self.forge.mrs[10] = [merged(1), merged(2, author=ME), merged(3, author=ME, merger=ME)]
         outcome = self.run_sync()
-        self.assertFalse(outcome.profile.merger)
         self.assertEqual([(n.kind, n.mr.iid, n.title, n.merger) for n in outcome.notices],
                          [("own", 2, "Votre MR a été mergée", "Bob")])
 
-    def test_merger_gets_my_merged_mr_instead_of_new_merge(self) -> None:
+    def test_new_mrs_notified_only_when_switched_on(self) -> None:
+        self.run_sync()
+        self.forge.mrs[10] = [opened(1, author=BOB)]
+        self.assertEqual(self.run_sync().notices, [])  # off by default (NO-11)
+        self.settings.notify_new_mrs = True
+        self.forge.mrs[10] += [opened(2, author=BOB), opened(3, author=ME), opened(4, draft=True, author=BOB),
+                               opened(5, author=BOB)]
+        self.forge.assigned = [opened(5, author=BOB)]
+        notices = self.run_sync().notices
+        self.assertEqual(sorted((n.kind, n.mr.iid) for n in notices), [("new", 2), ("role", 5)])
+        self.assertEqual(self.run_sync().notices, [])  # already known
+
+    def test_my_merged_mr_replaces_new_merge(self) -> None:
         self.run_sync()
         self.forge.mrs[10] = [merged(1), merged(2, author=ME)]
         self.assertEqual(sorted((n.kind, n.mr.iid) for n in self.run_sync().notices), [("merge", 1), ("own", 2)])
@@ -177,16 +173,16 @@ class AutoSyncTests(unittest.TestCase):
         self.forge.mrs[10].append(merged(4, author=ME))
         self.assertEqual(self.run_sync().notices, [])  # switched off: no "new merge" in its place either
 
-    def test_failures_are_reported_and_last_profile_kept(self) -> None:
+    def test_failures_are_reported_and_last_user_kept(self) -> None:
         self.forge.assigned = [opened(5)]
         self.run_sync()
         self.forge.fail_user = AuthenticationError("401")
         self.forge.down = {11, 12}  # 11 is in the base (offline mode), 12 was never read
         new_repo = TrackedProject(id=12, path="acme/new", branch="main")
         outcome = self.run_sync([BILLING, PORTAL, new_repo])
-        self.assertTrue(outcome.profile.merger)  # previous profile kept
+        self.assertEqual(outcome.user, User.from_json(ME))  # previous user kept
         self.assertEqual(sorted(type(e).__name__ for e in outcome.errors), ["AuthenticationError", "NetworkError"])
-        self.assertEqual([m.iid for m, _ in outcome.my_mrs], [5])  # still read for the known profile
+        self.assertEqual([m.iid for m, _ in outcome.my_mrs], [5])  # still read for the known user
 
     def test_roles_reported_with_both_roles(self) -> None:
         self.forge.assigned = [opened(5)]

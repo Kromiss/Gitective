@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from gitective.shared.i18n import t
 from gitective.forge.models import Commit, CommitStatus, MergeRequest
 from gitective.settings.config_file import RULE_FIELDS, CustomRule, Settings
 from gitective.shared.people import PersonDirectory, PersonRef
@@ -14,8 +15,8 @@ from gitective.shared.people import PersonDirectory, PersonRef
 OK, KO, NA = "ok", "ko", "na"
 
 TICKET, SELF_MERGE, PIPELINE, ASSIGNEE = "ticket", "self_merge", "pipeline", "assignee"
-FIXED_LABELS = {TICKET: "N° ticket", SELF_MERGE: "Mergeur ≠ auteur", PIPELINE: "Pipeline vert",
-                ASSIGNEE: "Mergée par l'assigné"}
+FIXED_LABELS = {TICKET: t("N° ticket"), SELF_MERGE: t("Mergeur ≠ auteur"), PIPELINE: t("Pipeline vert"),
+                ASSIGNEE: t("Mergée par l'assigné")}
 SUCCESS = "success"
 RUNNING_STATES = {"running", "pending", "created", "waiting_for_resource", "preparing", "scheduled", "manual"}
 MAX_LISTED_COMMITS = 5
@@ -138,41 +139,43 @@ class RuleSet:
     def _check_rule(self, rule: CustomRule, fields: MrFields) -> CheckResult:
         pattern = self._compiled.get(rule.id)
         if pattern is None:
-            return CheckResult(KO, "Regex non configurée")
+            return CheckResult(KO, t("Regex non configurée"))
         expected = rule.mode == "match"
         if rule.field == "commits":
             if fields.commits is None:
-                return CheckResult(NA, "Commits non chargés")
+                return CheckResult(NA, t("Commits non chargés"))
             bad = [sha for sha, message in fields.commits if bool(pattern.search(message)) != expected]
             if not bad:
                 return CheckResult(OK)
             listed = ", ".join(bad[:MAX_LISTED_COMMITS]) + ("…" if len(bad) > MAX_LISTED_COMMITS else "")
-            verb = "ne respecte(nt) pas" if expected else "contien(nen)t le motif interdit"
-            return CheckResult(KO, f"{len(bad)} commit(s) {verb} : {listed}")
+            if expected:
+                return CheckResult(KO, t("{count} commit(s) ne respecte(nt) pas : {shas}", count=len(bad), shas=listed))
+            return CheckResult(KO, t("{count} commit(s) contien(nen)t le motif interdit : {shas}", count=len(bad),
+                                     shas=listed))
         value = getattr(fields, rule.field, "")
         if bool(pattern.search(value)) == expected:
             return CheckResult(OK)
-        label = RULE_FIELDS.get(rule.field, rule.field)
+        label = t(RULE_FIELDS.get(rule.field, rule.field))
         if expected:
-            return CheckResult(KO, f"{label} : motif attendu absent")
-        return CheckResult(KO, f"{label} : motif interdit trouvé")
+            return CheckResult(KO, t("{field} : motif attendu absent", field=label))
+        return CheckResult(KO, t("{field} : motif interdit trouvé", field=label))
 
     def _check_ticket(self, fields: MrFields) -> CheckResult:
         """RC-03: ticket number in the title equals the one in the description link."""
         if self.link is None or self.ticket is None:
-            return CheckResult(KO, "Regex du lien ou du n° de ticket non configurée")
+            return CheckResult(KO, t("Regex du lien ou du n° de ticket non configurée"))
         link_match = self.link.search(fields.description)
         in_title = _extract(self.ticket, fields.title)
         in_link = _extract(self.ticket, link_match.group(0)) if link_match else None
         if in_title and in_link and in_title == in_link:
             return CheckResult(OK, in_title)
         if not in_title and not in_link:
-            return CheckResult(KO, "N° absent du titre et du lien")
+            return CheckResult(KO, t("N° absent du titre et du lien"))
         if not in_title:
-            return CheckResult(KO, f"N° absent du titre (lien : {in_link})")
+            return CheckResult(KO, t("N° absent du titre (lien : {link})", link=in_link))
         if not in_link:
-            return CheckResult(KO, f"N° absent du lien (titre : {in_title})")
-        return CheckResult(KO, f"{in_title} (titre) ≠ {in_link} (lien)")
+            return CheckResult(KO, t("N° absent du lien (titre : {title})", title=in_title))
+        return CheckResult(KO, t("{title} (titre) ≠ {link} (lien)", title=in_title, link=in_link))
 
     def check_fields(self, fields: MrFields) -> dict[str, CheckResult]:
         """Run every custom rule and RC-03 (everything but RC-04)."""
@@ -204,10 +207,10 @@ class RuleSet:
         merger = people.for_user(mr.merged_by) if mr.merged_by else None
         results = self.check_fields(MrFields.from_mr(mr, commits))
         if mr.state != "merged" or merger is None:
-            results[SELF_MERGE] = CheckResult(NA, "MR non mergée")
+            results[SELF_MERGE] = CheckResult(NA, t("MR non mergée"))
         elif merger.key == author.key:
             account = mr.merged_by.username if mr.merged_by else ""
-            results[SELF_MERGE] = CheckResult(KO, f"Mergée par son auteur (compte {account})")
+            results[SELF_MERGE] = CheckResult(KO, t("Mergée par son auteur (compte {account})", account=account))
         else:
             results[SELF_MERGE] = CheckResult(OK)
         results[PIPELINE] = check_pipeline(mr.merged_at, statuses, ci_expected)
@@ -234,12 +237,13 @@ def score_level(score: float, green: float, orange: float) -> str:
 def check_assignee(merger: PersonRef | None, assignees: Sequence[PersonRef]) -> CheckResult:
     """RC-06: the MR was merged by one of its assignees, compared person to person (TA-05)."""
     if merger is None:
-        return CheckResult(NA, "MR non mergée")
+        return CheckResult(NA, t("MR non mergée"))
     if not assignees:
-        return CheckResult(NA, "MR sans assigné")
+        return CheckResult(NA, t("MR sans assigné"))
     if any(a.key == merger.key for a in assignees):
         return CheckResult(OK)
-    return CheckResult(KO, f"Mergée par {merger.name}, assignée à {', '.join(a.name for a in assignees)}")
+    return CheckResult(KO, t("Mergée par {merger}, assignée à {assignees}", merger=merger.name,
+                             assignees=", ".join(a.name for a in assignees)))
 
 
 def check_pipeline(
@@ -249,27 +253,27 @@ def check_pipeline(
 ) -> CheckResult:
     """RC-05: every CI status of the head commit had succeeded when the MR was merged (PI-01..PI-04)."""
     if merged_at is None:
-        return CheckResult(NA, "MR non mergée")
+        return CheckResult(NA, t("MR non mergée"))
     if not ci_expected:
-        return CheckResult(NA, "CI non attendue sur ce dépôt")
+        return CheckResult(NA, t("CI non attendue sur ce dépôt"))
     if statuses is None:
-        return CheckResult(NA, "Statuts CI non chargés")
+        return CheckResult(NA, t("Statuts CI non chargés"))
     # Latest status of each name created before the merge; allow_failure ones do not count (PI-02, PI-03).
     latest: dict[str, CommitStatus] = {}
     for status in sorted((s for s in statuses if not s.allow_failure), key=lambda s: s.created_at):
         if status.created_at <= merged_at:
             latest[status.name] = status
     if not latest:
-        return CheckResult(KO, "Aucun statut CI")
+        return CheckResult(KO, t("Aucun statut CI"))
     problems = []
     for name, status in sorted(latest.items()):
         finished = status.finished_at is None or status.finished_at <= merged_at
         if status.status == SUCCESS and finished:
             continue
         if status.status in RUNNING_STATES or (status.status == SUCCESS and not finished):
-            problems.append(f"{name} : en cours au merge")
+            problems.append(t("{name} : en cours au merge", name=name))
         elif status.status == "canceled":
-            problems.append(f"{name} : annulé")
+            problems.append(t("{name} : annulé", name=name))
         else:
-            problems.append(f"{name} : {status.status}")
+            problems.append(t("{label} : {value}", label=name, value=status.status))
     return CheckResult(KO, "\n".join(problems)) if problems else CheckResult(OK)

@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from gitective.shared.i18n import t
 from gitective.database.store import LinkedMr
 from gitective.forge.models import Branch
 from gitective.settings.config_file import TrackedProject
@@ -15,7 +16,7 @@ from gitective.shared.people import PersonDirectory, PersonRef
 from gitective.shared.repo_names import short_names
 
 ACTIVE, DEAD, MERGED, DELETED = "active", "dead", "merged", "deleted"
-STATE_LABELS = {ACTIVE: "Active", DEAD: "Morte", MERGED: "Mergée non supprimée", DELETED: "Supprimée"}
+STATE_LABELS = {ACTIVE: t("Active"), DEAD: t("Morte"), MERGED: t("Mergée non supprimée"), DELETED: t("Supprimée")}
 STATE_ORDER = {DELETED: 0, MERGED: 1, DEAD: 2, ACTIVE: 3}  # priority of BR-04, also the sort order
 
 
@@ -106,7 +107,7 @@ def last_commit_text(row: BranchRow) -> str:
     """"12/09/2026 (34 j)" (BR-02)."""
     if row.branch.committed_date is None:
         return ""
-    return f"{format_date(to_local(row.branch.committed_date).date())} ({row.age_days} j)"
+    return f"{format_date(to_local(row.branch.committed_date).date())} ({t('{days} j', days=row.age_days)})"
 
 
 def related_text(row: BranchRow) -> str:

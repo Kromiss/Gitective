@@ -6,6 +6,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from gitective.shared.i18n import t
 from gitective.ui.components.widgets import ScrollableFrame
 from gitective.ui.themes import Theme
 
@@ -87,7 +88,7 @@ class SidePanel(ttk.Frame):
 
     def _placeholder(self, parent: tk.Misc, theme: Theme, title: str) -> None:
         body = self._card(parent, theme, title)
-        text = self._error or "Chargement…"
+        text = self._error or t("Chargement…")
         tk.Label(body, text=text, background=theme.surface, foreground=theme.muted, font=self._font(theme),
                  wraplength=self._wrap - 20, justify="left").pack(anchor="w")
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from gitective.database.store import MIGRATIONS, SCHEMA_VERSION, Store
 from gitective.database.sync import MrDetailData
 from gitective.forge.models import Branch, MergeRequest
-from gitective.review.profile import ASSIGNEE
+from gitective.review.my_mrs import ASSIGNEE
 from tests.factories import mr_json
 
 
