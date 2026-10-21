@@ -282,3 +282,42 @@ class PersonDialog(tk.Toplevel):
         identities = [line.strip() for line in self.identities.get("1.0", "end").splitlines() if line.strip()]
         self._on_done(Person(name=name, account_ids=self._accounts, git_identities=identities))
         self.destroy()
+
+
+def ask_unsaved(master: tk.Misc, app: App, count: int, pages: str) -> str:
+    """Leaving Config with pending changes (OC-17): "save", "discard" or "stay"."""
+    theme = app.get_theme()
+    window = tk.Toplevel(master)
+    window.title(t("Modifications non enregistrées"))
+    window.transient(master.winfo_toplevel())
+    window.configure(background=theme.bg)
+    window.resizable(False, False)
+    answer = {"value": "stay"}
+    frame = ttk.Frame(window, padding=18)
+    frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text=t("{count} modification(s) non enregistrée(s) dans Config", count=count),
+              font=(theme.font[0], theme.font[1] + 2, "bold")).pack(anchor="w")
+    ttk.Label(frame, text=t("Sous-onglets concernés : {pages}.", pages=pages), wraplength=420,
+              justify="left").pack(anchor="w", pady=(8, 14))
+    buttons = ttk.Frame(frame)
+    buttons.pack(fill="x")
+
+    def choose(value: str) -> None:
+        answer["value"] = value
+        window.destroy()
+
+    ttk.Button(buttons, text=t("Enregistrer"), style="Accent.TButton", command=lambda: choose("save")).pack(side="right")
+    ttk.Button(buttons, text=t("Ignorer les modifications"), command=lambda: choose("discard")).pack(side="right", padx=8)
+    stay = ttk.Button(buttons, text=t("Rester dans Config"), command=lambda: choose("stay"))
+    stay.pack(side="right")
+    window.bind("<Escape>", lambda e: choose("stay"))
+    window.protocol("WM_DELETE_WINDOW", lambda: choose("stay"))
+    window.update_idletasks()
+    top = master.winfo_toplevel()
+    x = top.winfo_rootx() + (top.winfo_width() - window.winfo_reqwidth()) // 2
+    y = top.winfo_rooty() + (top.winfo_height() - window.winfo_reqheight()) // 3
+    window.geometry(f"+{max(0, x)}+{max(0, y)}")
+    stay.focus_set()
+    window.grab_set()
+    window.wait_window()
+    return answer["value"]

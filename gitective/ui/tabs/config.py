@@ -1,4 +1,4 @@
-"""Config tab: connection, theme, rules, regex tester, repositories, people (OC-01..OC-08)."""
+"""Config tab in three sub-tabs: Général, Règles, Avancé (OC-01..OC-17)."""
 
 from __future__ import annotations
 
@@ -24,17 +24,23 @@ from gitective.settings import config_file as config
 from gitective.shared import autostart
 from gitective.shared.avatars import badge_color, initials
 from gitective.review.rules import FIXED_LABELS, MrFields, RuleSet, validate_regex
-from gitective.review.settings_form import NumberFields, apply_numbers
+from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page
 from gitective.ui.themes import THEMES
 from gitective.shared.i18n import LANGUAGES
 from gitective.ui.components.dialogs import PersonDialog, ProjectsDialog, RuleDialog
-from gitective.ui.components.widgets import ScrollableFrame
+from gitective.ui.components.widgets import ScrollableFrame, Tooltip
 
 if TYPE_CHECKING:
     from gitective.ui.app import App
 
 AVATAR_PX = 30
 HIGHLIGHT_MS = 6000  # how long the notification switches stay highlighted (NO-10)
+DEFAULTS = Settings()
+
+
+def _pages() -> tuple[tuple[str, str], ...]:
+    """Sub-tabs of the Config tab (OC-14)."""
+    return (("general", t("Général")), ("rules", t("Règles")), ("advanced", t("Avancé")))
 
 
 class SettingsTab(ttk.Frame):
@@ -43,81 +49,183 @@ class SettingsTab(ttk.Frame):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master)
         self.app = app
-        self.dirty = False
+        self.dirty = False  # App reloads "dirty" data tabs; the form tracks its own changes (has_changes)
         self.draft: Settings = copy.deepcopy(app.settings)
         self._avatar_images: list[tk.PhotoImage] = []
+        self._tooltip = Tooltip(self, app.get_theme)
+        self._loading = True
+        self._baseline: dict[str, object] = {}
+        self._changes: dict[str, int] = {}
 
-        scroller = ScrollableFrame(self)
-        scroller.pack(fill="both", expand=True)
-        self._scroller = scroller
-        body = scroller.inner
-        body.columnconfigure((0, 1, 2), weight=1, uniform="col")
-        columns = [ttk.Frame(body) for _ in range(3)]
-        for index, column in enumerate(columns):
-            column.grid(row=0, column=index, sticky="nsew", padx=8, pady=12)
-
-        self._build_connection(columns[0])
-        self._build_notifications(columns[0])
-        self._build_theme(columns[0])
-        self._build_rules(columns[1])
-        self._build_tester(columns[1])
-        self._build_projects(columns[2])
-        self._build_branches(columns[2])
-        self._build_people(columns[2])
+        bar = ttk.Frame(self, style="Card.TFrame", padding=(14, 10))
+        bar.pack(fill="x", padx=16, pady=(12, 0))
+        self._view = tk.StringVar(value=app.settings.config_view)
+        self._page_buttons: dict[str, ttk.Radiobutton] = {}
+        for key, text in _pages():
+            button = ttk.Radiobutton(bar, text=text, value=key, variable=self._view, style="Toolbutton",
+                                     command=lambda: self.show_page(self._view.get()))
+            button.pack(side="left")
+            self._page_buttons[key] = button
 
         actions = ttk.Frame(self, padding=(16, 10))
         actions.pack(fill="x", side="bottom")
-        ttk.Button(actions, text=t("Enregistrer"), style="Accent.TButton", command=self._save).pack(side="right")
-        ttk.Button(actions, text=t("Annuler"), command=self.reset).pack(side="right", padx=8)
+        self._status = ttk.Label(actions, style="Muted.TLabel")
+        self._status.pack(side="left")
+        self._save_button = ttk.Button(actions, style="Accent.TButton", command=self._save)
+        self._save_button.pack(side="right")
+        self._cancel_button = ttk.Button(actions, text=t("Annuler les modifications"), command=self.reset)
+        self._cancel_button.pack(side="right", padx=8)
+
+        self._pages: dict[str, ScrollableFrame] = {}
+        columns: dict[str, list[ttk.Frame]] = {}
+        for key, _text in _pages():
+            scroller = ScrollableFrame(self)
+            body = scroller.inner
+            body.columnconfigure((0, 1), weight=1, uniform="col")
+            columns[key] = [ttk.Frame(body) for _ in range(2)]
+            for index, column in enumerate(columns[key]):
+                column.grid(row=0, column=index, sticky="nsew", padx=8, pady=12)
+            self._pages[key] = scroller
+        self._scroller = self._pages["general"]
+
+        general, rules, advanced = columns["general"], columns["rules"], columns["advanced"]
+        self._build_connection(general[0])
+        self._build_projects(general[0])
+        self._build_appearance(general[1])
+        self._build_notifications(general[1])
+        self._build_people(general[1])
+        self._build_rules(rules[0])
+        self._build_tester(rules[1])
+        self._build_network(advanced[0])
+        self._build_branches(advanced[0])
+        self._build_startup(advanced[1])
+        self._build_store(advanced[1])
+
+        for var in self._tracked_vars():
+            var.trace_add("write", lambda *_: self._refresh_changes())
+        self.show_page(self._view.get(), remember=False)
         self.reset()
+
+    # ------------------------------------------------------------ Sub-tabs
+
+    def show_page(self, key: str, remember: bool = True) -> None:
+        """Show one sub-tab and remember it (OC-14)."""
+        self._tooltip.hide()
+        self._view.set(key)
+        for page_key, page in self._pages.items():
+            if page_key == key:
+                page.pack(fill="both", expand=True)
+            else:
+                page.pack_forget()
+        if remember and key != self.app.settings.config_view:
+            self.app.save_config_view(key)
 
     # ------------------------------------------------------------ Sections
 
-    def _section(self, parent: tk.Misc, title: str, pack: bool = True) -> ttk.Frame:
+    def _section(self, parent: tk.Misc, title: str, help_text: str = "", pack: bool = True) -> ttk.Frame:
         """Rounded card with its title, like the filter cards of the data tabs."""
-        frame = ttk.Frame(parent, style="Card.TFrame", padding=(14, 12))
-        ttk.Label(frame, text=title, style="Section.TLabel").pack(anchor="w", pady=(0, 4))
+        frame = ttk.Frame(parent, style="Card.TFrame", padding=(16, 14))
+        head = ttk.Frame(frame, style="Surface.TFrame")
+        head.pack(fill="x", pady=(0, 6))
+        ttk.Label(head, text=title, style="Section.TLabel").pack(side="left")
+        if help_text:
+            self._help(head, help_text)
         if pack:
-            frame.pack(fill="x", pady=(0, 12))
+            frame.pack(fill="x", pady=(0, 14))
         return frame
 
-    def _labeled_entry(self, parent: tk.Misc, label: str, var: tk.StringVar, **options: object) -> ttk.Entry:
-        ttk.Label(parent, text=label, style="BarMuted.TLabel").pack(anchor="w", pady=(6, 2))
+    def _help(self, parent: tk.Misc, text: str) -> ttk.Label:
+        """ⓘ icon showing what a setting does and its default value (OC-16)."""
+        icon = ttk.Label(parent, text="ⓘ", style="BarMuted.TLabel", cursor="question_arrow")
+        icon.pack(side="left", padx=(6, 0))
+        icon.bind("<Enter>", lambda e: self._tooltip.show(e.x_root, e.y_root, text))
+        icon.bind("<Leave>", lambda e: self._tooltip.hide())
+        return icon
+
+    def _field_label(self, parent: tk.Misc, label: str, help_text: str) -> None:
+        row = ttk.Frame(parent, style="Surface.TFrame")
+        row.pack(fill="x", pady=(8, 2))
+        ttk.Label(row, text=label, style="BarMuted.TLabel").pack(side="left")
+        self._help(row, help_text)
+
+    def _labeled_entry(self, parent: tk.Misc, label: str, var: tk.StringVar, help_text: str,
+                       **options: object) -> ttk.Entry:
+        self._field_label(parent, label, help_text)
         entry = ttk.Entry(parent, textvariable=var, **options)  # type: ignore[arg-type]
         entry.pack(fill="x")
         return entry
+
+    def _check(self, parent: tk.Misc, text: str, var: tk.BooleanVar, help_text: str) -> ttk.Checkbutton:
+        row = ttk.Frame(parent, style="Surface.TFrame")
+        row.pack(fill="x", pady=(6, 0))
+        check = ttk.Checkbutton(row, text=text, variable=var)
+        check.pack(side="left")
+        self._help(row, help_text)
+        return check
+
+    def _spin(self, parent: tk.Misc, label: str, var: tk.StringVar, bounds: tuple[int, int], help_text: str,
+              unit: str = "") -> None:
+        row = ttk.Frame(parent, style="Surface.TFrame")
+        row.pack(fill="x", pady=(8, 0))
+        ttk.Label(row, text=label, style="Bar.TLabel").pack(side="left")
+        ttk.Spinbox(row, from_=bounds[0], to=bounds[1], textvariable=var, width=5).pack(side="left", padx=8)
+        if unit:
+            ttk.Label(row, text=unit, style="Bar.TLabel").pack(side="left")
+        self._help(row, help_text)
+
+    # ------------------------------------------------------------- Général
 
     def _build_connection(self, parent: tk.Misc) -> None:
         box = self._section(parent, t("Connexion GitLab"))
         self.url = tk.StringVar()
         self.token = tk.StringVar()
-        self.verify_ssl = tk.BooleanVar()
-        self._labeled_entry(box, t("URL de l'instance"), self.url)
-        ttk.Label(box, text=t("Token personnel (droit read_api)"), style="BarMuted.TLabel").pack(anchor="w", pady=(6, 2))
+        self._labeled_entry(box, t("URL de l'instance"), self.url,
+                            t("Adresse de votre instance GitLab, par exemple https://gitlab.exemple.fr."))
+        self._field_label(box, t("Token personnel (droit read_api)"),
+                          t("Token d'accès personnel avec le droit read_api. Il reste sur ce poste, dans config.json."))
         row = ttk.Frame(box, style="Surface.TFrame")
         row.pack(fill="x")
         self._token_entry = ttk.Entry(row, textvariable=self.token, show="•")
         self._token_entry.pack(side="left", fill="x", expand=True)
         self._show_button = ttk.Button(row, text=t("Afficher"), command=self._toggle_token)
         self._show_button.pack(side="left", padx=(6, 0))
-        ttk.Checkbutton(box, text=t("Vérifier le certificat SSL"), variable=self.verify_ssl).pack(anchor="w", pady=8)
-        self.parallel = tk.StringVar()
-        row = ttk.Frame(box, style="Surface.TFrame")
-        row.pack(fill="x", pady=(0, 8))
-        ttk.Label(row, text=t("Requêtes simultanées ({low}–{high})", low=PARALLEL_RANGE[0], high=PARALLEL_RANGE[1]),
-                  style="Bar.TLabel").pack(side="left")
-        ttk.Spinbox(row, from_=PARALLEL_RANGE[0], to=PARALLEL_RANGE[1], textvariable=self.parallel,
-                    width=4).pack(side="left", padx=8)
-        ttk.Button(box, text=t("Tester la connexion"), command=self._test_connection).pack(anchor="w")
+        ttk.Button(box, text=t("Tester la connexion"), command=self._test_connection).pack(anchor="w", pady=(10, 0))
         # Read-only: read from GitLab, never edited (OC-11).
-        self._user_text = ttk.Label(box, style="BarMuted.TLabel", wraplength=320, justify="left")
-        self._user_text.pack(anchor="w", pady=(10, 0))
-        self.sync_minutes = tk.StringVar()
+        self._user_text = ttk.Label(box, style="BarMuted.TLabel", wraplength=420, justify="left")
+        self._user_text.pack(anchor="w", pady=(8, 0))
+
+    def _build_projects(self, parent: tk.Misc) -> None:
+        box = self._section(parent, t("Dépôts suivis et branche contrôlée"),
+                            t("Dépôts dont les MR sont contrôlées. « Branche » est la branche cible contrôlée ; "
+                              "décochez « CI attendue » pour un dépôt sans pipeline (critère N/A). "
+                              "Par défaut : aucun dépôt."))
+        ttk.Button(box, text=t("Choisir les dépôts…"), command=self._choose_projects).pack(anchor="w")
+        self._projects_frame = ttk.Frame(box, style="Surface.TFrame")
+        self._projects_frame.pack(fill="x", pady=(8, 0))
+        self._branch_vars: dict[int, tk.StringVar] = {}
+        self._ci_vars: dict[int, tk.BooleanVar] = {}
+
+    def _build_appearance(self, parent: tk.Misc) -> None:
+        box = self._section(parent, t("Apparence"))
+        self._field_label(box, t("Thème"),
+                          t("Couleurs de l'interface, appliquées dès l'enregistrement. Chaque thème double les "
+                            "couleurs de jauges, hachures et pointillés. Par défaut : {value}.",
+                            value=THEMES[DEFAULTS.theme].label))
+        self.theme = tk.StringVar()
+        themes = ttk.Frame(box, style="Surface.TFrame")
+        themes.pack(fill="x")
+        themes.columnconfigure((0, 1), weight=1)
+        for index, (key, theme) in enumerate(THEMES.items()):
+            ttk.Radiobutton(themes, text=theme.label, value=key, variable=self.theme).grid(
+                row=index // 2, column=index % 2, sticky="w", pady=2)
+        # Language (OC-13, 5.9): applied at the next start.
         row = ttk.Frame(box, style="Surface.TFrame")
-        row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text=t("Synchronisation automatique (min)"), style="Bar.TLabel").pack(side="left")
-        ttk.Spinbox(row, from_=REFRESH_RANGE[0], to=REFRESH_RANGE[1], textvariable=self.sync_minutes,
-                    width=4).pack(side="left", padx=8)
+        row.pack(fill="x", pady=(12, 0))
+        ttk.Label(row, text=t("Langue"), style="Bar.TLabel").pack(side="left")
+        self.language = tk.StringVar()
+        ttk.Combobox(row, textvariable=self.language, values=list(LANGUAGES.values()), state="readonly",
+                     width=12).pack(side="left", padx=8)
+        self._help(row, t("Langue de l'interface, appliquée au prochain démarrage. Par défaut : Français."))
 
     def _build_notifications(self, parent: tk.Misc) -> None:
         """Desktop notifications, four switches (NO-01, OC-11)."""
@@ -128,26 +236,30 @@ class SettingsTab(ttk.Frame):
         self.notify_own_merged = tk.BooleanVar()
         self.notify_new_mrs = tk.BooleanVar()
         self._checks = [
-            ttk.Checkbutton(self._notifications, text=text, variable=var)
-            for text, var in ((t("Nouveaux merges sur les dépôts suivis"), self.notify_merges),
-                              (t("MR qui me sont assignées ou en relecture"), self.notify_assigned),
-                              (t("Ma MR mergée"), self.notify_own_merged),
-                              (t("Toutes les nouvelles MR des dépôts suivis"), self.notify_new_mrs))
+            self._check(self._notifications, text, var, help_text)
+            for text, var, help_text in (
+                (t("Nouveaux merges sur les dépôts suivis"), self.notify_merges,
+                 t("Une notification à chaque MR mergée sur un dépôt suivi. Par défaut : coché.")),
+                (t("MR qui me sont assignées ou en relecture"), self.notify_assigned,
+                 t("Quand une MR vous est assignée ou demandée en relecture. Par défaut : coché.")),
+                (t("Ma MR mergée"), self.notify_own_merged,
+                 t("Quand une MR dont vous êtes l'auteur est mergée. Par défaut : coché.")),
+                (t("Toutes les nouvelles MR des dépôts suivis"), self.notify_new_mrs,
+                 t("Chaque nouvelle MR créée sur un dépôt suivi, quel que soit l'auteur. Par défaut : décoché.")))
         ]
-        for check in self._checks:
-            check.pack(anchor="w", pady=(4, 0))
         ttk.Label(self._notifications, text=t("Affichées même quand Gitective est réduit (pas quand il est fermé)."),
-                  style="BarMuted.TLabel", wraplength=320).pack(anchor="w", pady=(6, 0))
+                  style="BarMuted.TLabel", wraplength=420).pack(anchor="w", pady=(8, 0))
 
     def highlight_notifications(self) -> None:
-        """Scroll to the notification switches and highlight them for a few seconds (NO-10)."""
+        """Show the notification switches and highlight them for a few seconds (NO-10)."""
+        self.show_page("general")
         self.update_idletasks()
         frame = self._notifications
         top = frame.winfo_rooty() - self._scroller.inner.winfo_rooty()
         height = max(1, self._scroller.inner.winfo_height())
         self._scroller.canvas.yview_moveto(max(0.0, (top - 12) / height))
         checks = self._checks
-        title = frame.winfo_children()[0]  # the card title (see _section)
+        title = frame.winfo_children()[0].winfo_children()[0]  # the card title (see _section)
         frame.state(["alternate"])  # accent border of the card
         title.configure(style="Highlight.TLabel")  # type: ignore[call-arg]
         for check in checks:
@@ -174,57 +286,59 @@ class SettingsTab(ttk.Frame):
             text = t("Connecté en tant que {name} ({username})", name=user.name, username=user.username)
         self._user_text.configure(text=text)
 
-    def _build_theme(self, parent: tk.Misc) -> None:
-        box = self._section(parent, t("Thème"))
-        self.theme = tk.StringVar()
-        for key, theme in THEMES.items():
-            ttk.Radiobutton(box, text=theme.label, value=key, variable=self.theme).pack(anchor="w", pady=2)
-        # Language (OC-13, 5.9): applied at the next start.
-        row = ttk.Frame(box, style="Surface.TFrame")
-        row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text=t("Langue"), style="Bar.TLabel").pack(side="left")
-        self.language = tk.StringVar()
-        ttk.Combobox(row, textvariable=self.language, values=list(LANGUAGES.values()), state="readonly",
-                     width=12).pack(side="left", padx=8)
-        # Start with Windows (OC-12): stored in the registry, not in config.json.
-        self.autostart = tk.BooleanVar()
-        self._autostart_box = ttk.Checkbutton(box, text=t("Lancer Gitective au démarrage de Windows (réduit)"),
-                                              variable=self.autostart)
-        self._autostart_box.pack(anchor="w", pady=(10, 0))
-        if not autostart.supported():
-            self._autostart_box.state(["disabled"])
-        ttk.Button(box, text=t("Relancer l'assistant de démarrage"), command=self.app.open_wizard).pack(anchor="w", pady=(10, 0))
-        ttk.Button(box, text=t("Vider la base locale"), command=self._clear_store).pack(anchor="w", pady=(6, 0))
+    def _build_people(self, parent: tk.Misc) -> None:
+        box = self._section(parent, t("Personnes et comptes"),
+                            t("Regroupe plusieurs comptes GitLab et identités git sous une même personne pour les "
+                              "statistiques. Sans personne déclarée, chaque compte compte pour une personne."))
+        ttk.Button(box, text=t("+ Personne"), command=lambda: self._edit_person(None)).pack(anchor="w")
+        self._people_frame = ttk.Frame(box, style="Surface.TFrame")
+        self._people_frame.pack(fill="x", pady=(8, 0))
+
+    # -------------------------------------------------------------- Règles
 
     def _build_rules(self, parent: tk.Misc) -> None:
-        box = self._section(parent, t("Règles personnalisées"))
+        box = self._section(parent, t("Règles personnalisées"),
+                            t("Critères ajoutés au score : une regex cherchée (≈) ou interdite (≠) dans un champ de "
+                              "la MR, avec un poids. Par défaut : aucune règle."))
         ttk.Button(box, text=t("+ Règle"), command=lambda: self._edit_rule(None)).pack(anchor="w")
         self._rules_frame = ttk.Frame(box, style="Surface.TFrame")
         self._rules_frame.pack(fill="x", pady=(8, 0))
 
-        fixed = self._section(parent, t("Correspondance ticket et règles fixes"))
+        fixed = self._section(parent, t("Correspondance ticket"))
         self.link_regex = tk.StringVar()
         self.ticket_regex = tk.StringVar()
         mono = self.app.get_theme().mono
-        self._labeled_entry(fixed, t("Regex du lien ticket (dans la description)"), self.link_regex, font=mono)
-        self._labeled_entry(fixed, t("Regex du n° de ticket"), self.ticket_regex, font=mono)
+        self._labeled_entry(fixed, t("Regex du lien ticket (dans la description)"), self.link_regex,
+                            t("Regex qui trouve le lien du ticket dans la description de la MR. "
+                              "Par défaut : {value}", value=DEFAULTS.link_regex), font=mono)
+        self._labeled_entry(fixed, t("Regex du n° de ticket"), self.ticket_regex,
+                            t("Regex qui extrait le n° de ticket (premier groupe capturant). "
+                              "Par défaut : {value}", value=DEFAULTS.ticket_regex), font=mono)
         for var in (self.link_regex, self.ticket_regex):
             var.trace_add("write", lambda *_: self._run_tester())
-        ttk.Label(fixed, text=t("Pondérations"), style="BarMuted.TLabel").pack(anchor="w", pady=(12, 2))
-        weights = ttk.Frame(fixed, style="Surface.TFrame")
+
+        scoring = self._section(parent, t("Pondérations et seuils"))
+        defaults = ", ".join(f"{FIXED_LABELS[c]} {_fmt(DEFAULTS.weights.get(c, 0))}" for c in FIXED_CRITERIA)
+        self._field_label(scoring, t("Pondérations"),
+                          t("Poids de chaque critère fixe dans le score ; 0 retire le critère. "
+                            "Par défaut : {value}.", value=defaults))
+        weights = ttk.Frame(scoring, style="Surface.TFrame")
         weights.pack(fill="x")
         self.weights = {c: tk.StringVar() for c in FIXED_CRITERIA}
         for index, criterion in enumerate(FIXED_CRITERIA):
             cell = ttk.Frame(weights, style="Surface.TFrame")
             cell.grid(row=0, column=index, sticky="sew", padx=(0, 8))
             weights.columnconfigure(index, weight=1)
-            ttk.Label(cell, text=FIXED_LABELS[criterion], style="BarMuted.TLabel", wraplength=90).pack(anchor="w")
+            ttk.Label(cell, text=FIXED_LABELS[criterion], style="BarMuted.TLabel", wraplength=100).pack(anchor="w")
             ttk.Entry(cell, textvariable=self.weights[criterion], width=6).pack(fill="x")
         self.assignee_rule = tk.BooleanVar()
-        ttk.Checkbutton(fixed, text=t("Compter la règle « Mergée par l'assigné » (RC-06)"),
-                        variable=self.assignee_rule).pack(anchor="w", pady=(8, 0))
-        ttk.Label(fixed, text=t("Seuils du score (%)"), style="BarMuted.TLabel").pack(anchor="w", pady=(12, 2))
-        thresholds = ttk.Frame(fixed, style="Surface.TFrame")
+        self._check(scoring, t("Compter la règle « Mergée par l'assigné » (RC-06)"), self.assignee_rule,
+                    t("Ajoute le critère « Mergée par l'assigné » au score. Par défaut : décoché."))
+        self._field_label(scoring, t("Seuils du score (%)"),
+                          t("Score minimal du vert et de l'orange ; en dessous, rouge. "
+                            "Par défaut : vert ≥ {green} %, orange ≥ {orange} %.",
+                            green=_fmt(DEFAULTS.green_threshold), orange=_fmt(DEFAULTS.orange_threshold)))
+        thresholds = ttk.Frame(scoring, style="Surface.TFrame")
         thresholds.pack(fill="x")
         self.green = tk.StringVar()
         self.orange = tk.StringVar()
@@ -235,11 +349,14 @@ class SettingsTab(ttk.Frame):
         ttk.Label(thresholds, text=t("sinon rouge"), style="BarMuted.TLabel").pack(side="left", padx=6)
 
     def _build_tester(self, parent: tk.Misc) -> None:
-        box = self._section(parent, t("Testeur de règles"))
+        box = self._section(parent, t("Testeur de règles"),
+                            t("Saisissez une MR fictive pour voir le résultat des règles du formulaire, "
+                              "avant même d'enregistrer. Ces champs ne sont pas enregistrés."))
         self.sample_title = tk.StringVar()
         self.sample_source = tk.StringVar()
         self.sample_target = tk.StringVar()
-        self._labeled_entry(box, t("Titre"), self.sample_title)
+        ttk.Label(box, text=t("Titre"), style="BarMuted.TLabel").pack(anchor="w", pady=(6, 2))
+        ttk.Entry(box, textvariable=self.sample_title).pack(fill="x")
         branches = ttk.Frame(box, style="Surface.TFrame")
         branches.pack(fill="x")
         branches.columnconfigure((0, 1), weight=1)
@@ -247,7 +364,8 @@ class SettingsTab(ttk.Frame):
                                                (t("Branche cible"), self.sample_target))):
             cell = ttk.Frame(branches, style="Surface.TFrame")
             cell.grid(row=0, column=column, sticky="ew", padx=(0, 6) if column == 0 else 0)
-            self._labeled_entry(cell, label, var)
+            ttk.Label(cell, text=label, style="BarMuted.TLabel").pack(anchor="w", pady=(6, 2))
+            ttk.Entry(cell, textvariable=var).pack(fill="x")
         for var in (self.sample_title, self.sample_source, self.sample_target):
             var.trace_add("write", lambda *_: self._run_tester())
         self.sample_description = self._sample_text(box, t("Description"), 3)
@@ -262,38 +380,130 @@ class SettingsTab(ttk.Frame):
         text.bind("<KeyRelease>", lambda e: self._run_tester())
         return text
 
-    def _build_projects(self, parent: tk.Misc) -> None:
-        box = self._section(parent, t("Dépôts suivis et branche contrôlée"))
-        ttk.Button(box, text=t("Choisir les dépôts…"), command=self._choose_projects).pack(anchor="w")
-        self._projects_frame = ttk.Frame(box, style="Surface.TFrame")
-        self._projects_frame.pack(fill="x", pady=(8, 0))
-        self._branch_vars: dict[int, tk.StringVar] = {}
-        self._ci_vars: dict[int, tk.BooleanVar] = {}
+    # -------------------------------------------------------------- Avancé
+
+    def _build_network(self, parent: tk.Misc) -> None:
+        box = self._section(parent, t("Réseau et synchronisation"))
+        self.verify_ssl = tk.BooleanVar()
+        self._check(box, t("Vérifier le certificat SSL"), self.verify_ssl,
+                    t("À ne décocher que pour une instance interne avec un certificat auto-signé. "
+                      "Par défaut : coché."))
+        self.parallel = tk.StringVar()
+        self._spin(box, t("Requêtes simultanées ({low}–{high})", low=PARALLEL_RANGE[0], high=PARALLEL_RANGE[1]),
+                   self.parallel, PARALLEL_RANGE,
+                   t("Requêtes GitLab lancées en même temps pour lire commits et MR : plus rapide, mais plus de "
+                     "charge sur le serveur. Par défaut : {value}.", value=DEFAULTS.parallel_requests))
+        self.sync_minutes = tk.StringVar()
+        self._spin(box, t("Synchronisation automatique (min)"), self.sync_minutes, REFRESH_RANGE,
+                   t("Intervalle entre deux relectures automatiques de GitLab. Par défaut : {value} min.",
+                     value=DEFAULTS.sync_minutes))
 
     def _build_branches(self, parent: tk.Misc) -> None:
         """Exclusion regex and dead branch threshold of the Branches tab (OC-10)."""
-        box = self._section(parent, t("Branches"))
+        box = self._section(parent, t("Onglet Branches"))
         self.branch_regex = tk.StringVar()
         self.dead_days = tk.StringVar()
-        self._labeled_entry(box, t("Regex d'exclusion (insensible à la casse)"), self.branch_regex)
-        ttk.Label(box, text=t("La branche par défaut et les branches protégées sont toujours masquées."),
-                  style="BarMuted.TLabel", wraplength=320).pack(anchor="w", pady=(4, 0))
-        row = ttk.Frame(box, style="Surface.TFrame")
-        row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text=t("Branche morte après"), style="Bar.TLabel").pack(side="left")
-        ttk.Spinbox(row, from_=1, to=3650, textvariable=self.dead_days, width=5).pack(side="left", padx=8)
-        ttk.Label(row, text=t("jours calendaires sans commit"), style="Bar.TLabel").pack(side="left")
+        self._labeled_entry(box, t("Regex d'exclusion (insensible à la casse)"), self.branch_regex,
+                            t("Branches masquées dans l'onglet Branches. La branche par défaut et les branches "
+                              "protégées sont toujours masquées. Par défaut : {value}",
+                              value=DEFAULTS.branch_exclude_regex))
+        self._spin(box, t("Branche morte après"), self.dead_days, (1, 3650),
+                   t("Une branche sans commit depuis ce nombre de jours calendaires est marquée morte. "
+                     "Par défaut : {value} jours.", value=DEFAULTS.dead_branch_days),
+                   unit=t("jours calendaires sans commit"))
 
-    def _build_people(self, parent: tk.Misc) -> None:
-        box = self._section(parent, t("Personnes et comptes"))
-        ttk.Button(box, text=t("+ Personne"), command=lambda: self._edit_person(None)).pack(anchor="w")
-        self._people_frame = ttk.Frame(box, style="Surface.TFrame")
-        self._people_frame.pack(fill="x", pady=(8, 0))
+    def _build_startup(self, parent: tk.Misc) -> None:
+        box = self._section(parent, t("Démarrage"))
+        # Start with Windows (OC-12): stored in the registry, not in config.json.
+        self.autostart = tk.BooleanVar()
+        self._autostart_box = self._check(box, t("Lancer Gitective au démarrage de Windows (réduit)"), self.autostart,
+                                          t("Lance Gitective réduit à l'ouverture de session Windows. Réglé dans le "
+                                            "registre, pas dans config.json. Par défaut : décoché."))
+        if not autostart.supported():
+            self._autostart_box.state(["disabled"])
+        row = ttk.Frame(box, style="Surface.TFrame")
+        row.pack(fill="x", pady=(12, 0))
+        ttk.Button(row, text=t("Relancer l'assistant de démarrage"), command=self.app.open_wizard).pack(side="left")
+        self._help(row, t("Rouvre l'assistant du premier lancement : URL, token et dépôts."))
+
+    def _build_store(self, parent: tk.Misc) -> None:
+        box = self._section(parent, t("Base locale"))
+        row = ttk.Frame(box, style="Surface.TFrame")
+        row.pack(fill="x")
+        ttk.Button(row, text=t("Vider la base locale"), command=self._clear_store).pack(side="left")
+        self._help(row, t("Supprime les données lues depuis GitLab ; elles sont relues à la synchronisation "
+                          "suivante. La configuration est conservée."))
+
+    # ---------------------------------------------------- Unsaved changes
+
+    def _tracked_vars(self) -> list[tk.Variable]:
+        return [self.url, self.token, self.theme, self.language, self.notify_merges, self.notify_assigned,
+                self.notify_own_merged, self.notify_new_mrs, self.link_regex, self.ticket_regex,
+                *self.weights.values(), self.assignee_rule, self.green, self.orange, self.verify_ssl,
+                self.parallel, self.sync_minutes, self.branch_regex, self.dead_days, self.autostart]
+
+    def _snapshot(self) -> dict[str, object]:
+        """Current form values, keyed "<sub-tab>.<setting>" (OC-15)."""
+        d = self.draft
+        projects = [(p.id, self._branch_vars[p.id].get().strip() if p.id in self._branch_vars else p.branch,
+                     self._ci_vars[p.id].get() if p.id in self._ci_vars else p.ci_expected) for p in d.projects]
+        values: dict[str, object] = {
+            "general.url": self.url.get().strip(), "general.token": self.token.get().strip(),
+            "general.projects": projects, "general.theme": self.theme.get(), "general.language": self.language.get(),
+            "general.notify_merges": self.notify_merges.get(), "general.notify_assigned": self.notify_assigned.get(),
+            "general.notify_own_merged": self.notify_own_merged.get(), "general.notify_new_mrs": self.notify_new_mrs.get(),
+            "general.people": repr(d.people),
+            "rules.rules": repr(d.rules), "rules.link_regex": self.link_regex.get(),
+            "rules.ticket_regex": self.ticket_regex.get(), "rules.assignee_rule": self.assignee_rule.get(),
+            "rules.green": self.green.get().strip(), "rules.orange": self.orange.get().strip(),
+            "advanced.verify_ssl": self.verify_ssl.get(), "advanced.parallel": self.parallel.get().strip(),
+            "advanced.sync_minutes": self.sync_minutes.get().strip(),
+            "advanced.branch_regex": self.branch_regex.get().strip(), "advanced.dead_days": self.dead_days.get().strip(),
+            "advanced.autostart": self.autostart.get(),
+        }
+        for criterion, var in self.weights.items():
+            values[f"rules.weight_{criterion}"] = var.get().strip()
+        return values
+
+    def _refresh_changes(self) -> None:
+        """Dot on the changed sub-tabs, count on Save, summary in the status bar (OC-15)."""
+        if self._loading:
+            return
+        self._changes = changes_by_page(self._baseline, self._snapshot())
+        total = sum(self._changes.values())
+        names = dict(_pages())
+        for key, button in self._page_buttons.items():
+            button.configure(text=names[key] + ("  •" if self._changes.get(key) else ""))
+        if total:
+            self._save_button.configure(text=t("Enregistrer ({count})", count=total))
+            self._save_button.state(["!disabled"])
+            self._cancel_button.state(["!disabled"])
+            pages = ", ".join(names[k] for k, _ in _pages() if self._changes.get(k))
+            self._status.configure(text=t("{count} modification(s) non enregistrée(s) · {pages}",
+                                          count=total, pages=pages), style="Pending.TLabel")
+        else:
+            self._save_button.configure(text=t("Enregistrer"))
+            self._save_button.state(["disabled"])
+            self._cancel_button.state(["disabled"])
+            self._status.configure(text=t("Aucune modification en attente."), style="Muted.TLabel")
+
+    def change_count(self) -> int:
+        return sum(self._changes.values())
+
+    def has_changes(self) -> bool:
+        return self.change_count() > 0
+
+    def changed_pages(self) -> str:
+        return ", ".join(text for key, text in _pages() if self._changes.get(key))
 
     # ---------------------------------------------------------- Draft I/O
 
     def reset(self) -> None:
         """Reload the form from the saved settings (Cancel)."""
+        self._loading = True
+        for page in self._pages.values():  # page background, also after a theme change
+            page.canvas.self_themed = True  # type: ignore[attr-defined]
+            page.set_background(self.app.get_theme().bg)
         self.draft = copy.deepcopy(self.app.settings)
         d = self.draft
         self.url.set(d.gitlab_url)
@@ -322,6 +532,9 @@ class SettingsTab(ttk.Frame):
         self._render_people()
         self._run_tester()
         self.show_user()
+        self._baseline = self._snapshot()
+        self._loading = False
+        self._refresh_changes()
 
     def _collect(self) -> tuple[Settings | None, str]:
         """Build settings from the form; return (None, error) when invalid."""
@@ -350,25 +563,26 @@ class SettingsTab(ttk.Frame):
             project.ci_expected = self._ci_vars[project.id].get() if project.id in self._ci_vars else project.ci_expected
         return d, ""
 
-    def _save(self) -> None:
+    def save(self) -> bool:
+        """Apply the form; False when it is invalid or the user backed out."""
         settings, error = self._collect()
         if settings is None:
             self.app.notify("error", error)
-            return
+            return False
         changed = settings.gitlab_url.rstrip("/") != self.app.settings.gitlab_url.rstrip("/")
         if changed and self.app.settings.gitlab_url and not self.app.store.is_empty():
             # The local base belongs to one instance (CH-10).
             if not messagebox.askyesno(t("Changement d'instance"),
                                        t("L'URL de l'instance change : la base locale va être vidée et les données "
                                          "seront relues depuis la nouvelle instance.\n\nContinuer ?"), parent=self):
-                return
+                return False
         registry = self._registry()
         if autostart.supported() and self.autostart.get() != autostart.is_enabled(registry):
             try:
                 autostart.set_enabled(registry, self.autostart.get(), config.APP_DIR)
             except OSError as exc:
                 self.app.notify("error", t("Démarrage avec Windows impossible à régler : {error}", error=exc))
-                return
+                return False
         restart = settings.language != self.app.settings.language
         self.app.apply_settings(settings)
         self.draft = copy.deepcopy(settings)
@@ -377,6 +591,10 @@ class SettingsTab(ttk.Frame):
                                     "Restart Gitective to apply the language.")
         else:
             self.app.notify("success", t("Configuration enregistrée."))
+        return True
+
+    def _save(self) -> None:
+        self.save()
 
     @staticmethod
     def _registry() -> autostart.Registry | None:
@@ -450,7 +668,7 @@ class SettingsTab(ttk.Frame):
             text = labels.get(criterion_id, criterion_id)
             if result.detail:
                 text += " — " + (t("n° extrait {number}", number=result.detail) if result.status == "ok" else result.detail)
-            ttk.Label(row, text=text, style="Bar.TLabel", wraplength=300).pack(side="left", padx=8)
+            ttk.Label(row, text=text, style="Bar.TLabel", wraplength=420).pack(side="left", padx=8)
 
     # --------------------------------------------------------------- Rules
 
@@ -471,12 +689,13 @@ class SettingsTab(ttk.Frame):
             text = ttk.Frame(row, style="Surface.TFrame")
             text.pack(side="left", fill="x", expand=True, padx=4)
             style = "Bar.TLabel" if rule.active else "BarMuted.TLabel"
-            ttk.Label(text, text=rule.name, style=style, wraplength=220,
+            ttk.Label(text, text=rule.name, style=style, wraplength=300,
                       font=(theme.font[0], theme.font[1], "bold")).pack(anchor="w")
             mode = "≈" if rule.mode == "match" else "≠"
             detail = (f"{t(RULE_FIELDS.get(rule.field, rule.field))} {mode} {rule.pattern or t('(regex à compléter)')}"
                       + t("  ·  poids {weight}", weight=f"{rule.weight:g}"))
-            ttk.Label(text, text=detail, style="BarMuted.TLabel", font=theme.mono, wraplength=220).pack(anchor="w")
+            ttk.Label(text, text=detail, style="BarMuted.TLabel", font=theme.mono, wraplength=300).pack(anchor="w")
+        self._refresh_changes()
 
     def _toggle_rule(self, rule: CustomRule, active: bool) -> None:
         rule.active = active
@@ -520,13 +739,16 @@ class SettingsTab(ttk.Frame):
             ci = tk.BooleanVar(value=previous_ci.get(project.id, project.ci_expected))
             self._ci_vars[project.id] = ci
             # The path on its own line, so a long one never pushes the branch and CI fields away.
-            ttk.Label(row, text=project.path, style="Bar.TLabel", wraplength=380).pack(anchor="w")
+            ttk.Label(row, text=project.path, style="Bar.TLabel", wraplength=440).pack(anchor="w")
             fields = ttk.Frame(row, style="Surface.TFrame")
             fields.pack(fill="x", pady=(2, 6))
             ttk.Label(fields, text=t("Branche"), style="BarMuted.TLabel").pack(side="left")
             ttk.Entry(fields, textvariable=var, width=18, font=self.app.get_theme().mono).pack(side="left", padx=(6, 0))
             # RC-05 is N/A for the MRs of a repository without CI (SD-08, PI-06).
             ttk.Checkbutton(fields, text=t("CI attendue"), variable=ci).pack(side="left", padx=(12, 0))
+            for tracked in (var, ci):
+                tracked.trace_add("write", lambda *_: self._refresh_changes())
+        self._refresh_changes()
 
     def _choose_projects(self) -> None:
         client = self._form_client()
@@ -555,7 +777,7 @@ class SettingsTab(ttk.Frame):
         theme = self.app.get_theme()
         if not self.draft.people:
             ttk.Label(self._people_frame, text=t("Aucune personne : chaque compte compte pour une personne."),
-                      style="BarMuted.TLabel", wraplength=320).pack(anchor="w")
+                      style="BarMuted.TLabel", wraplength=420).pack(anchor="w")
         for index, person in enumerate(self.draft.people):
             row = ttk.Frame(self._people_frame, style="Surface.TFrame")
             row.pack(fill="x", pady=3)
@@ -576,7 +798,8 @@ class SettingsTab(ttk.Frame):
             accounts = ", ".join(self._account_label(a) for a in person.account_ids)
             identities = ", ".join(person.git_identities)
             details = " · ".join(x for x in (accounts, t("git : {identities}", identities=identities) if identities else "") if x)
-            ttk.Label(text, text=details or t("Aucun compte"), style="BarMuted.TLabel", wraplength=200).pack(anchor="w")
+            ttk.Label(text, text=details or t("Aucun compte"), style="BarMuted.TLabel", wraplength=280).pack(anchor="w")
+        self._refresh_changes()
 
     def _load_avatar(self, canvas: tk.Canvas, user_id: int) -> None:
         if self.app.client is None:

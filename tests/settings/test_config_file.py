@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gitective.review.settings_form import NumberFields, apply_numbers
+from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page
 from gitective.settings import config_file as config
 from gitective.settings.config_file import CustomRule, Settings
 
@@ -18,7 +18,27 @@ def fields(**changes: object) -> NumberFields:
     return NumberFields(**values)  # type: ignore[arg-type]
 
 
+class UnsavedChangesTests(unittest.TestCase):
+    """Config sub-tabs flag what differs from the saved settings (OC-15)."""
+
+    def test_counts_per_sub_tab(self) -> None:
+        saved = {"general.url": "a", "general.theme": "dark", "rules.green": "100", "advanced.parallel": "6"}
+        form = dict(saved, **{"general.url": "b", "general.theme": "light", "advanced.parallel": "8"})
+        self.assertEqual(changes_by_page(saved, form), {"general": 2, "advanced": 1})
+
+    def test_back_to_the_saved_value_is_clean(self) -> None:
+        saved = {"rules.rules": "[]"}
+        self.assertEqual(changes_by_page(saved, {"rules.rules": "[]"}), {})
+
+    def test_added_or_removed_key_counts(self) -> None:
+        self.assertEqual(changes_by_page({"rules.weight_x": "1"}, {}), {"rules": 1})
+
+
 class ConfigFileTests(unittest.TestCase):
+    def test_config_view_is_remembered_and_checked(self) -> None:
+        self.assertEqual(Settings.from_dict({"config_view": "advanced"}).config_view, "advanced")
+        self.assertEqual(Settings.from_dict({"config_view": "nope"}).config_view, "general")
+
     def test_new_settings_survive_a_save_and_a_load(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "config.json"
