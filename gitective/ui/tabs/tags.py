@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 COLUMNS = [
     Column("repo", "Dépôt", 120),
-    Column("tag", "Tag", 110, kind="link"),
+    Column("tag", "Tag", 200, kind="link", stretch=True),
     Column("message", "Message", 200, kind="tip", stretch=True),
     Column("notes", "Notes de release", 200, kind="tip", stretch=True),
     Column("date", "Date", 150, kind="mono"),
@@ -223,7 +223,7 @@ class TagsBrowseView(DataTab):
         for r in self._page_rows():
             tag = r.tag
             row: dict[str, Any] = {
-                "repo": r.project.path.split("/")[-1],
+                "repo": self.app.repo_label(r.project.path),
                 "tag": (tag.name, r.web_url),
                 "message": (first_line(tag.message), tag.message),
                 "notes": (first_line(tag.release_notes), tag.release_notes),

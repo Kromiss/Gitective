@@ -142,7 +142,7 @@ class CommitsView(DataTab):
     def _render_page(self) -> None:
         """Only the current page is drawn, so long lists stay fluid (P2)."""
         self.grid_view.set_rows([{
-            "repo": o.project.path.split("/")[-1],
+            "repo": self.app.repo_label(o.project.path),
             "branch": o.project.branch,
             "sha": (o.commit.short_id, o.commit.web_url),
             "message": (o.commit.title, o.commit.web_url),

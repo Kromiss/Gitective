@@ -12,6 +12,7 @@ from gitective.forge.models import Branch
 from gitective.settings.config_file import TrackedProject
 from gitective.shared.dates import format_date, to_local
 from gitective.shared.people import PersonDirectory, PersonRef
+from gitective.shared.repo_names import short_names
 
 ACTIVE, DEAD, MERGED, DELETED = "active", "dead", "merged", "deleted"
 STATE_LABELS = {ACTIVE: "Active", DEAD: "Morte", MERGED: "Mergée non supprimée", DELETED: "Supprimée"}
@@ -114,6 +115,7 @@ def related_text(row: BranchRow) -> str:
 
 def copied_list(rows: Sequence[BranchRow]) -> str:
     """Markdown text of the filtered branches, grouped by author, to send reminders (BR-08)."""
+    names = short_names(r.project.path for r in rows)
     groups: dict[str, list[BranchRow]] = {}
     for row in sorted(rows, key=lambda r: r.author.name.casefold()):
         groups.setdefault(row.author.name, []).append(row)
@@ -121,7 +123,7 @@ def copied_list(rows: Sequence[BranchRow]) -> str:
     for name, items in groups.items():
         lines = [f"## {name}", ""]
         for row in items:
-            parts = [row.project.path.split("/")[-1], row.branch.name, last_commit_text(row),
+            parts = [names[row.project.path], row.branch.name, last_commit_text(row),
                      STATE_LABELS[row.state]]
             if row.related:
                 parts.append(related_text(row))
