@@ -6,6 +6,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from gitective.shared.i18n import t
 from gitective.forge.models import ChangedFile, Discussion, Job, MergeRequest
 from gitective.database.sync import MrDetailData
 from gitective.review.rules import KO, NA, OK
@@ -44,20 +45,21 @@ def readiness(mr: MergeRequest, detail: MrDetailData, target_branch: str = "") -
     if mr.state != "opened" or state is None:
         return None
     status = state.merge_status
-    items = [ReadinessItem(KO, "Conflits à résoudre") if state.has_conflicts else ReadinessItem(OK, "Pas de conflit")]
+    items = [ReadinessItem(KO, t("Conflits à résoudre")) if state.has_conflicts else ReadinessItem(OK, t("Pas de conflit"))]
     items.append(_pipeline_item(detail))
     unresolved = len(unresolved_discussions(detail.discussions))
     if unresolved:
         blocking = status == "discussions_not_resolved" or not state.blocking_discussions_resolved
-        items.append(ReadinessItem(KO if blocking else WARN, f"{unresolved} discussion(s) non résolue(s)"))
+        items.append(ReadinessItem(KO if blocking else WARN, t("{count} discussion(s) non résolue(s)", count=unresolved)))
     else:
-        items.append(ReadinessItem(OK, "Discussions résolues"))
+        items.append(ReadinessItem(OK, t("Discussions résolues")))
     items.append(_approval_item(detail, status))
     if state.behind_by:
         items.append(ReadinessItem(KO if status == "need_rebase" else WARN,
-                                   f"{state.behind_by} commit(s) de retard sur {target_branch or mr.target_branch}"))
+                                   t("{count} commit(s) de retard sur {branch}", count=state.behind_by,
+                                     branch=target_branch or mr.target_branch)))
     if mr.draft:
-        items.append(ReadinessItem(KO, "MR en brouillon"))
+        items.append(ReadinessItem(KO, t("MR en brouillon")))
     return Readiness(ready=status == "mergeable" and not mr.draft, items=tuple(items))
 
 
@@ -66,22 +68,22 @@ def _pipeline_item(detail: MrDetailData) -> ReadinessItem:
     if pipeline is not None:
         failed = [j.name for j in detail.jobs if j.status in FAILED]
         if pipeline.status == "success":
-            return ReadinessItem(OK, "Pipeline vert")
+            return ReadinessItem(OK, t("Pipeline vert"))
         if pipeline.status in FAILED:
-            return ReadinessItem(KO, "Pipeline en échec", ", ".join(failed[:3]))
+            return ReadinessItem(KO, t("Pipeline en échec"), ", ".join(failed[:3]))
         if pipeline.status in RUNNING:
-            return ReadinessItem(WARN, "Pipeline en cours")
-        return ReadinessItem(WARN, f"Pipeline : {pipeline.status}")
+            return ReadinessItem(WARN, t("Pipeline en cours"))
+        return ReadinessItem(WARN, t("Pipeline : {status}", status=pipeline.status))
     # CIs that only publish commit statuses (e.g. Jenkins): latest status of each name.
     latest = {s.name: s for s in sorted(detail.statuses, key=lambda s: s.created_at) if not s.allow_failure}
     if not latest:
-        return ReadinessItem(NA, "Aucun pipeline")
+        return ReadinessItem(NA, t("Aucun pipeline"))
     bad = sorted(n for n, s in latest.items() if s.status in FAILED)
     if bad:
-        return ReadinessItem(KO, "CI en échec", ", ".join(bad))
+        return ReadinessItem(KO, t("CI en échec"), ", ".join(bad))
     if any(s.status != "success" for s in latest.values()):
-        return ReadinessItem(WARN, "CI en cours")
-    return ReadinessItem(OK, "CI verte", ", ".join(sorted(latest)))
+        return ReadinessItem(WARN, t("CI en cours"))
+    return ReadinessItem(OK, t("CI verte"), ", ".join(sorted(latest)))
 
 
 def _approval_item(detail: MrDetailData, status: str) -> ReadinessItem:
@@ -90,12 +92,12 @@ def _approval_item(detail: MrDetailData, status: str) -> ReadinessItem:
     count = len(approvals.approved_by) if approvals else 0
     if approvals and approvals.required:
         missing = approvals.left if approvals.left is not None else max(0, approvals.required - count)
-        text = f"Approuvée {approvals.required - missing} / {approvals.required}"
+        text = t("Approuvée {count} / {required}", count=approvals.required - missing, required=approvals.required)
         return ReadinessItem(KO if missing else OK, text, names)
     if status == "not_approved":
-        return ReadinessItem(KO, "Approbation manquante", names)
+        return ReadinessItem(KO, t("Approbation manquante"), names)
     # Without required approvals (or an edition that does not tell): who approved, no total (DE-13).
-    return ReadinessItem(OK if count else NA, f"Approuvée par {count} personne(s)" if count else "Pas d'approbation", names)
+    return ReadinessItem(OK if count else NA, t("Approuvée par {count} personne(s)", count=count) if count else t("Pas d'approbation"), names)
 
 
 def unresolved_discussions(discussions: Sequence[Discussion]) -> list[Discussion]:
@@ -105,7 +107,7 @@ def unresolved_discussions(discussions: Sequence[Discussion]) -> list[Discussion
 def discussion_place(discussion: Discussion) -> str:
     """"File.java:88", or "description" for a general comment (DE-09)."""
     if not discussion.path:
-        return "description"
+        return t("description")
     name = discussion.path.rsplit("/", 1)[-1]
     return f"{name}:{discussion.line}" if discussion.line else name
 

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import ttk
 
+from gitective.shared.i18n import t
 from gitective import APP_NAME, __version__
 from gitective.forge.gitlab_client import GitLabClient
 from gitective.forge.models import MergeRequest, User
@@ -54,7 +55,7 @@ from gitective.ui.themes import Theme, apply_theme, get_theme
 from gitective.ui.background import BackgroundRunner
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
-WINDOW_TITLE = f"{APP_NAME} — contrôle des merge requests"
+WINDOW_TITLE = t("{app} — contrôle des merge requests", app=APP_NAME)
 
 
 def monitor_area(root: tk.Misc) -> tuple[int, int, int, int] | None:
@@ -140,9 +141,9 @@ class App:
             store = Store(config.DB_PATH)
         except StoreError as exc:
             recreate = messagebox.askyesno(
-                "Base locale illisible",
-                f"La base locale gitective.db est illisible, corrompue ou verrouillée ({exc}).\n\n"
-                "La recréer ? Les données seront relues depuis GitLab.")
+                t("Base locale illisible"),
+                t("La base locale gitective.db est illisible, corrompue ou verrouillée ({error}).\n\n"
+                  "La recréer ? Les données seront relues depuis GitLab.", error=exc))
             if not recreate:
                 raise SystemExit(1) from exc
             for suffix in ("", "-wal", "-shm"):
@@ -193,11 +194,12 @@ class App:
         self._badges = ttk.Frame(header, style="Header.TFrame")
         self._badges.pack(side="right", padx=(12, 0))
         self._badge_list = [Badge(self._badges, role, label, self.get_theme, lambda r=role: self.show_mine(r))
-                            for role, label in ((ASSIGNEE, "Assigné"), (REVIEWER, "Relecteur"), (AUTHOR, "Auteur"))]
+                            for role, label in ((ASSIGNEE, t("Assigné")), (REVIEWER, t("Relecteur")),
+                                                (AUTHOR, t("Auteur")))]
         for badge in self._badge_list:
             badge.pack(side="left", padx=(0, 10))
         self._busy = ttk.Progressbar(header, mode="indeterminate", length=120)
-        self._busy_label = ttk.Label(header, text="Chargement…", style="HeaderMuted.TLabel")
+        self._busy_label = ttk.Label(header, text=t("Chargement…"), style="HeaderMuted.TLabel")
         ttk.Separator(self.root, orient="horizontal").pack(side="top", fill="x")
         logo = ASSETS / "logo.png"
         self._toast_logo = self.load_avatar_image(logo, 40) if logo.exists() else None
@@ -214,9 +216,9 @@ class App:
         self.stats_tab = StatsTab(self.notebook, self)
         self.settings_tab = SettingsTab(self.notebook, self)
         # The overview is the first tab, shown at launch (VE-01); Branches and Tags follow the MRs (BR-01, TG-01).
-        for tab, text in ((self.overview_tab, "Vue d'ensemble"), (self.mr_tab, "Merge Requests"),
-                          (self.branches_tab, "Branches"), (self.tags_tab, "Tags"),
-                          (self.stats_tab, "Statistiques"), (self.settings_tab, "Config")):
+        for tab, text in ((self.overview_tab, t("Vue d'ensemble")), (self.mr_tab, t("Merge Requests")),
+                          (self.branches_tab, t("Branches")), (self.tags_tab, t("Tags")),
+                          (self.stats_tab, t("Statistiques")), (self.settings_tab, t("Config"))):
             self.notebook.add(tab, text=text)
             self.tab_bar.add(text)
         self.notebook.bind("<<NotebookTabChanged>>", lambda e: self._tab_changed())
@@ -229,7 +231,7 @@ class App:
             self.open_wizard()
         elif not self.settings.is_configured:
             self.notebook.select(self.settings_tab)
-            self.notify("info", "Renseignez l'URL de l'instance GitLab et le token dans l'onglet Config.")
+            self.notify("info", t("Renseignez l'URL de l'instance GitLab et le token dans l'onglet Config."))
         else:
             self._tab_changed()
             self.sync()
@@ -258,22 +260,22 @@ class App:
         """Banner of the offline mode: stored data is shown (CH-08)."""
         since = self.data.offline_since
         if since is not None:
-            self.notify("info", "Instance GitLab injoignable : affichage des données locales "
-                                f"(dernière synchronisation le {format_datetime(since)}).")
+            self.notify("info", t("Instance GitLab injoignable : affichage des données locales "
+                                  "(dernière synchronisation le {date}).", date=format_datetime(since)))
 
     def report_error(self, exc: BaseException, extra: int = 0) -> None:
         message = describe_error(exc)
         if extra > 0:
-            message += f" (+{extra} autre(s) erreur(s) similaire(s))"
+            message += t(" (+{count} autre(s) erreur(s) similaire(s))", count=extra)
         self.notify("error", message)
 
     def ensure_connection(self) -> bool:
         """True when a client exists; otherwise point the user to Config."""
         if self.client is None:
-            self.notify("info", "Renseignez l'URL de l'instance GitLab et le token dans l'onglet Config.")
+            self.notify("info", t("Renseignez l'URL de l'instance GitLab et le token dans l'onglet Config."))
             return False
         if not self.settings.projects:
-            self.notify("info", "Aucun dépôt suivi : choisissez les dépôts à contrôler dans l'onglet Config.")
+            self.notify("info", t("Aucun dépôt suivi : choisissez les dépôts à contrôler dans l'onglet Config."))
             return False
         return True
 
@@ -341,7 +343,7 @@ class App:
         me = self.me_key()
         items = sorted(((k, n) for k, n in self._known_people.items() if k != me), key=lambda i: i[1].casefold())
         if me is not None:
-            items.insert(0, (me, f"Moi ({self.me_name()})"))
+            items.insert(0, (me, t("Moi ({name})", name=self.me_name())))
         for listener in self._people_listeners:
             listener(items)
 
@@ -434,7 +436,7 @@ class App:
         self.authored = authored_open_mrs(self.store, [p.id for p in self.settings.projects], self.people, self.user)
         counts = (badge_counts(self.my_mrs, self._seen, ASSIGNEE), badge_counts(self.my_mrs, self._seen, REVIEWER),
                   author_counts(self.authored))
-        for badge, count, word in zip(self._badge_list, counts, ("assignée(s)", "en relecture", "MR ouverte(s)")):
+        for badge, count, word in zip(self._badge_list, counts, (t("assignée(s)"), t("en relecture"), t("MR ouverte(s)"))):
             badge.update_counts(count, badge_tip(count, word))
         new = new_count(self.my_mrs, self._seen)
         self.root.title(f"{APP_NAME} ({new})" if new else WINDOW_TITLE)
@@ -561,7 +563,7 @@ class App:
         try:
             config.save(self.settings)
         except OSError as exc:
-            self.notify("error", f"Impossible d'écrire config.json : {exc}")
+            self.notify("error", t("Impossible d'écrire config.json : {error}", error=exc))
 
     def _update_repo_items(self) -> None:
         for tab in (self.mr_tab, self.branches_tab, self.tags_tab, self.stats_tab):

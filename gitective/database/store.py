@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
+from gitective.shared.i18n import t
 from gitective.forge.models import Branch, Commit, CommitStatus, MergeRequest, Project, ProtectedBranch, Tag, User
 
 T = TypeVar("T")
@@ -220,10 +221,10 @@ class Store:
     def _check_and_migrate(self) -> None:
         conn = self.conn
         if conn.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-            raise StoreError("base locale corrompue")
+            raise StoreError(t("base locale corrompue"))
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
-            raise StoreError("base créée par une version plus récente de Gitective")
+            raise StoreError(t("base créée par une version plus récente de Gitective"))
         for number in range(version, SCHEMA_VERSION):
             with self.transaction() as tx:
                 for statement in MIGRATIONS[number]:

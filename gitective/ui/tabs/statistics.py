@@ -7,6 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
+from gitective.shared.i18n import t
 from gitective.shared.avatars import badge_color, initials
 from gitective.shared.dates import (
     HISTORY_START,
@@ -50,27 +51,27 @@ PERSON, REPO = "person", "repo"
 Loaded = tuple[list[Evaluation], dict[str, list[str]], list[OrphanCommit], list[Exception]]
 
 HEAD_COLUMNS = [
-    Column("person", "Personne", 220, kind="avatar", stretch=True),
-    Column("role", "Rôle", 80, kind="tip"),
-    Column("mr", "MR", 60, align="e"),
-    Column("merged", "MR mergées", 90, align="e"),
-    Column("score", "Score moyen", 96, kind="score", align="center"),
+    Column("person", t("Personne"), 220, kind="avatar", stretch=True),
+    Column("role", t("Rôle"), 80, kind="tip"),
+    Column("mr", t("MR"), 60, align="e"),
+    Column("merged", t("MR mergées"), 90, align="e"),
+    Column("score", t("Score moyen"), 96, kind="score", align="center"),
 ]
 # Medians in business days; the tooltip gives average, min and max (ST-14).
 DELAY_COLUMNS = [
-    Column("direct", "Commits directs", 110, align="e"),
-    Column("lead", "Délai création → merge", 150, kind="tip", align="e"),
-    Column("merge_delay", "Délai dernier commit → merge", 190, kind="tip", align="e"),
+    Column("direct", t("Commits directs"), 110, align="e"),
+    Column("lead", t("Délai création → merge"), 150, kind="tip", align="e"),
+    Column("merge_delay", t("Délai dernier commit → merge"), 190, kind="tip", align="e"),
 ]
 REPO_HEAD = [
-    Column("repo", "Dépôt", 220, kind="link", stretch=True),
-    Column("mr", "MR", 60, align="e"),
-    Column("merged", "MR mergées", 90, align="e"),
-    Column("score", "Score moyen", 96, kind="score", align="center"),
+    Column("repo", t("Dépôt"), 220, kind="link", stretch=True),
+    Column("mr", t("MR"), 60, align="e"),
+    Column("merged", t("MR mergées"), 90, align="e"),
+    Column("score", t("Score moyen"), 96, kind="score", align="center"),
 ]
 REPO_TAIL = [
-    Column("direct", "Commits directs", 110, align="e"),
-    Column("lead", "Délai création → merge", 150, kind="tip", align="e"),
+    Column("direct", t("Commits directs"), 110, align="e"),
+    Column("lead", t("Délai création → merge"), 150, kind="tip", align="e"),
 ]
 
 PERSON_SORT: dict[str, Callable[[PersonStats], Any]] = {
@@ -122,25 +123,25 @@ class StatsTab(DataTab):
         self._view_var = tk.StringVar(value=self._view)
         switch = ttk.Frame(top, style="Bar.TFrame")
         switch.pack(side="left", padx=(0, 18))
-        for value, text in ((PERSON, "Par personne"), (REPO, "Par dépôt")):
+        for value, text in ((PERSON, t("Par personne")), (REPO, t("Par dépôt"))):
             ttk.Radiobutton(switch, text=text, value=value, variable=self._view_var, style="Toolbutton",
                             command=lambda: self.set_view(self._view_var.get())).pack(side="left")
-        ttk.Label(top, text="Création du", style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
+        ttk.Label(top, text=t("Création du"), style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
         for index, var in enumerate((self._from, self._to)):
             if index:
                 ttk.Label(top, text="→", style="BarMuted.TLabel").pack(side="left", padx=4)
             entry = ttk.Entry(top, textvariable=var, width=10)
             entry.pack(side="left")
             entry.bind("<Return>", lambda e: self._apply_dates())
-        ttk.Button(top, text="Appliquer", command=self._apply_dates).pack(side="left", padx=(8, 0))
-        for text, period in (("7 jours", lambda: last_days(7)), ("30 jours", lambda: last_days(30)),
-                             ("Mois en cours", current_month), ("Année en cours", current_year)):
+        ttk.Button(top, text=t("Appliquer"), command=self._apply_dates).pack(side="left", padx=(8, 0))
+        for text, period in ((t("7 jours"), lambda: last_days(7)), (t("30 jours"), lambda: last_days(30)),
+                             (t("Mois en cours"), current_month), (t("Année en cours"), current_year)):
             ttk.Button(top, text=text, command=lambda p=period: self._shortcut(p())).pack(side="left", padx=(6, 0))
-        self._total_button = ttk.Button(top, text="Total", command=self._set_total)
+        self._total_button = ttk.Button(top, text=t("Total"), command=self._set_total)
         self._total_button.pack(side="left", padx=(6, 0))
-        self.repos = MultiSelect(bottom, "Dépôts", self._repos_changed, app.get_theme)
+        self.repos = MultiSelect(bottom, t("Dépôts"), self._repos_changed, app.get_theme)
         self.repos.pack(side="left")
-        self.authors = self.make_authors(bottom, "Personnes")
+        self.authors = self.make_authors(bottom, t("Personnes"))
         self.authors.pack(side="left", padx=(8, 0))
         self.refresh_button(bottom).pack(side="right")
 
@@ -154,8 +155,8 @@ class StatsTab(DataTab):
         self._hint = ttk.Label(status, style="BarMuted.TLabel")
         self._hint.pack(side="right")
 
-        self._person_grid = self.make_grid(HEAD_COLUMNS, "Aucune merge request sur cette période", master=self._card)
-        self._repo_grid = self.make_grid(REPO_HEAD, "Aucun dépôt", table="stats_repo", on_link=self._open_repo,
+        self._person_grid = self.make_grid(HEAD_COLUMNS, t("Aucune merge request sur cette période"), master=self._card)
+        self._repo_grid = self.make_grid(REPO_HEAD, t("Aucun dépôt"), table="stats_repo", on_link=self._open_repo,
                                          master=self._card)
         self.grid_view: DataGrid = self._person_grid
         self.update_columns()
@@ -183,7 +184,7 @@ class StatsTab(DataTab):
         self.grid_view = self._person_grid if self._view == PERSON else self._repo_grid
         self.grid_view.set_sort(self._sort_key, self._ascending)
         self.grid_view.pack(fill="both", expand=True)
-        self._hint.configure(text="Clic sur un dépôt : ses statistiques par personne" if self._view == REPO else "")
+        self._hint.configure(text=t("Clic sur un dépôt : ses statistiques par personne") if self._view == REPO else "")
 
     def _open_repo(self, path: str) -> None:
         """SR-05: per-person view restricted to the clicked repository."""
@@ -201,7 +202,7 @@ class StatsTab(DataTab):
         """One 'KO' column per active criterion (custom rules + fixed), in both views."""
         criteria = self.app.rules.criteria if self.app.rules else []
         self._criteria_ids = [c.id for c in criteria]
-        ko = [Column(f"ko:{c.id}", f"KO {c.label}", 60, align="e") for c in criteria]
+        ko = [Column(f"ko:{c.id}", t("KO {criterion}", criterion=c.label), 60, align="e") for c in criteria]
         self._person_grid.set_columns([*HEAD_COLUMNS, *ko, *DELAY_COLUMNS])
         self._repo_grid.set_columns([*REPO_HEAD, *ko, *REPO_TAIL])
         for view, keys in ((PERSON, self._person_keys()), (REPO, self._repo_keys())):
@@ -245,7 +246,7 @@ class StatsTab(DataTab):
         try:
             day_range(parse_date(self._from.get()), parse_date(self._to.get()))
         except ValueError:
-            self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA, la date de fin après la date de début.")
+            self.app.notify("error", t("Dates invalides : utilisez le format JJ/MM/AAAA, la date de fin après la date de début."))
             return
         self._total = False
         self._total_button.configure(style="TButton")
@@ -279,7 +280,7 @@ class StatsTab(DataTab):
         try:
             period = self._period()
         except ValueError:
-            self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA.")
+            self.app.notify("error", t("Dates invalides : utilisez le format JJ/MM/AAAA."))
             return
         projects = [p for p in self.app.settings.projects if not self._repos or p.id in self._repos]
         data, rules, people = self.app.data, self.app.rules, self.app.people
@@ -288,7 +289,7 @@ class StatsTab(DataTab):
         commit_period = period or (HISTORY_START, now_local())
         self._progress.pack(side="left", padx=8)
         self._progress.configure(value=0, maximum=1)
-        self._progress_text.configure(text="Chargement…")
+        self._progress_text.configure(text=t("Chargement…"))
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
             pairs, errors = load_pairs(projects, lambda p: load_all_states(data, p, period))
@@ -308,7 +309,7 @@ class StatsTab(DataTab):
 
     def _on_progress(self, done: int, total: int) -> None:
         self._progress.configure(maximum=max(total, 1), value=done)
-        self._progress_text.configure(text=f"Analyse : {done} / {total}")
+        self._progress_text.configure(text=t("Analyse : {done} / {total}", done=done, total=total))
 
     def _hide_progress(self) -> None:
         self._progress.pack_forget()
@@ -369,7 +370,7 @@ class StatsTab(DataTab):
             self._person_rows = sort_rows(rows, self._person_keys()[self._sort_key], self._ascending)
             weeks, series = weekly_scores(evaluations, sorted(authors))
             names = {e.author.key: e.author.name for e in evaluations}
-            curves = [Series("Global", series[GLOBAL_KEY], main=True)]
+            curves = [Series(t("Global"), series[GLOBAL_KEY], main=True)]
             curves += [Series(names.get(k, k), series[k]) for k in sorted(authors) if k in names]
         else:
             # The author filter restricts the MRs and commits counted (SR-03).
@@ -378,7 +379,7 @@ class StatsTab(DataTab):
             self._repo_rows = sort_rows(stats_repo, self._repo_keys()[self._sort_key], self._ascending)
             chosen = paths if self._repos else []
             weeks, series = weekly_scores(evaluations, chosen, key_of=by_repo)
-            curves = [Series("Global", series[GLOBAL_KEY], main=True)]
+            curves = [Series(t("Global"), series[GLOBAL_KEY], main=True)]
             curves += [Series(p.split("/")[-1], series[p]) for p in chosen]
         self._render()
         self.chart.set_data([week_label(w) for w in weeks], curves)
@@ -415,7 +416,7 @@ class StatsTab(DataTab):
                 "direct": str(stat.direct_commits),
                 "lead": (format_days(stat.lead_time_days), delay_details(stat.lead_times)),
                 "merge_delay": (format_days(stat.merge_delay_days), delay_details(stat.merge_delays))
-                if person.key in self._merge_repos else ("N/A", "Pas de droit de merge"),
+                if person.key in self._merge_repos else ("N/A", t("Pas de droit de merge")),
             })
         self._person_grid.set_rows(rows)
 
@@ -423,8 +424,8 @@ class StatsTab(DataTab):
         """'Mergeur' with its repositories as tooltip, or 'Dev'."""
         repos = self._merge_repos.get(key)
         if not repos:
-            return "Dev", ""
-        return "Mergeur", "Peut merger sur :\n" + "\n".join(repos)
+            return t("Dev"), ""
+        return t("Mergeur"), t("Peut merger sur :") + "\n" + "\n".join(repos)
 
     def forget_avatars(self) -> None:
         self._images.clear()

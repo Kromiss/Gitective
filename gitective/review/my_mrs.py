@@ -6,6 +6,7 @@ import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from gitective.shared.i18n import t
 from gitective.forge.models import MergeRequest, User
 from gitective.database.store import RoleKey, Store, decode, encode
 from gitective.settings.config_file import TrackedProject
@@ -79,10 +80,10 @@ def badge_tip(counts: BadgeCounts, word: str) -> str:
     """Badge tooltip, e.g. "3 assignée(s), dont 1 nouvelle(s) ; 1 brouillon(s)" (BA-01)."""
     tip = f"{counts.total} {word}"
     if counts.new:
-        tip += f", dont {counts.new} nouvelle(s)"
+        tip += t(", dont {count} nouvelle(s)", count=counts.new)
     if counts.drafts:
-        tip += f" ; {counts.drafts} brouillon(s)"
-    return tip + "\nClic : voir ces MR ouvertes"
+        tip += t(" ; {count} brouillon(s)", count=counts.drafts)
+    return tip + "\n" + t("Clic : voir ces MR ouvertes")
 
 
 def seen_on_click(items: Sequence[MyMr], seen: set[RoleKey], role: str) -> set[RoleKey]:
@@ -116,8 +117,8 @@ def role_title(roles: Iterable[str]) -> str:
     """Notification title naming the role (NO-08)."""
     roles = set(roles)
     if roles == {ASSIGNEE, REVIEWER}:
-        return "MR assignée + relecture"
-    return "MR assignée" if ASSIGNEE in roles else "Relecture demandée"
+        return t("MR assignée + relecture")
+    return t("MR assignée") if ASSIGNEE in roles else t("Relecture demandée")
 
 
 def merge_notices(
@@ -144,9 +145,9 @@ def merge_notices(
         author = people.for_user(mr.author)
         if mine is not None and author.key == mine:
             if own:
-                notices.append(Notice("own", "Votre MR a été mergée", mr, project.path, author.name, merger.name))
+                notices.append(Notice("own", t("Votre MR a été mergée"), mr, project.path, author.name, merger.name))
         elif others:
-            notices.append(Notice("merge", "Nouveau merge", mr, project.path, author.name, merger.name))
+            notices.append(Notice("merge", t("Nouveau merge"), mr, project.path, author.name, merger.name))
     return sorted(notices, key=lambda n: n.mr.merged_at or n.mr.created_at)
 
 
@@ -188,5 +189,5 @@ def new_mr_notices(
             continue
         author = people.for_user(mr.author)
         if author.key != mine:
-            notices.append(Notice("new", "Nouvelle MR", mr, project.path, author.name))
+            notices.append(Notice("new", t("Nouvelle MR"), mr, project.path, author.name))
     return sorted(notices, key=lambda n: n.mr.created_at)

@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Sequence
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.shared.i18n import t
 from gitective.review.rules import Evaluation
 from gitective.ui.components.grid import Column, DataGrid
 from gitective.ui.components.widgets import MultiSelect
@@ -50,14 +51,14 @@ class DataTab(ttk.Frame):
         grid.set_sort(self._sort_key, self._ascending)
         return grid
 
-    def make_authors(self, parent: tk.Misc, label: str = "Auteurs") -> MultiSelect:
+    def make_authors(self, parent: tk.Misc, label: str = t("Auteurs")) -> MultiSelect:
         """People selector bound to the shared author filter (FI-09)."""
-        widget = MultiSelect(parent, label, self._authors_changed, self.app.get_theme, all_text="Toutes")
+        widget = MultiSelect(parent, label, self._authors_changed, self.app.get_theme, all_text=t("Toutes"))
         widget.set_selected(self.app.filters.authors)
         return widget
 
     def refresh_button(self, parent: tk.Misc) -> ttk.Button:
-        return ttk.Button(parent, text="⟳  Rafraîchir (F5)", style="Accent.TButton", command=self.app.refresh)
+        return ttk.Button(parent, text=t("⟳  Rafraîchir (F5)"), style="Accent.TButton", command=self.app.refresh)
 
     # ------------------------------------------------------------- Loading
 

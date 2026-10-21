@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from gitective.shared.i18n import t
 from gitective.database.store import Store
 from gitective.database.sync import ForgeData
 from gitective.forge.models import Commit, MergeRequest
@@ -173,14 +174,15 @@ def copied_text(comparisons: Iterable[Comparison], people: PersonDirectory) -> s
     """Markdown of every computed line: a title per line, its MRs, then its commits without MR (TC-09)."""
     blocks = []
     for c in comparisons:
-        lines = [f"## {c.project.path.split('/')[-1]} : {c.reference.name} → {c.current.name}", ""]
+        lines = [t("## {repo} : {reference} → {current}", repo=c.project.path.split("/")[-1],
+                   reference=c.reference.name, current=c.current.name), ""]
         lines += [f"- !{mr.iid} {mr.title} — {people.for_user(mr.author).name}" for mr in c.ahead.mrs]
         if c.ahead.orphans:
-            lines += ["", "Commits sans MR :"]
+            lines += ["", t("Commits sans MR :")]
             lines += [f"- {o.short_id} {o.title} — {people.for_git(o.author_name, o.author_email).name}"
                       for o in c.ahead.orphans]
         if not c.ahead.commits:
-            lines.append("Aucune différence.")
+            lines.append(t("Aucune différence."))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n" if blocks else ""
 

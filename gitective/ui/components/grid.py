@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from tkinter import ttk
 from typing import Any
 
+from gitective.shared.i18n import t
 from gitective.ui.themes import Theme
 from gitective.ui.components.widgets import Tooltip
 
@@ -60,7 +61,7 @@ class DataGrid(ttk.Frame):
         get_theme: Callable[[], Theme],
         on_sort: Callable[[str], None] | None = None,
         on_link: Callable[[str], None] | None = None,
-        empty_text: str = "Aucune donnée",
+        empty_text: str = t("Aucune donnée"),
         widths: dict[str, int] | None = None,
         on_widths_changed: Callable[[dict[str, int]], None] | None = None,
         on_select: Callable[[int], None] | None = None,
@@ -235,7 +236,7 @@ class DataGrid(ttk.Frame):
             includes_me, others = value
             x = x0
             if includes_me:
-                item = self.body.create_text(x, mid, text="Moi", fill=theme.accent, font=bold, anchor="w")
+                item = self.body.create_text(x, mid, text=t("Moi"), fill=theme.accent, font=bold, anchor="w")
                 bbox = self.body.bbox(item)
                 x = (bbox[2] if bbox else x + 30)
                 if others:

@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.shared.i18n import t
 from gitective.forge.gitlab_client import GitLabClient
 from gitective.forge.models import Project, User
 from gitective.settings.config_file import TrackedProject
@@ -16,7 +17,7 @@ from gitective.ui.components.widgets import ProjectPicker
 if TYPE_CHECKING:
     from gitective.ui.app import App
 
-STEPS = ("Instance GitLab", "Token", "Test de connexion", "Dépôts")
+STEPS = (t("Instance GitLab"), t("Token"), t("Test de connexion"), t("Dépôts"))
 
 
 class Wizard(tk.Toplevel):
@@ -26,7 +27,7 @@ class Wizard(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         theme = app.get_theme()
-        self.title("Gitective — Assistant de démarrage")
+        self.title(t("Gitective — Assistant de démarrage"))
         self.geometry("620x520")
         self.configure(background=theme.bg)
         self.transient(app.root)
@@ -43,7 +44,7 @@ class Wizard(tk.Toplevel):
         header.pack(fill="x")
         if app.logo_small is not None:
             ttk.Label(header, image=app.logo_small).pack(side="left", padx=(0, 10))
-        ttk.Label(header, text="Bienvenue dans Gitective", style="Title.TLabel").pack(side="left")
+        ttk.Label(header, text=t("Bienvenue dans Gitective"), style="Title.TLabel").pack(side="left")
         self._steps_label = ttk.Label(self, style="Muted.TLabel", padding=(20, 0))
         self._steps_label.pack(fill="x")
         self._body = ttk.Frame(self, style="Surface.TFrame", padding=20)
@@ -52,10 +53,10 @@ class Wizard(tk.Toplevel):
         self._message.pack(fill="x")
         buttons = ttk.Frame(self, padding=20)
         buttons.pack(fill="x")
-        ttk.Button(buttons, text="Passer", command=self._skip).pack(side="left")
-        self._next = ttk.Button(buttons, text="Suivant", style="Accent.TButton", command=self._forward)
+        ttk.Button(buttons, text=t("Passer"), command=self._skip).pack(side="left")
+        self._next = ttk.Button(buttons, text=t("Suivant"), style="Accent.TButton", command=self._forward)
         self._next.pack(side="right")
-        self._back = ttk.Button(buttons, text="Précédent", command=self._backward)
+        self._back = ttk.Button(buttons, text=t("Précédent"), command=self._backward)
         self._back.pack(side="right", padx=8)
         self._show()
         self.grab_set()
@@ -67,35 +68,35 @@ class Wizard(tk.Toplevel):
         self._steps_label.configure(text="   ›   ".join(
             f"[{s}]" if i == self._step else s for i, s in enumerate(STEPS)))
         self._back.state(["!disabled"] if self._step else ["disabled"])
-        self._next.configure(text="Terminer" if self._step == len(STEPS) - 1 else "Suivant")
+        self._next.configure(text=t("Terminer") if self._step == len(STEPS) - 1 else t("Suivant"))
         getattr(self, f"_step_{self._step}")()
 
     def _step_0(self) -> None:
-        ttk.Label(self._body, text="Adresse de votre instance GitLab", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(self._body, text="Exemple : https://gitlab.mon-entreprise.fr", style="BarMuted.TLabel").pack(anchor="w", pady=(2, 8))
+        ttk.Label(self._body, text=t("Adresse de votre instance GitLab"), style="Section.TLabel").pack(anchor="w")
+        ttk.Label(self._body, text=t("Exemple : https://gitlab.mon-entreprise.fr"), style="BarMuted.TLabel").pack(anchor="w", pady=(2, 8))
         entry = ttk.Entry(self._body, textvariable=self.url)
         entry.pack(fill="x")
         entry.focus_set()
-        ttk.Checkbutton(self._body, text="Vérifier le certificat SSL", variable=self.verify_ssl).pack(anchor="w", pady=10)
+        ttk.Checkbutton(self._body, text=t("Vérifier le certificat SSL"), variable=self.verify_ssl).pack(anchor="w", pady=10)
 
     def _step_1(self) -> None:
-        ttk.Label(self._body, text="Token d'accès personnel", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(self._body, text=t("Token d'accès personnel"), style="Section.TLabel").pack(anchor="w")
         ttk.Label(self._body, wraplength=520, style="BarMuted.TLabel",
-                  text="Créez-le dans GitLab : Préférences › Jetons d'accès, avec uniquement le droit read_api. "
-                       "Il sera stocké en clair dans config.json, à côté de l'application.").pack(anchor="w", pady=(2, 8))
+                  text=t("Créez-le dans GitLab : Préférences › Jetons d'accès, avec uniquement le droit read_api. "
+                       "Il sera stocké en clair dans config.json, à côté de l'application.")).pack(anchor="w", pady=(2, 8))
         entry = ttk.Entry(self._body, textvariable=self.token, show="•")
         entry.pack(fill="x")
         entry.focus_set()
 
     def _step_2(self) -> None:
-        ttk.Label(self._body, text="Test de la connexion", style="Section.TLabel").pack(anchor="w")
-        self._test_result = ttk.Label(self._body, text="Test en cours…", style="Bar.TLabel", wraplength=520)
+        ttk.Label(self._body, text=t("Test de la connexion"), style="Section.TLabel").pack(anchor="w")
+        self._test_result = ttk.Label(self._body, text=t("Test en cours…"), style="Bar.TLabel", wraplength=520)
         self._test_result.pack(anchor="w", pady=10)
-        ttk.Button(self._body, text="Relancer le test", command=self._run_test).pack(anchor="w")
+        ttk.Button(self._body, text=t("Relancer le test"), command=self._run_test).pack(anchor="w")
         self._run_test()
 
     def _step_3(self) -> None:
-        ttk.Label(self._body, text="Dépôts à contrôler", style="Section.TLabel").pack(anchor="w", pady=(0, 6))
+        ttk.Label(self._body, text=t("Dépôts à contrôler"), style="Section.TLabel").pack(anchor="w", pady=(0, 6))
         self._picker = ProjectPicker(self._body, self.app.get_theme)
         self._picker.pack(fill="both", expand=True)
         checked = [p.id for p in self.settings.projects]
@@ -120,12 +121,13 @@ class Wizard(tk.Toplevel):
 
     def _run_test(self) -> None:
         self._user = None
-        self._test_result.configure(text="Test en cours…")
+        self._test_result.configure(text=t("Test en cours…"))
 
         def done(user: User) -> None:
             if self.winfo_exists() and self._step == 2:
                 self._user = user
-                self._test_result.configure(text=f"✔  Connecté en tant que {user.username} ({user.name}).")
+                self._test_result.configure(text="✔  " + t("Connecté en tant que {name} ({username})", name=user.name,
+                                                                       username=user.username) + ".")
 
         def failed(exc: BaseException) -> None:
             if self.winfo_exists() and self._step == 2:
@@ -139,13 +141,13 @@ class Wizard(tk.Toplevel):
 
     def _forward(self) -> None:
         if self._step == 0 and not self.url.get().strip().startswith(("http://", "https://")):
-            self._message.configure(text="L'URL doit commencer par http:// ou https://")
+            self._message.configure(text=t("L'URL doit commencer par http:// ou https://"))
             return
         if self._step == 1 and not self.token.get().strip():
-            self._message.configure(text="Le token est obligatoire.")
+            self._message.configure(text=t("Le token est obligatoire."))
             return
         if self._step == 2 and self._user is None:
-            self._message.configure(text="La connexion doit réussir avant de continuer (ou passez l'assistant).")
+            self._message.configure(text=t("La connexion doit réussir avant de continuer (ou passez l'assistant)."))
             return
         if self._step == len(STEPS) - 1:
             self._finish()
@@ -171,7 +173,7 @@ class Wizard(tk.Toplevel):
         self.grab_release()
         self.destroy()
         self.app.apply_settings(self.settings)
-        self.app.notify("success", "Configuration enregistrée. Complétez les règles du process dans l'onglet Config.")
+        self.app.notify("success", t("Configuration enregistrée. Complétez les règles du process dans l'onglet Config."))
 
     def _skip(self) -> None:
         """Skip: save what was typed so the wizard does not reappear (AS-03)."""

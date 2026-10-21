@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.shared.i18n import t
 from gitective.forge.errors import ForgeError
 from gitective.shared.dates import now_local, to_local
 from gitective.review.mr_evaluation import evaluate_all, load_all_states, load_merge_requests, load_pairs
@@ -32,10 +33,10 @@ PAD, GAP, INNER = 20, 16, 22
 STATUS_H, DAILY_H = 26, 150
 TICK_MS = 30_000
 
-DAY_NAMES = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
-WEEKDAYS = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
-MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
-          "septembre", "octobre", "novembre", "décembre")
+DAY_NAMES = (t("Lun"), t("Mar"), t("Mer"), t("Jeu"), t("Ven"), t("Sam"), t("Dim"))
+WEEKDAYS = (t("Lundi"), t("Mardi"), t("Mercredi"), t("Jeudi"), t("Vendredi"), t("Samedi"), t("Dimanche"))
+MONTHS = (t("janvier"), t("février"), t("mars"), t("avril"), t("mai"), t("juin"), t("juillet"), t("août"),
+          t("septembre"), t("octobre"), t("novembre"), t("décembre"))
 
 Loaded = tuple[OverviewData, list[Evaluation], list[ForgeError]]
 
@@ -50,10 +51,10 @@ def blend(a: str, b: str, ratio: float) -> str:
 def day_label(day: date, today: date) -> str:
     """Group title of the latest merges: 'Aujourd'hui', 'Hier' or 'Vendredi 9 octobre'."""
     if day == today:
-        return "Aujourd'hui"
+        return t("Aujourd'hui")
     if day == today - timedelta(days=1):
-        return "Hier"
-    return f"{WEEKDAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
+        return t("Hier")
+    return t("{weekday} {day} {month}", weekday=WEEKDAYS[day.weekday()], day=day.day, month=MONTHS[day.month - 1])
 
 
 def nice_step(maximum: float, ticks: int = 4) -> int:
@@ -74,7 +75,7 @@ class OverviewTab(ttk.Frame):
         self.app = app
         self.dirty = True
         self._data: OverviewData | None = None
-        self._message = "Chargement…"
+        self._message = t("Chargement…")
         self._synced_at: datetime | None = None
         self._fonts: dict[tuple[str, int, str], tkfont.Font] = {}
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
@@ -109,7 +110,7 @@ class OverviewTab(ttk.Frame):
     def reload(self) -> None:
         self.dirty = False
         if not self.app.ensure_connection():
-            self._data, self._message = None, "Configurez la connexion et les dépôts dans l'onglet Config."
+            self._data, self._message = None, t("Configurez la connexion et les dépôts dans l'onglet Config.")
             self.redraw()
             return
         data_source, rules, people = self.app.data, self.app.rules, self.app.people
@@ -273,9 +274,9 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         y = PAD + STATUS_H / 2
         count = len(self.app.settings.projects)
-        self._text(PAD, y, f"{count} dépôt{'s' if count > 1 else ''} suivi{'s' if count > 1 else ''}"
-                   " · MR mergées, brouillons exclus", 13, theme.muted, anchor="w")
-        chip = "F11 · Plein écran"
+        tracked = t("{count} dépôts suivis", count=count) if count > 1 else t("{count} dépôt suivi", count=count)
+        self._text(PAD, y, tracked + t(" · MR mergées, brouillons exclus"), 13, theme.muted, anchor="w")
+        chip = t("F11 · Plein écran")
         font = self._font(12)
         chip_w = font.measure(chip) + 18
         self._box(width - PAD - chip_w, y - 12, width - PAD, y + 12, 6 if theme.radius else 0,
@@ -283,10 +284,10 @@ class OverviewTab(ttk.Frame):
         self._text(width - PAD - chip_w / 2, y, chip, 12, theme.muted, anchor="center")
         parts = []
         if self._synced_at:
-            parts.append(f"Synchronisé à {self._synced_at:%H:%M}")
+            parts.append(t("Synchronisé à {time}", time=f"{self._synced_at:%H:%M}"))
         if self.app.next_sync:
             minutes = max(0, math.ceil((self.app.next_sync - now_local()).total_seconds() / 60))
-            parts.append(f"prochaine synchronisation dans {minutes} min")
+            parts.append(t("prochaine synchronisation dans {minutes} min", minutes=minutes))
         status = " · ".join(parts)
         right = width - PAD - chip_w - 16
         self._text(right, y, status, 13, theme.muted, anchor="e")
@@ -299,14 +300,14 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         fill = theme.feature or self._card_fill()
         self._card(x, y, w, h, fill)
-        self._text(x + INNER, y + 18, "Derniers merges", 22, weight="bold")
-        self._text(x + INNER, y + 50, "Tous les dépôts suivis · du plus récent au plus ancien", 12, theme.muted)
+        self._text(x + INNER, y + 18, t("Derniers merges"), 22, weight="bold")
+        self._text(x + INNER, y + 50, t("Tous les dépôts suivis · du plus récent au plus ancien"), 12, theme.muted)
         self._text(x + w - INNER, y + 12, str(data.today_count), 38, theme.accent, "bold", anchor="ne")
-        self._text(x + w - INNER, y + 58, "aujourd'hui", 12, theme.muted, anchor="ne")
+        self._text(x + w - INNER, y + 58, t("aujourd'hui"), 12, theme.muted, anchor="ne")
         line = blend(fill, theme.border, 0.8) if theme.relief != "raised" else "#808080"
         self.canvas.create_line(x + 1, y + 84, x + w - 1, y + 84, fill=line)
         if not data.feed:
-            self._text(x + w / 2, y + h / 2, f"Aucun merge sur les {WEEKS} dernières semaines", 14,
+            self._text(x + w / 2, y + h / 2, t("Aucun merge sur les {weeks} dernières semaines", weeks=WEEKS), 14,
                        theme.muted, anchor="center")
             return
         today = now_local().date()
@@ -385,14 +386,14 @@ class OverviewTab(ttk.Frame):
         """Merges per day, this week and last week (VE-06)."""
         theme = self.app.get_theme()
         self._card(x, y, w, h)
-        self._header(x, y, w, "Merges par jour", "Total")
+        self._header(x, y, w, t("Merges par jour"), t("Total"))
         label_w, total_w, gap = 108, 44, 6
         cell_w = (w - 2 * INNER - label_w - total_w - 7 * gap) / 7
         left = x + INNER + label_w
         for index, name in enumerate(DAY_NAMES):
             self._text(left + index * (cell_w + gap) + cell_w / 2, y + 50, name, 11, theme.muted, anchor="center")
-        rows = (("Cette semaine", data.this_week, data.this_week_scores),
-                ("Sem. dernière", data.last_week, data.last_week_scores))
+        rows = ((t("Cette semaine"), data.this_week, data.this_week_scores),
+                (t("Sem. dernière"), data.last_week, data.last_week_scores))
         for number, (label, values, scores) in enumerate(rows):
             top = y + 62 + number * 38
             self._text(x + INNER, top + 15, label, 13, theme.muted, anchor="w")
@@ -414,10 +415,10 @@ class OverviewTab(ttk.Frame):
         """Average score of the last 30 days and its trend (VE-07)."""
         theme = self.app.get_theme()
         self._card(x, y, w, h)
-        subtitle = f"{SCORE_DAYS} derniers jours · {data.merged_count} MR"
-        self._header(x, y, w, "Score moyen", subtitle)
+        subtitle = t("{days} derniers jours · {count} MR", days=SCORE_DAYS, count=data.merged_count)
+        self._header(x, y, w, t("Score moyen"), subtitle)
         if data.score is None:
-            self._text(x + w / 2, y + h / 2, "Aucune MR mergée", 14, theme.muted, anchor="center")
+            self._text(x + w / 2, y + h / 2, t("Aucune MR mergée"), 14, theme.muted, anchor="center")
             return
         color = self._level(data.score)[1]
         # The number takes whatever height the header, trend and gauge leave (fits small windows).
@@ -434,10 +435,10 @@ class OverviewTab(ttk.Frame):
             delta = round(data.score - data.previous_score)
             colors = theme.green if delta > 0 else theme.red if delta < 0 else theme.na
             sign = "▲ +" if delta > 0 else "▼ −" if delta < 0 else "= "
-            text = f"{sign}{abs(delta)} pt{'s' if abs(delta) > 1 else ''}"
+            text = sign + (t("{count} pts", count=abs(delta)) if abs(delta) > 1 else t("{count} pt", count=abs(delta)))
             right = x + INNER + self._font(14, "bold").measure(text) + 18
             self._pill(right, line_y, text, colors, 14)
-            self._text(right + 10, line_y, f"vs {SCORE_DAYS} j précédents ({data.previous_score:.0f} %)", 12,
+            self._text(right + 10, line_y, t("vs {days} j précédents ({score} %)", days=SCORE_DAYS, score=f"{data.previous_score:.0f}"), 12,
                        theme.muted, anchor="w", width=x + w - INNER - right - 10)
         self._bar(x + INNER, bar_y, x + w - INNER, bar_y + 10, data.score / 100, color)
         orange = self.app.settings.orange_threshold
@@ -451,7 +452,7 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         settings = self.app.settings
         self._card(x, y, w, h)
-        self._text(x + INNER, y + 18, "Qualité des MR mergées par semaine", 14, weight="bold")
+        self._text(x + INNER, y + 18, t("Qualité des MR mergées par semaine"), 14, weight="bold")
         legend = ((theme.green[1], f"≥ {settings.green_threshold:g} %"),
                   (theme.orange[1], f"≥ {settings.orange_threshold:g} %"),
                   (theme.red[1], f"< {settings.orange_threshold:g} %"))
@@ -486,8 +487,9 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         self._card(x, y, w, h)
         count = len(data.repos)
-        self._header(x, y, w, "Classement des dépôts",
-                     f"{count} dépôt{'s' if count > 1 else ''} · score moyen sur {SCORE_DAYS} jours")
+        self._header(x, y, w, t("Classement des dépôts"),
+                     (t("{count} dépôts", count=count) if count > 1 else t("{count} dépôt", count=count))
+                     + t(" · score moyen sur {days} jours", days=SCORE_DAYS))
         if not count:
             return
         columns = 2 if count > 6 else 1
@@ -518,9 +520,9 @@ class OverviewTab(ttk.Frame):
         theme = self.app.get_theme()
         self._card(x, y, w, h)
         total = sum(c for _, c in data.kos)
-        self._header(x, y, w, "Règles enfreintes", f"{total} KO · {SCORE_DAYS} jours")
+        self._header(x, y, w, t("Règles enfreintes"), t("{count} KO · {days} jours", count=total, days=SCORE_DAYS))
         if not data.kos:
-            self._text(x + w / 2, y + h / 2, "Aucune règle active", 13, theme.muted, anchor="center")
+            self._text(x + w / 2, y + h / 2, t("Aucune règle active"), 13, theme.muted, anchor="center")
             return
         top = y + 58
         row_h = min(34, (y + h - 12 - top) / len(data.kos))
@@ -536,10 +538,10 @@ class OverviewTab(ttk.Frame):
         """Created and merged MRs per week, with an MR-count axis (VE-11)."""
         theme = self.app.get_theme()
         self._card(x, y, w, h)
-        self._text(x + INNER, y + 18, "MR créées / mergées par semaine", 14, weight="bold")
+        self._text(x + INNER, y + 18, t("MR créées / mergées par semaine"), 14, weight="bold")
         lx = x + w - INNER
         created_color = blend(theme.muted, self._card_fill(), 0.35) if theme.relief != "raised" else theme.muted
-        for color, label in ((theme.accent, "Mergées"), (created_color, "Créées")):
+        for color, label in ((theme.accent, t("Mergées")), (created_color, t("Créées"))):
             lx -= self._font(12).measure(label)
             self._text(lx, y + 26, label, 12, theme.muted, anchor="w")
             lx -= 22
@@ -573,5 +575,6 @@ class OverviewTab(ttk.Frame):
                 self.canvas.create_oval(px - 3, py - 3, px + 3, py + 3, fill=theme.accent, outline="")
                 if index % 3 == 0 or index == count - 1:
                     self._text(px, bottom + 8, data.week_labels[index], 11, theme.muted, anchor="n")
-            self._text(x + INNER, y + h - 18, f"Semaine dernière : {data.created[-1]} créées, "
-                       f"{data.merged[-1]} mergées", 12, theme.muted, anchor="sw")
+            self._text(x + INNER, y + h - 18, t("Semaine dernière : {created} créées, {merged} mergées",
+                                                 created=data.created[-1], merged=data.merged[-1]),
+                       12, theme.muted, anchor="sw")

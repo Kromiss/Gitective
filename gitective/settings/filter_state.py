@@ -5,17 +5,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import date
 
+from gitective.shared.i18n import t
 from gitective.settings.config_file import DRAFT_MODES, Filters
 from gitective.shared.dates import Period, day_range, format_date, now_local, parse_date, since_yesterday
 
 Listener = Callable[[str], None]
 
 # "direct" lists the commits pushed without a merge request (CO-01).
-STATES = (("merged", "Mergées"), ("opened", "Ouvertes"), ("closed", "Fermées"), ("direct", "Commits directs"))
+STATES = (("merged", t("Mergées")), ("opened", t("Ouvertes")), ("closed", t("Fermées")), ("direct", t("Commits directs")))
 DATED_STATES = ("merged", "direct")
 PEOPLE_STATES = ("merged", "opened", "closed")  # assignee and reviewer filters (FI-14, FI-15)
 DRAFT_STATES = ("opened", "closed")  # a merged MR is never a draft (FI-17)
-DRAFT_LABELS = {"all": "Inclus", "exclude": "Exclus", "only": "Seulement"}
+DRAFT_LABELS = {"all": t("Inclus"), "exclude": t("Exclus"), "only": t("Seulement")}
 
 
 class FilterState:
@@ -60,9 +61,9 @@ class FilterState:
 
     def period_text(self) -> str:
         if self.total:
-            return "Total (sans limite de date)"
+            return t("Total (sans limite de date)")
         if self.since_yesterday:
-            return "Depuis hier (hier 00:00 → maintenant)"
+            return t("Depuis hier (hier 00:00 → maintenant)")
         return f"{self.date_from} → {self.date_to}"
 
     def to_settings(self) -> Filters:

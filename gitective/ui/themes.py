@@ -7,6 +7,7 @@ import tkinter as tk
 from dataclasses import dataclass
 from tkinter import ttk
 
+from gitective.shared.i18n import t
 from gitective.ui.rounded import blend, rounded_png
 
 CONTROL_RADIUS = 7  # corner radius of buttons and fields in the rounded themes
@@ -72,7 +73,7 @@ class Theme:
 
 THEMES: dict[str, Theme] = {
     "default": Theme(
-        key="default", label="Default", bg="#0B1020", surface="#131A2E", text="#EEF1F8", muted="#A3ADC4",
+        key="default", label=t("Default"), bg="#0B1020", surface="#131A2E", text="#EEF1F8", muted="#A3ADC4",
         border="#26304B", header="#1A2238", accent="#5ED3C6", accent_text="#0B1020", highlight="#8BE6DB",
         link="#7FE0D5", ok=("#163A2E", "#5FD99E"), ko=("#3D1E22", "#FF7D74"), na=("#1E2740", "#A3ADC4"),
         green=("#163A2E", "#5FD99E"), orange=("#3A2D16", "#F5B95C"), red=("#3D1E22", "#FF7D74"),
@@ -82,7 +83,7 @@ THEMES: dict[str, Theme] = {
         radius=16, feature="#172139", accent2="#9FB4FF", selection="#22395A",
     ),
     "light": Theme(
-        key="light", label="Clair", bg="#F5F5F2", surface="#FFFFFF", text="#1C2230", muted="#5E6676",
+        key="light", label=t("Clair"), bg="#F5F5F2", surface="#FFFFFF", text="#1C2230", muted="#5E6676",
         border="#D9DAD5", header="#F0F1EE", accent="#2B3A5C", accent_text="#FFFFFF", highlight="#C9622F",
         link="#2B3A5C", ok=("#E3F3E9", "#17643A"), ko=("#FCE8E6", "#A8201A"), na=("#ECEDEF", "#4B5563"),
         green=("#E3F3E9", "#17643A"), orange=("#FDF0DC", "#8A4205"), red=("#FCE8E6", "#A8201A"),
@@ -91,7 +92,7 @@ THEMES: dict[str, Theme] = {
         accent2="#6B4FB8", selection="#E4E9F4",
     ),
     "dark": Theme(
-        key="dark", label="Sombre", bg="#16191F", surface="#1F232B", text="#E6E8EC", muted="#9AA1AE",
+        key="dark", label=t("Sombre"), bg="#16191F", surface="#1F232B", text="#E6E8EC", muted="#9AA1AE",
         border="#323844", header="#262B35", accent="#6C8CD5", accent_text="#0E1116", highlight="#E08A54",
         link="#8FB0F5", ok=("#183A27", "#7FD8A2"), ko=("#4A1E1C", "#FF9D94"), na=("#2C313B", "#AEB4BF"),
         green=("#183A27", "#7FD8A2"), orange=("#46341A", "#F5C27A"), red=("#4A1E1C", "#FF9D94"),
@@ -101,7 +102,7 @@ THEMES: dict[str, Theme] = {
         accent2="#B39DEB", selection="#2B3550",
     ),
     "win95": Theme(
-        key="win95", label="Windows 95", bg="#C0C0C0", surface="#FFFFFF", text="#000000", muted="#404040",
+        key="win95", label=t("Windows 95"), bg="#C0C0C0", surface="#FFFFFF", text="#000000", muted="#404040",
         border="#808080", header="#C0C0C0", accent="#000080", accent_text="#FFFFFF", highlight="#000080",
         link="#0000EE", ok=("#C0C0C0", "#006400"), ko=("#C0C0C0", "#B00000"), na=("#C0C0C0", "#404040"),
         green=("#C0C0C0", "#006400"), orange=("#C0C0C0", "#8A5A00"), red=("#C0C0C0", "#B00000"),
@@ -111,7 +112,7 @@ THEMES: dict[str, Theme] = {
         accent2="#008080", selection="#C8D0F0",
     ),
     "matrix": Theme(
-        key="matrix", label="Matrix", bg="#000000", surface="#030A03", text="#33FF66", muted="#1E9C40",
+        key="matrix", label=t("Matrix"), bg="#000000", surface="#030A03", text="#33FF66", muted="#1E9C40",
         border="#0F4A1E", header="#061406", accent="#33FF66", accent_text="#000000", highlight="#B6FFC8",
         link="#7CFF9E", ok=("#0B3A16", "#66FF8A"), ko=("#1A1A1A", "#7FB08A"), na=("#0A0F0A", "#5A6B5A"),
         green=("#0B3A16", "#66FF8A"), orange=("#102810", "#B6FFC8"), red=("#1A1A1A", "#7FB08A"),

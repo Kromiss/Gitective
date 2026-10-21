@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from gitective.shared.i18n import t
 from datetime import date, datetime, time, timedelta
 
 DATE_FORMAT = "%d/%m/%Y"
@@ -101,4 +102,4 @@ def week_key(value: datetime) -> tuple[int, int]:
 
 
 def week_label(key: tuple[int, int]) -> str:
-    return f"S{key[1]:02d}"
+    return t("S{week}", week=f"{key[1]:02d}")

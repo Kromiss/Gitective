@@ -8,6 +8,7 @@ from datetime import date
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
+from gitective.shared.i18n import t
 from gitective.reporting.statistics import average
 from gitective.review.mr_evaluation import Pair, evaluate_all, load_merge_requests, load_pairs
 from gitective.review.mr_filters import mr_shas, names, people_cell, people_choices, step_selection, visible
@@ -25,22 +26,23 @@ from gitective.ui.tabs.mr_detail_panel import MrDetailPanel
 if TYPE_CHECKING:
     from gitective.ui.app import App
 
-STATE_WORDS = {"merged": "mergée(s)", "opened": "ouverte(s)", "closed": "fermée(s)", "direct": ""}
+STATE_WORDS = {"merged": t("{count} MR mergée(s)"), "opened": t("{count} MR ouverte(s)"), "closed": t("{count} MR fermée(s)"),
+               "direct": "{count} MR"}
 STATUS_ORDER = {"ok": 0, "na": 1, "ko": 2}
-NOT_TRACKED = " (non suivi)"
+NOT_TRACKED = t(" (non suivi)")
 
-NEW_COLUMN = Column("new", "Nouvelle", 30, kind="dot", align="center")
+NEW_COLUMN = Column("new", t("Nouvelle"), 30, kind="dot", align="center")
 BASE_COLUMNS = [
-    Column("repo", "Dépôt", 120),
-    Column("title", "Titre", 260, kind="link", stretch=True),
-    Column("author", "Auteur", 115),
-    Column("assignees", "Assignés", 120, kind="people"),
-    Column("reviewers", "Relecteurs", 120, kind="people"),
-    Column("merger", "Mergeur", 115, kind="flag"),
-    Column("created", "Créée", 142, kind="mono"),
-    Column("merged", "Mergée", 142, kind="mono"),
+    Column("repo", t("Dépôt"), 120),
+    Column("title", t("Titre"), 260, kind="link", stretch=True),
+    Column("author", t("Auteur"), 115),
+    Column("assignees", t("Assignés"), 120, kind="people"),
+    Column("reviewers", t("Relecteurs"), 120, kind="people"),
+    Column("merger", t("Mergeur"), 115, kind="flag"),
+    Column("created", t("Créée"), 142, kind="mono"),
+    Column("merged", t("Mergée"), 142, kind="mono"),
 ]
-SCORE_COLUMN = Column("score", "Score", 66, kind="score", align="center")
+SCORE_COLUMN = Column("score", t("Score"), 66, kind="score", align="center")
 
 
 BASE_SORT: dict[str, Callable[[Evaluation], Any]] = {
@@ -98,15 +100,15 @@ class MrTab(DataTab):
         summary.pack(fill="x")
         self._count = ttk.Label(summary, style="Section.TLabel")
         self._count.pack(side="left")
-        ttk.Label(summary, text="Score moyen", style="BarMuted.TLabel").pack(side="left", padx=(18, 6))
+        ttk.Label(summary, text=t("Score moyen"), style="BarMuted.TLabel").pack(side="left", padx=(18, 6))
         self._avg = tk.Label(summary, padx=8, pady=1)
         self._avg.pack(side="left")
         self._progress_text = ttk.Label(summary, style="BarMuted.TLabel")
         self._progress_text.pack(side="left", padx=(18, 6))
         self._progress = ttk.Progressbar(summary, length=220, mode="determinate")
-        ttk.Label(summary, text="Clic sur un titre : ouvre GitLab · sur la ligne : détail",
+        ttk.Label(summary, text=t("Clic sur un titre : ouvre GitLab · sur la ligne : détail"),
                   style="BarMuted.TLabel").pack(side="right")
-        self.grid_view = self.make_grid(BASE_COLUMNS, "Aucune merge request pour ces filtres", links=True,
+        self.grid_view = self.make_grid(BASE_COLUMNS, t("Aucune merge request pour ces filtres"), links=True,
                                         master=card, on_select=self._row_selected)
         self.grid_view.pack(fill="both", expand=True)
         self.pager = Pager(left, self._page_changed, page_size=app.filters.page_size)
@@ -212,7 +214,7 @@ class MrTab(DataTab):
         try:
             period = self.app.filters.period() if state == "merged" else None
         except ValueError:
-            self.app.notify("error", "Dates invalides : utilisez le format JJ/MM/AAAA.")
+            self.app.notify("error", t("Dates invalides : utilisez le format JJ/MM/AAAA."))
             return
         projects = self.app.selected_projects()
         tracked_ids = {p.id for p in self.app.settings.projects}
@@ -226,14 +228,14 @@ class MrTab(DataTab):
         assert rules is not None
         workers = self.app.settings.parallel_requests
         # "Total" reads the history missing from the base, repository by repository (FI-19).
-        phase = ["Chargement de l'historique absent de la base" if period is None and state == "merged"
-                 else "Chargement des MR"]
+        phase = [t("Chargement de l'historique absent de la base") if period is None and state == "merged"
+                 else t("Chargement des MR")]
         self._show_progress(phase[0], 0, len(projects))
         store = self.app.store
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
             pairs, errors = load_pairs(projects, lambda p: load_merge_requests(data, p, state, period), progress)
-            phase[0] = "Lecture des commits des MR"
+            phase[0] = t("Lecture des commits des MR")
             evaluations = evaluate_all(data, [*pairs, *extra], rules, people, progress, workers)
             return evaluations, list(errors), store.mr_commit_shas({e.mr.project_id for e in evaluations})
 
@@ -241,7 +243,7 @@ class MrTab(DataTab):
                             on_progress=lambda done, total: self._show_progress(phase[0], done, total))
 
     def _show_progress(self, text: str, done: int, total: int) -> None:
-        self._progress_text.configure(text=f"{text} : {done} / {total}" if total else text)
+        self._progress_text.configure(text=t("{label} : {value}", label=text, value=f"{done} / {total}") if total else text)
         self._progress.configure(maximum=max(total, 1), value=done)
         if not self._progress.winfo_ismapped():
             self._progress.pack(side="left", after=self._progress_text)
@@ -292,7 +294,7 @@ class MrTab(DataTab):
     def _show_summary(self) -> None:
         theme = self.app.get_theme()
         count = len(self._visible_rows)
-        self._count.configure(text=f"{count} MR {STATE_WORDS[self.app.filters.state]}")
+        self._count.configure(text=STATE_WORDS[self.app.filters.state].format(count=count))
         # Drafts are shown but never counted in the average (FI-08).
         scores = [e.score for e in self._visible_rows if not e.mr.draft]
         if scores:
@@ -330,7 +332,7 @@ class MrTab(DataTab):
                 "_selected": _key(ev) == self._selected,
             }
             if mr.draft:
-                row["_muted"], row["_tag"] = True, "BROUILLON"
+                row["_muted"], row["_tag"] = True, t("BROUILLON")
             else:
                 # Which SHA the search found: "merge 4f1a9c2e" before the title (FI-20).
                 row["_tag"] = sha_hit(needle, mr_shas(ev, self._commit_shas))

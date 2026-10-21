@@ -7,6 +7,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from gitective.shared.i18n import t
 from gitective.forge.models import Commit, MergeRequest
 from gitective.repository.tag_compare import CompareError, Comparison, compare, copied_text, ref_choices
 from gitective.review.rules import Evaluation, score_level
@@ -19,8 +20,8 @@ if TYPE_CHECKING:
     from gitective.ui.app import App
 
 # (title, minimum width in characters) of the line columns; the ✕ column has no title.
-HEADERS = (("Dépôt", 14), ("Current", 12), ("Référence", 12), ("Date current", 16), ("Date référence", 16),
-           ("MR", 5), ("Hors MR", 8), ("Score", 7), ("Divergence", 10))
+HEADERS = ((t("Dépôt"), 14), (t("Current"), 12), (t("Référence"), 12), (t("Date current"), 16),
+           (t("Date référence"), 16), (t("MR"), 5), (t("Hors MR"), 8), (t("Score"), 7), (t("Divergence"), 10))
 COMBO_COLUMNS = 3  # Dépôt, Current, Référence are combo boxes, the others labels
 DATE_COLUMNS = (4, 5)  # hidden while the detail panel is open, which shows them (like DE-03)
 
@@ -56,11 +57,11 @@ class TagCompareView(ttk.Frame):
 
         bar = ttk.Frame(self, style="Card.TFrame", padding=(14, 12))
         bar.pack(fill="x", padx=16, pady=(12, 0))
-        ttk.Button(bar, text="+ Ajouter une ligne", command=self._add).pack(side="left")
-        ttk.Label(bar, text="Les MR présentes dans Current et absentes de Référence, d'après l'historique Git",
+        ttk.Button(bar, text=t("+ Ajouter une ligne"), command=self._add).pack(side="left")
+        ttk.Label(bar, text=t("Les MR présentes dans Current et absentes de Référence, d'après l'historique Git"),
                   style="BarMuted.TLabel").pack(side="left", padx=(16, 0))
-        ttk.Button(bar, text="⟳  Rafraîchir (F5)", style="Accent.TButton", command=app.refresh).pack(side="right")
-        ttk.Button(bar, text="⧉  Copier en Markdown", command=self._copy).pack(side="right", padx=(0, 8))
+        ttk.Button(bar, text=t("⟳  Rafraîchir (F5)"), style="Accent.TButton", command=app.refresh).pack(side="right")
+        ttk.Button(bar, text=t("⧉  Copier en Markdown"), command=self._copy).pack(side="right", padx=(0, 8))
 
         self._split = ttk.PanedWindow(self, orient="horizontal")
         self._split.pack(fill="both", expand=True, padx=16, pady=(12, 12))
@@ -69,8 +70,8 @@ class TagCompareView(ttk.Frame):
         self._table = tk.Frame(card, takefocus=True, highlightthickness=0)
         self._table.pack(anchor="nw")
         self._empty = ttk.Label(card, style="BarMuted.TLabel",
-                                text="Aucune ligne : « + Ajouter une ligne », puis choisissez un dépôt, "
-                                     "le tag ou la branche Current et le tag de Référence.")
+                                text=t("Aucune ligne : « + Ajouter une ligne », puis choisissez un dépôt, "
+                                     "le tag ou la branche Current et le tag de Référence."))
         for key, step in (("<Up>", -1), ("<Down>", 1)):
             self._table.bind(key, lambda e, s=step: self._move(s))
         self._table.bind("<Escape>", lambda e: self.close_detail())
@@ -96,7 +97,7 @@ class TagCompareView(ttk.Frame):
     def _add(self) -> None:
         projects = self._projects()
         if not projects:
-            self.app.notify("info", "Aucun dépôt suivi : choisissez les dépôts dans l'onglet Config.")
+            self.app.notify("info", t("Aucun dépôt suivi : choisissez les dépôts dans l'onglet Config."))
             return
         # A new line starts on the repository of the last one, the usual case of a multi-repository delivery.
         last = self._lines[-1].line.project_id if self._lines else projects[0].id
@@ -219,7 +220,7 @@ class TagCompareView(ttk.Frame):
             if not result.behind.empty:
                 texts[5], colors[5] = f"⚠ {result.behind.commits}", theme.orange
         elif not item.complete:
-            texts[0] = "Choisissez Current et Référence"
+            texts[0] = t("Choisissez Current et Référence")
             colors[0] = (bg, theme.muted)
         mono = (theme.mono[0], theme.mono[1] - 1)
         for index, (label, text, (back, fore)) in enumerate(zip(item.labels, texts, colors)):
@@ -269,14 +270,14 @@ class TagCompareView(ttk.Frame):
         """In the background, as soon as the line is complete (TC-04)."""
         project = self._project(item.line.project_id)
         if project is None:
-            item.error = "Dépôt non suivi"
+            item.error = t("Dépôt non suivi")
             self._fill(item, self.app.get_theme())
             return
         line = item.line
         data, rules, people = self.app.data, self.app.rules, self.app.people
         assert rules is not None
         workers = self.app.settings.parallel_requests
-        item.progress = "Calcul…"
+        item.progress = t("Calcul…")
         self._fill(item, self.app.get_theme())
 
         def task(progress: Callable[[int, int], None]) -> Comparison:
@@ -299,7 +300,7 @@ class TagCompareView(ttk.Frame):
                 return
             item.progress = ""
             known = isinstance(exc, CompareError)
-            item.error = str(exc) if known else "Calcul impossible : instance injoignable ou droits insuffisants"
+            item.error = str(exc) if known else t("Calcul impossible : instance injoignable ou droits insuffisants")
             if not known:
                 self.app.report_error(exc)
             self._fill(item, self.app.get_theme())
@@ -308,7 +309,7 @@ class TagCompareView(ttk.Frame):
 
         def progress(done_count: int, total: int) -> None:
             if still() and total:
-                item.progress = f"Calcul… {done_count} / {total} commits"
+                item.progress = t("Calcul… {done} / {total} commits", done=done_count, total=total)
                 self._fill(item, self.app.get_theme())
 
         self.app.runner.run(f"compare:{line.id}", task, done, failed, on_progress=progress)
@@ -338,7 +339,7 @@ class TagCompareView(ttk.Frame):
         self._render()
         self._table.focus_set()
         self.panel.show(item.result, item.error or item.progress or ("" if item.complete else
-                                                                     "Choisissez Current et Référence."))
+                                                                     t("Choisissez Current et Référence.")))
 
     def close_detail(self) -> None:
         if self._panel_open:
@@ -363,11 +364,11 @@ class TagCompareView(ttk.Frame):
         """Every computed line as Markdown in the clipboard (TC-09)."""
         results = [i.result for i in self._lines if i.result is not None]
         if not results:
-            self.app.notify("info", "Aucune comparaison calculée à copier.")
+            self.app.notify("info", t("Aucune comparaison calculée à copier."))
             return
         self.clipboard_clear()
         self.clipboard_append(copied_text(results, self.app.people))
-        self.app.notify("success", f"{len(results)} comparaison(s) copiée(s) dans le presse-papiers.")
+        self.app.notify("success", t("{count} comparaison(s) copiée(s) dans le presse-papiers.", count=len(results)))
 
     def update_repo_items(self) -> None:
         self._render()
@@ -400,7 +401,7 @@ class TagCompareDetail(SidePanel):
         self._close_button(head, theme, self._on_close)
         result = self._result
         if result is None:
-            tk.Label(head, text=self._message or "Calcul…", background=theme.bg, foreground=theme.muted,
+            tk.Label(head, text=self._message or t("Calcul…"), background=theme.bg, foreground=theme.muted,
                      font=self._font(theme), anchor="w", justify="left",
                      wraplength=self._wrap - 30).pack(fill="x")
             self._bind_wheel()
@@ -408,33 +409,33 @@ class TagCompareDetail(SidePanel):
         tk.Label(head, text=f"{result.reference.name} → {result.current.name}", background=theme.bg,
                  foreground=theme.text, font=(theme.mono[0], theme.mono[1] + 3, "bold"), anchor="w",
                  wraplength=self._wrap - 30, justify="left").pack(fill="x")
-        kind = "branche" if result.current.is_branch else "tag"
-        lines = (f"{result.project.path.split('/')[-1]} · current : {kind}",
-                 f"{result.reference.name} : {format_datetime(result.reference.date)}",
-                 f"{result.current.name} : {format_datetime(result.current.date)}")
+        kind = t("branche") if result.current.is_branch else t("tag")
+        lines = (t("{repo} · current : {kind}", repo=result.project.path.split("/")[-1], kind=kind),
+                 t("{label} : {value}", label=result.reference.name, value=format_datetime(result.reference.date)),
+                 t("{label} : {value}", label=result.current.name, value=format_datetime(result.current.date)))
         for text in lines:
             tk.Label(head, text=text, background=theme.bg, foreground=theme.muted,
                      font=(theme.mono[0], theme.mono[1] - 1), anchor="w").pack(fill="x")
         tags = tk.Frame(inner, background=theme.bg)
         tags.pack(fill="x", padx=12, pady=(8, 0))
-        self._tag(tags, f"{len(result.ahead.mrs)} MR", theme.info, theme)
-        self._tag(tags, f"{len(result.ahead.orphans)} commit(s) sans MR", theme.na, theme)
+        self._tag(tags, t("{count} MR", count=len(result.ahead.mrs)), theme.info, theme)
+        self._tag(tags, t("{count} commit(s) sans MR", count=len(result.ahead.orphans)), theme.na, theme)
         if result.ahead.empty:
-            body = self._card(inner, theme, "Résultat")
-            self._line(body, theme, "Aucune différence : la référence contient déjà tout Current.",
+            body = self._card(inner, theme, t("Résultat"))
+            self._line(body, theme, t("Aucune différence : la référence contient déjà tout Current."),
                        color=theme.muted)
         scores = {(e.mr.project_id, e.mr.iid): e for e in result.evaluations}
         if result.ahead.mrs:
-            body = self._card(inner, theme, f"Merge requests · {len(result.ahead.mrs)}")
+            body = self._card(inner, theme, t("Merge requests · {count}", count=len(result.ahead.mrs)))
             for mr in result.ahead.mrs:
                 self._mr(body, theme, mr, scores.get((mr.project_id, mr.iid)))
         if result.ahead.orphans:
-            body = self._card(inner, theme, f"Commits sans MR · {len(result.ahead.orphans)}")
+            body = self._card(inner, theme, t("Commits sans MR · {count}", count=len(result.ahead.orphans)))
             for commit in result.ahead.orphans:
                 self._commit(body, theme, commit)
         if not result.behind.empty:
-            body = self._card(inner, theme, f"Divergence · {result.behind.commits} commit(s)", "⚠", theme.orange)
-            self._line(body, theme, "Présents dans la référence mais absents de current", color=theme.orange[1])
+            body = self._card(inner, theme, t("Divergence · {count} commit(s)", count=result.behind.commits), "⚠", theme.orange)
+            self._line(body, theme, t("Présents dans la référence mais absents de current"), color=theme.orange[1])
             for mr in result.behind.mrs:
                 self._mr(body, theme, mr, None)
             for commit in result.behind.orphans:

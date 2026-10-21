@@ -7,6 +7,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from gitective.shared.i18n import t
 from gitective.settings.config_file import PAGE_SIZES
 
 MAX_PAGE_BUTTONS = 7
@@ -21,12 +22,12 @@ class Pager(ttk.Frame):
         self.page = 1
         self.total = 0
         self._size = tk.StringVar(value=str(page_size if page_size in PAGE_SIZES else PAGE_SIZES[0]))
-        ttk.Label(self, text="Afficher", style="Muted.TLabel").pack(side="left")
+        ttk.Label(self, text=t("Afficher"), style="Muted.TLabel").pack(side="left")
         size_box = ttk.Combobox(self, textvariable=self._size, values=[str(s) for s in PAGE_SIZES],
                                 width=5, state="readonly")
         size_box.pack(side="left", padx=6)
         size_box.bind("<<ComboboxSelected>>", lambda e: self._go(1))
-        ttk.Label(self, text="par page", style="Muted.TLabel").pack(side="left")
+        ttk.Label(self, text=t("par page"), style="Muted.TLabel").pack(side="left")
         self._buttons = ttk.Frame(self)
         self._buttons.pack(side="right")
         self._range = ttk.Label(self, style="Muted.TLabel")
@@ -63,7 +64,7 @@ class Pager(ttk.Frame):
             child.destroy()
         first = (self.page - 1) * self.page_size + 1 if self.total else 0
         last = min(self.total, self.page * self.page_size)
-        self._range.configure(text=f"{first}–{last} sur {self.total}")
+        self._range.configure(text=t("{first}–{last} sur {total}", first=first, last=last, total=self.total))
         count = self.page_count
         start = max(1, min(self.page - MAX_PAGE_BUTTONS // 2, count - MAX_PAGE_BUTTONS + 1))
         end = min(count, start + MAX_PAGE_BUTTONS - 1)

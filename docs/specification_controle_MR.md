@@ -2,11 +2,11 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.14 (brouillon) — 16/10/2026
+Version : 1.16 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
-**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts, et de lister les MR qui séparent deux tags. L'interface s'adapte aux droits du token : profil **Développeur** ou **Mergeur** (5.7).
+**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts, et de lister les MR qui séparent deux tags. Toutes les fonctions sont disponibles pour tous les utilisateurs, en français ou en anglais (5.9).
 
 ## 2. Contraintes techniques
 
@@ -32,6 +32,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | URL de l'instance GitLab | — |
 | Token personnel | — |
 | Vérification SSL | activée |
+| Langue (5.9) | Français |
 | Dépôts sélectionnés (sauvegardés depuis l'IHM) | aucun |
 | Branche surveillée par dépôt (commits hors MR) | — |
 | CI attendue, par dépôt (RC-05) | non |
@@ -44,7 +45,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Requêtes GitLab simultanées (1 à 16) | 6 |
 | Thème | Default |
 | Synchronisation automatique de la base (CH-13) | 5 minutes |
-| Notifications de bureau (NO-01) : nouveaux merges / MR qui me sont assignées ou en relecture / mes MR mergées | activées / activées / activées |
+| Notifications de bureau (NO-01) : nouveaux merges / MR qui me sont assignées ou en relecture / mes MR mergées / toutes les nouvelles MR (NO-11) | activées / activées / activées / **désactivée** |
 | Derniers filtres utilisés de l'onglet Merge Requests (état, dates, auteurs, mergeurs, assignés, relecteurs, brouillons, dépôts, taille de page) | Mergées « Depuis hier », 20 |
 | Branches : regex d'exclusion (BR-05) | `^(main\|master\|develop.*)$` |
 | Branches : seuil « branche morte », en jours calendaires (BR-04) | 30 |
@@ -55,7 +56,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | Largeurs de colonnes modifiées | aucune (ajustement au titre) |
 | Largeur du panneau de détail (DE-02, TG-07) | 420 px |
 
-`config.json` ne contient que des paramètres ; les données lues depuis GitLab sont dans `gitective.db`. Le profil (5.7) n'est pas un paramètre : il est recalculé depuis GitLab.
+`config.json` ne contient que des paramètres ; les données lues depuis GitLab sont dans `gitective.db`.
 
 ## 4. Sélection des dépôts
 
@@ -85,8 +86,9 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | OC-07 | Validation des regex avant enregistrement ; une regex invalide bloque l'enregistrement et est signalée par le bandeau. |
 | OC-08 | Gestion des correspondances personnes ↔ comptes (voir 5.4). |
 | OC-10 | Bloc « Branches » : regex d'exclusion (BR-05, validée par OC-07) et seuil « branche morte » en jours calendaires (BR-04, entier ≥ 1). |
-| OC-11 | Affichage en lecture seule de l'utilisateur du token et du profil détecté (Développeur / Mergeur, avec la liste des dépôts où il peut merger). Bloc « Notifications » (trois cases, NO-01) ; en profil Développeur, seule la case « Ma MR mergée » est affichée. |
+| OC-11 | Affichage en lecture seule de l'utilisateur du token (PR-01). Bloc « Notifications » : quatre cases (NO-01), dont « Toutes les nouvelles MR » (NO-11), décochée par défaut. |
 | OC-12 | Case « Lancer Gitective au démarrage de Windows (réduit) » : ajoute ou retire une entrée dans la clé de registre de l'utilisateur `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (module `winreg`, sans droits administrateur), qui lance `pythonw main.pyw --minimized`. L'application démarre réduite dans la barre des tâches, synchronisation et notifications actives. Réglage lu dans le registre, pas dans `config.json` ; case grisée hors Windows. |
+| OC-13 | Liste « Langue » : Français / English (5.9). |
 | OC-09 | Bouton « Vider la base locale » : supprime toutes les données de `gitective.db` après confirmation (voir CH-10). |
 
 ### 5.2 Thèmes (DA)
@@ -103,7 +105,7 @@ Chaque thème définit : fonds, textes, bordures, rayons des coins, police, acce
 
 Les couleurs OK / KO / N/A sont adaptées à chaque thème (ex. Matrix : vert vif / vert sombre / gris). Les libellés texte « OK », « KO », « N/A » restent affichés pour garantir la lisibilité quelle que soit la couleur.
 
-Badges (6.5) : fond, bordure, coins et police des cartes du thème ; icône Assigné (merge) en couleur d'accent, icône Relecteur (œil) en accent secondaire ; pastille des nouvelles en couleur « score rouge » ; badge à 0 en couleur N/A. Icônes et libellés identiques dans tous les thèmes, dessinés en `Canvas` (pas de police d'icônes).
+Badges (6.5) : fond, bordure, coins et police des cartes du thème ; icône Assigné (merge) en couleur d'accent, icône Relecteur (œil) en accent secondaire, icône Auteur (crayon) en couleur de texte ; pastille des nouvelles en couleur « score rouge » ; badge à 0 en couleur N/A. Icônes et libellés identiques dans tous les thèmes, dessinés en `Canvas` (pas de police d'icônes).
 
 | Thème | Accent / accent secondaire | Pastille | Forme des badges |
 |---|---|---|---|
@@ -156,34 +158,40 @@ Une même personne peut posséder plusieurs comptes GitLab (changements de compt
 | AS-02 | Étapes : URL de l'instance → token → test de connexion → choix des dépôts. |
 | AS-03 | Passable à tout moment ; relançable depuis l'onglet Config. |
 
-### 5.7 Profil Développeur / Mergeur
+### 5.7 Utilisateur du token
 
-L'interface dépend des droits du compte propriétaire du token.
+Les profils Développeur / Mergeur (v1.14) sont supprimés : badges, MR des dépôts non suivis, colonne « Nouvelle » et notifications sont disponibles pour tous. Le droit de merge reste calculé pour la colonne « Rôle » des Statistiques (ST-11).
 
 | Réf. | Exigence |
 |---|---|
-| PR-01 | L'utilisateur du token est lu via `GET /user` (ID, nom, administrateur ou non) au test de connexion, au démarrage et à chaque changement de token. |
-| PR-02 | Profil **Mergeur** si l'utilisateur peut merger sur la branche surveillée d'au moins un dépôt suivi ; sinon profil **Développeur**. Dépôt sans branche surveillée : ignoré (comme ST-11). |
-| PR-03 | Droit de merge sur un dépôt : même calcul que ST-11 — membres du projet (héritage des groupes inclus, `GET /projects/:id/members/all`) croisés avec les règles de branche protégée de la branche surveillée (rôle minimal autorisé à merger, utilisateurs nommés ; branche non protégée : Developer et plus). Administrateur de l'instance (`is_admin` de `GET /user`) : Mergeur. Ces lectures fonctionnent avec `read_api`. |
-| PR-04 | Profil recalculé à chaque synchronisation (CH-05, CH-13) et à l'ajout ou au retrait d'un dépôt suivi ; un changement de profil s'applique immédiatement, sans redémarrage. |
-| PR-05 | Profil **Développeur** : IHM actuelle, sans la colonne « Nouvelle » ni les MR de dépôts non suivis (6.4), sans les badges (6.5) ; seule notification de bureau : « Ma MR mergée » (NO-09). |
-| PR-06 | Profil **Mergeur** : IHM du Développeur + suivi de ses MR à merger dans l'état Ouvertes (6.4), badges et toutes les notifications de bureau. |
-| PR-07 | Instance injoignable (CH-08) : dernier profil connu, stocké en base. |
+| PR-01 | L'utilisateur du token est lu via `GET /user` (ID, nom) au test de connexion, au démarrage et à chaque changement de token. Il sert à « Moi » (AM-07), aux badges (6.5) et aux notifications (5.8). |
+| PR-07 | Instance injoignable (CH-08) : dernier utilisateur connu, stocké en base. |
 
 ### 5.8 Notifications de bureau
 
 | Réf. | Exigence |
 |---|---|
-| NO-01 | Trois types, chacun activable dans l'onglet Config : **nouveau merge** (MR mergée sur un dépôt suivi) et **MR assignée / relecture demandée** (MR ou rôle de l'utilisateur qui apparaît, 6.4, tous dépôts), en profil Mergeur ; **ma MR mergée** (NO-09), tous profils. |
+| NO-01 | Quatre types, chacun activable dans l'onglet Config : **nouveau merge** (MR mergée sur un dépôt suivi) ; **MR assignée / relecture demandée** (MR ou rôle de l'utilisateur qui apparaît, 6.4, tous dépôts) ; **ma MR mergée** (NO-09) ; **nouvelle MR** (NO-11, désactivée par défaut). |
 | NO-08 | Le titre de la notification indique le rôle : « MR assignée », « Relecture demandée » ou « MR assignée + relecture ». |
 | NO-09 | **Ma MR mergée** : MR d'un dépôt suivi dont l'utilisateur du token est l'auteur (comparaison par personne, 5.4), passée à l'état mergé depuis la synchronisation précédente. Titre « Votre MR a été mergée » ; contenu NO-03, mergeur compris. Une MR qui déclencherait aussi « nouveau merge » ne produit qu'une notification, celle-ci. Données déjà synchronisées (CH-05) : aucune requête supplémentaire. Limite : MR des dépôts non suivis non couvertes. |
+| NO-11 | **Nouvelle MR** : MR d'un dépôt suivi, de n'importe quel auteur, apparue à l'état ouvert hors brouillon depuis la synchronisation précédente, ou sortie de l'état brouillon (elle devient prête à merger). Titre « Nouvelle MR » ; contenu NO-03 (« par auteur »). Une MR qui déclencherait aussi « MR assignée / relecture demandée » ne produit qu'une notification, cette dernière. Données déjà synchronisées (CH-05) : aucune requête supplémentaire. Limite : « temps réel » = au rythme de la synchronisation automatique (CH-13, réglable) ; MR des dépôts non suivis non couvertes. |
 | NO-02 | Affichage : petite fenêtre `tkinter` sans bordure (`Toplevel`, `overrideredirect`, `-topmost`), dans le coin bas-droit de l'écran, aux couleurs du thème. Visible par-dessus les autres applications, y compris quand Gitective est réduit. Disparaît après 8 s ; survol = reste affichée. |
-| NO-03 | Contenu : type, titre de la MR, puis les personnes sur leur propre ligne (« auteur → mergeur » pour un merge, « par auteur » pour une MR assignée ou en relecture), puis le dépôt avec, à droite, le score de la MR (« Score 75 % », pastille aux couleurs de son niveau, seuils de la section 3). Le liseré gauche et le libellé du type prennent la couleur du niveau de score ; une synthèse (NO-05), sans score propre, garde la couleur de son type. Score calculé localement à la synchronisation (CH-07). Clic = ouverture de la MR dans le navigateur ; croix = fermeture ; roue crantée sous la croix (NO-10). |
-| NO-10 | Roue crantée « ⚙ » en haut à droite, sous la croix, sur chaque notification (synthèses comprises). Clic : Gitective restauré et mis au premier plan, onglet Config ouvert et défilé jusqu'au bloc « Notifications », bloc et cases visibles du profil mis en surbrillance (bordure, titre et libellés en couleur d'accent du thème) pendant 6 s ; la notification se ferme. Aucun réglage n'est modifié. |
-| NO-04 | Détection après chaque synchronisation (CH-13 ou Rafraîchir), par comparaison avec la base avant synchronisation. Pas de notification pour ses propres merges ni à la toute première synchronisation. |
-| NO-05 | Au plus 3 notifications empilées ; au-delà, une notification de synthèse (ex. « 7 nouveaux merges »), clic = ouverture de Gitective sur l'onglet Merge Requests. |
+| NO-03 | Contenu : type, titre de la MR, puis les personnes sur leur propre ligne (« auteur → mergeur » pour un merge, « par auteur » pour une MR assignée, en relecture ou nouvelle), puis le dépôt avec, à droite, le score de la MR (« Score 75 % », pastille aux couleurs de son niveau, seuils de la section 3). Le liseré gauche et le libellé du type prennent la couleur du niveau de score ; une synthèse (NO-05), sans score propre, garde la couleur de son type. Score calculé localement à la synchronisation (CH-07). Clic = ouverture de la MR dans le navigateur ; croix = fermeture ; roue crantée sous la croix (NO-10). |
+| NO-10 | Roue crantée « ⚙ » en haut à droite, sous la croix, sur chaque notification (synthèses comprises). Clic : Gitective restauré et mis au premier plan, onglet Config ouvert et défilé jusqu'au bloc « Notifications », bloc et cases mis en surbrillance (bordure, titre et libellés en couleur d'accent du thème) pendant 6 s ; la notification se ferme. Aucun réglage n'est modifié. |
+| NO-04 | Détection après chaque synchronisation (CH-13 ou Rafraîchir), par comparaison avec la base avant synchronisation. Pas de notification pour ses propres merges ni ses propres MR, ni à la toute première synchronisation. |
+| NO-05 | Au plus 3 notifications empilées ; au-delà, une notification de synthèse (ex. « 7 nouveaux merges », « 5 nouvelles MR »), clic = ouverture de Gitective sur l'onglet Merge Requests. |
 | NO-06 | En complément, la fenêtre réduite clignote dans la barre des tâches (`FlashWindowEx` via `ctypes`, bibliothèque standard) pour les MR assignées. |
 | NO-07 | Limites : Gitective doit être lancé (réduit accepté, fermé non) ; les notifications n'apparaissent pas dans le centre de notifications Windows (nécessiterait un module externe, CT-02). |
+
+### 5.9 Langue
+
+| Réf. | Exigence |
+|---|---|
+| LG-01 | Deux langues : Français (défaut) et English, choisies dans l'onglet Config (OC-13), enregistrées dans `config.json`. |
+| LG-02 | Appliquée au redémarrage : après changement, le bandeau indique « Redémarrez Gitective pour appliquer la langue » (texte dans les deux langues). |
+| LG-03 | Couvre tous les textes de l'application : onglets, libellés, infobulles, bandeau d'erreurs, notifications de bureau, assistant de premier lancement, textes copiés (BR-08, TC-09), noms des règles fixes. Non traduits : textes saisis par l'utilisateur (noms de règles personnalisées, de personnes) et données GitLab. Les règles pré-remplies (RP-07) prennent leur nom dans la langue active à leur création. |
+| LG-04 | Formats identiques dans les deux langues : dates `JJ/MM/AAAA`, virgule décimale. Seules les unités sont traduites (« j » / « d »). |
+| LG-05 | Implémentation : `gitective/shared/i18n.py`, fonction de traduction `t(texte, **paramètres)` ; les textes sont écrits en français dans le code et servent de clé au dictionnaire anglais `gitective/shared/translations_en.py` (paramètres nommés) ; clé absente en anglais : texte français. Langue choisie dans `main.py` avant l'import de l'IHM. Un test vérifie que chaque texte a sa version anglaise, avec les mêmes paramètres. |
 
 ## 6. Filtres et affichage des MR
 
@@ -203,7 +211,7 @@ L'interface dépend des droits du compte propriétaire du token.
 | FI-08 | MR en brouillon (Draft) : affichées dans l'onglet Merge Requests (états **Ouvertes** et **Fermées**), jamais comptées ailleurs (score moyen TA-03, Statistiques, Vue d'ensemble, badges, notifications). |
 | FI-16 | Indicateur Draft : étiquette « BROUILLON » devant le titre, couleur N/A du thème, et ligne entière en texte atténué. Infobulle : « MR en brouillon : pas prête à merger ». Score affiché pour information. |
 | FI-17 | Filtre **Brouillons**, choix exclusif : **Inclus** (défaut), **Exclus**, **Seulement**. Actif pour **Ouvertes** et **Fermées** (grisé sinon, une MR mergée n'étant jamais en brouillon). Se combine avec les autres filtres (ET). Mémorisé (FI-06). Le clic sur un badge (BA-02) le remet à « Inclus ». |
-| FI-09 | Filtre par auteur, sélection multiple (tous par défaut). Actif pour tous les états (**Mergées**, **Ouvertes**, **Fermées**, **Commits directs**), jamais grisé ; liste des auteurs construite depuis les MR (ou commits) de l'état affiché. S'applique aussi à l'onglet Statistiques. |
+| FI-09 | Filtre par auteur, sélection multiple (tous par défaut), avec l'utilisateur en tête de liste sous la forme « Moi (nom) » (comme AM-07). Actif pour tous les états (**Mergées**, **Ouvertes**, **Fermées**, **Commits directs**), jamais grisé ; liste des auteurs construite depuis les MR (ou commits) de l'état affiché. S'applique aussi à l'onglet Statistiques. |
 | FI-10 | Raccourci **F5** = Rafraîchir. |
 | FI-11 | Filtre par dépôt, sélection multiple parmi les dépôts suivis (tous par défaut). S'applique aussi à l'état Commits directs. Mémorisé comme les autres filtres (FI-06). |
 | FI-12 | Recherche texte instantanée, insensible à la casse : MR (titre, description, auteur, mergeur, dépôt, branches, SHA) et état Commits directs (message, SHA, auteur, dépôt). Non mémorisée. |
@@ -231,7 +239,7 @@ Grille personnalisée (cellules colorées individuellement). Colonnes :
 | Non mergée par l'auteur | OK vert / KO rouge / N/A gris |
 | Pipeline vert | OK vert / KO rouge / N/A gris |
 | Mergée par l'assigné | OK vert / KO rouge / N/A gris — colonne présente seulement si RC-06 est active |
-| Nouvelle | Pastille (profil Mergeur, état Ouvertes uniquement, AM-04) |
+| Nouvelle | Pastille (état Ouvertes uniquement, AM-04) |
 | Score | Pourcentage, couleur vert / orange / rouge selon seuils |
 
 | Réf. | Exigence |
@@ -250,31 +258,32 @@ Grille personnalisée (cellules colorées individuellement). Colonnes :
 | PA-02 | Navigation par pages, comme une page web. |
 | PA-03 | Taille de page choisie dans l'IHM : 20 / 50 / 100, défaut 20. |
 
-### 6.4 Mes MR à merger (profil Mergeur)
+### 6.4 Mes MR (assignées, en relecture, créées)
 
-Objectif : voir d'un coup d'œil les merges qu'il reste à faire, sans onglet supplémentaire : tout passe par l'état **Ouvertes** de l'onglet Merge Requests.
+Objectif : voir d'un coup d'œil les merges qu'il reste à faire et ses propres MR en cours, sans onglet supplémentaire : tout passe par l'état **Ouvertes** de l'onglet Merge Requests.
 
 | Réf. | Exigence |
 |---|---|
-| AM-01 | Pas de sous-onglet. Les deux badges (6.5) mènent à l'état **Ouvertes** filtré sur l'utilisateur du token, comme assigné ou comme relecteur (BA-02). |
+| AM-01 | Pas de sous-onglet. Les trois badges (6.5) mènent à l'état **Ouvertes** filtré sur l'utilisateur du token, comme assigné, relecteur ou auteur (BA-02). |
 | AM-02 | Données : à chaque synchronisation (CH-05, CH-13), lecture des MR ouvertes, brouillons compris, de **tous les dépôts** accessibles au token (suivis ou non), dont l'utilisateur est **assigné** ou **relecteur** : `GET /merge_requests?scope=all&state=opened&assignee_id=<moi>` et `…&reviewer_id=<moi>` (2 requêtes paginées, `read_api`). Une MR qui quitte ces résultats (mergée, fermée, désassignée) n'est plus comptée. |
-| AM-08 | En profil Mergeur, l'état **Ouvertes** inclut ces MR même si leur dépôt n'est pas suivi : nom du dépôt suivi de « (non suivi) », dépôt proposé dans le filtre dépôts. Règles évaluées comme pour un dépôt suivi. |
-| AM-07 | Rôle visible : les colonnes Assignés et Relecteurs (6.2) affichent le nom de l'utilisateur en gras, couleur d'accent du thème. Les filtres Assigné et Relecteur (FI-14, FI-15) proposent l'utilisateur en tête de liste sous la forme « Moi (nom) ». |
-| AM-04 | Une MR est **nouvelle** pour un rôle (assigné ou relecteur) si l'utilisateur a reçu ce rôle depuis le dernier clic sur le badge correspondant ; une MR qui quitte l'état brouillon redevient nouvelle pour ses rôles (elle devient prête à merger). Pastille dans la colonne « Nouvelle » de l'état Ouvertes. Les couples MR / rôle déjà vus sont stockés en base ; le clic sur un badge marque vus les couples de son rôle uniquement. Les MR qui étaient nouvelles au moment du clic gardent leur pastille jusqu'au clic suivant, pour rester repérables dans la liste affichée. |
+| AM-09 | **Mes MR créées** : MR ouvertes des dépôts suivis dont l'utilisateur est l'auteur (comparaison par personne, 5.4, tous ses comptes), lues en base (CH-05) : aucune requête supplémentaire. Limite : MR des dépôts non suivis non couvertes. |
+| AM-08 | L'état **Ouvertes** inclut les MR d'AM-02 même si leur dépôt n'est pas suivi : nom du dépôt suivi de « (non suivi) », dépôt proposé dans le filtre dépôts. Règles évaluées comme pour un dépôt suivi. |
+| AM-07 | Rôle visible : les colonnes Assignés et Relecteurs (6.2) affichent le nom de l'utilisateur en gras, couleur d'accent du thème. Les filtres Auteur, Assigné et Relecteur (FI-09, FI-14, FI-15) proposent l'utilisateur en tête de liste sous la forme « Moi (nom) ». |
+| AM-04 | Une MR est **nouvelle** pour un rôle (assigné ou relecteur) si l'utilisateur a reçu ce rôle depuis le dernier clic sur le badge correspondant ; une MR qui quitte l'état brouillon redevient nouvelle pour ses rôles (elle devient prête à merger). Pastille dans la colonne « Nouvelle » de l'état Ouvertes. Les couples MR / rôle déjà vus sont stockés en base ; le clic sur un badge marque vus les couples de son rôle uniquement. Les MR qui étaient nouvelles au moment du clic gardent leur pastille jusqu'au clic suivant, pour rester repérables dans la liste affichée. Pas de notion de « nouvelle » pour le rôle auteur. |
 | AM-06 | Score coloré et infobulles KO (TA-01) disponibles avant le merge ; RC-04, RC-05 et RC-06 sont N/A (MR non mergée). |
 
-### 6.5 Badges des MR en attente (profil Mergeur)
+### 6.5 Badges des MR en attente
 
 | Réf. | Exigence |
 |---|---|
-| BA-01 | Deux badges côte à côte en haut à droite de la fenêtre, visibles sur tous les onglets : **Assigné** et **Relecteur**, chacun avec son icône (merge / œil) et son libellé, aux couleurs du thème (5.2). Chacun affiche le nombre de MR ouvertes, hors brouillons, où l'utilisateur a ce rôle, et une pastille du nombre de nouvelles de ce rôle (AM-04), masquée à 0. Une MR aux deux rôles compte dans les deux badges. Survol : détail (ex. « 3 assignées, dont 1 nouvelle ; 1 brouillon »). |
-| BA-02 | Clic sur un badge : onglet Merge Requests, état **Ouvertes**, filtre Assigné = l'utilisateur (badge Assigné) ou filtre Relecteur = l'utilisateur (badge Relecteur), l'autre de ces deux filtres remis à « tous » ; filtres auteur, dépôt et recherche remis à « tous », brouillons « Inclus ». Les filtres restent ensuite modifiables et sont mémorisés normalement (FI-06). Les MR du rôle deviennent vues (AM-04). |
-| BA-03 | Le titre de la fenêtre (et donc la barre des tâches) reprend le total des nouvelles des deux rôles, une MR aux deux rôles comptant une fois : « Gitective (3) ». |
+| BA-01 | Trois badges côte à côte en haut à droite de la fenêtre, visibles sur tous les onglets : **Assigné**, **Relecteur** et **Auteur**, chacun avec son icône (merge / œil / crayon) et son libellé, aux couleurs du thème (5.2). Chacun affiche le nombre de MR ouvertes, hors brouillons, où l'utilisateur a ce rôle. Assigné et Relecteur ajoutent une pastille du nombre de nouvelles de ce rôle (AM-04), masquée à 0. Une MR à plusieurs rôles compte dans chaque badge concerné. Survol : détail (ex. « 3 assignées, dont 1 nouvelle ; 1 brouillon », « 4 MR ouvertes ; 2 brouillons »). |
+| BA-02 | Clic sur un badge : onglet Merge Requests, état **Ouvertes**, filtre du rôle du badge (Assigné, Relecteur ou Auteur) = l'utilisateur, les deux autres de ces trois filtres remis à « tous » ; filtres dépôt et recherche remis à « tous », brouillons « Inclus ». Les filtres restent ensuite modifiables et sont mémorisés normalement (FI-06). Badges Assigné et Relecteur : les MR du rôle deviennent vues (AM-04). |
+| BA-03 | Le titre de la fenêtre (et donc la barre des tâches) reprend le total des nouvelles des rôles assigné et relecteur, une MR aux deux rôles comptant une fois : « Gitective (3) ». |
 | BA-04 | Mis à jour après chaque synchronisation (CH-13, Rafraîchir) et au clic sur un badge. |
 
 ### 6.6 Panneau de détail d'une MR
 
-Objectif : comprendre une MR et savoir si elle peut être mergée sans ouvrir GitLab. Tous profils, états Mergées, Ouvertes et Fermées.
+Objectif : comprendre une MR et savoir si elle peut être mergée sans ouvrir GitLab. États Mergées, Ouvertes et Fermées.
 
 | Réf. | Exigence |
 |---|---|
@@ -357,7 +366,7 @@ RC-06 désactivée : ni colonne, ni score, ni statistiques (comme RP-05).
 | ST-08 | Colonne « Délai création → merge » par personne (MR dont elle est l'auteur), calculé sur les MR mergées uniquement (voir ST-14). |
 | ST-09 | Courbe d'évolution du score moyen par semaine, dessinée en `Canvas` : une courbe globale + une courbe par personne sélectionnée dans le filtre auteurs. |
 | ST-10 | Semaine d'une MR déterminée par sa date de création ; la courbe suit les filtres de l'onglet (période, dépôts, auteurs) et les couleurs du thème. |
-| ST-11 | Colonne « Rôle » : **Mergeur** si la personne (l'un de ses comptes) a le droit de merger sur la branche surveillée d'au moins un dépôt de l'onglet, **Dev** sinon. Survol de « Mergeur » : infobulle listant ces dépôts. Droits calculés via l'API : membres du projet (héritage des groupes inclus) croisés avec les règles de branche protégée (rôle minimal, utilisateurs nommés ; règle la plus permissive si plusieurs correspondent). Branche non protégée : Developer et plus. Non pris en compte : droits accordés à un groupe (Premium), administrateurs de l'instance. Dépôt sans branche surveillée : ignoré. Triable. |
+| ST-11 | Colonne « Rôle » : **Mergeur** si la personne (l'un de ses comptes) a le droit de merger sur la branche surveillée d'au moins un dépôt de l'onglet, **Dev** sinon. Survol de « Mergeur » : infobulle listant ces dépôts. Droits calculés via l'API : membres du projet (héritage des groupes inclus, `GET /projects/:id/members/all`) croisés avec les règles de branche protégée (rôle minimal, utilisateurs nommés ; règle la plus permissive si plusieurs correspondent). Branche non protégée : Developer et plus. Non pris en compte : droits accordés à un groupe (Premium), administrateurs de l'instance. Dépôt sans branche surveillée : ignoré. Triable. |
 | ST-12 | Colonne « Délai dernier commit → merge » (réactivité des mergeurs) : pour chaque MR mergée par la personne, date de merge − date du dernier commit de la MR (`committed_date` le plus récent). Une requête par MR mergée (commits de la MR, en parallèle, stockés en base). « N/A » si la personne n'est pas Mergeur (ST-11), « — » si elle n'a rien mergé sur la période. Limite connue : un rebase juste avant le merge réécrit la date du dernier commit et sous-estime le délai. |
 | ST-13 | Les mergeurs apparaissent même sans MR créée sur la période ; leur délai couvre les MR de tous les auteurs, quel que soit le filtre auteur (qui ne filtre que les lignes affichées). |
 | ST-15 | Colonne « Commits directs » : nombre de commits hors MR (section 10) dont la personne est l'auteur (PE-03), sur les branches surveillées des dépôts de l'onglet, date de commit dans la période. Si la détection n'a pas encore couvert toute la période, elle est lancée avec la barre de progression (CO-08). |
@@ -378,11 +387,13 @@ Onglet de supervision, purement graphique, pensé pour un affichage permanent : 
 
 | Réf. | Exigence |
 |---|---|
-| VE-01 | Onglet « Vue d'ensemble », premier onglet, affiché au lancement. Aucun élément cliquable, aucun filtre : couvre tous les dépôts suivis, MR hors Draft. |
+| VE-01 | Onglet « Vue d'ensemble », premier onglet, affiché au lancement. Seules les lignes des derniers merges sont cliquables (VE-14) ; aucun filtre : couvre tous les dépôts suivis, MR hors Draft. |
 | VE-02 | Tient sans défilement sur un écran 1920 × 1080. Raccourci **F11** : plein écran activé / désactivé. |
+| VE-13 | Multi-écran : le plein écran (F11) occupe l'écran sur lequel se trouve la fenêtre (celui qui en contient la plus grande partie), pas l'écran principal. Sous Windows : écran lu via `ctypes` (`MonitorFromWindow`, `GetMonitorInfoW`), fenêtre sans bordure placée sur toute la surface de cet écran, au-dessus de la barre des tâches. Second F11 : taille et position d'avant restaurées. Hors Windows : attribut `-fullscreen` de Tk. |
 | VE-03 | Redessinée après chaque synchronisation automatique (CH-13). En-tête : heure de la dernière synchronisation et délai avant la prochaine. |
 | VE-04 | Disposition : colonne de gauche (≈ un tiers) = fil des derniers merges, puis merges par jour ; à droite, trois niveaux : score moyen + qualité par semaine / classement des dépôts / règles enfreintes + MR créées et mergées. |
 | VE-05 | **Derniers merges**, élément principal : jusqu'à 40 dernières MR mergées, de la plus récente à la plus ancienne, groupées par jour. Ligne : heure de merge, titre, dépôt, auteur → mergeur, pastille de score colorée. Dès que les merges du jour ne tiennent pas sur deux lignes chacun, chaque merge passe sur une seule ligne, pour voir d'un coup une journée chargée (10 à 15 merges) ; le titre est coupé (45 caractères au plus, avec « … ») pour que le dépôt et les personnes restent toujours visibles. Groupe « Aujourd'hui » mis en évidence ; nombre de merges du jour en grand dans l'en-tête. Les plus anciennes sont coupées si la place manque. |
+| VE-14 | Clic sur une ligne des derniers merges : onglet Merge Requests, état **Mergées**, période réglée sur le jour du merge, autres filtres remis à zéro comme FI-18 (auteur, mergeur, assigné, relecteur, dépôt, recherche), tri par date de merge décroissante ; la page contenant la MR est affichée, sa ligne est sélectionnée et son panneau de détail ouvert (DE-01). Ces filtres sont mémorisés normalement (FI-06). Survol de la ligne : curseur main et fond de survol du thème. Aucune requête GitLab (MR déjà en base). |
 | VE-06 | **Merges par jour** : semaine en cours et semaine précédente, lundi → dimanche. Chaque case affiche le nombre de merges ; son fond prend la couleur du niveau (vert / orange / rouge, seuils de la section 3, mêmes couleurs que les pastilles de score) du score moyen des MR mergées ce jour-là ; jour sans merge : fond neutre. Total par semaine. Jours à venir en pointillés. |
 | VE-07 | **Score moyen** : MR mergées des 30 derniers jours, couleur selon les seuils, écart en points avec les 30 jours précédents, barre 0 – 100. |
 | VE-08 | **Qualité des MR mergées** : 12 dernières semaines complètes, barres empilées du nombre de MR à 100 %, 50 – 99 % et < 50 %. |
@@ -413,7 +424,7 @@ Objectif : identifier rapidement les branches ouvertes, mortes ou mergées non s
 
 | Réf. | Exigence |
 |---|---|
-| BR-01 | Onglet « Branches », placé après l'onglet Merge Requests. Tous profils. Couvre les dépôts suivis. |
+| BR-01 | Onglet « Branches », placé après l'onglet Merge Requests. Couvre les dépôts suivis. |
 | BR-02 | Colonnes : Dépôt ; Branche (clic = ouverture de la branche dans GitLab) ; **Dernier commit** au format `JJ/MM/AAAA (N j)`, N = jours calendaires écoulés depuis la date de commit (`committed_date`, heure locale), tri par date ; Auteur du dernier commit (personne, PE-03) ; MR liées ; État. |
 | BR-03 | **MR liées** : toutes les MR en base du même dépôt dont la branche source est cette branche, `!iid` séparés par des virgules, ouvertes d'abord puis par date de création décroissante. Chaque `!iid` est cliquable (ouverture de la MR dans GitLab) ; survol : titre et état de la MR. Recherche locale uniquement, aucune requête. Limite : une MR hors de la période synchronisée n'est pas trouvée. |
 | BR-04 | **État**, un seul par branche, dans cet ordre de priorité : **Supprimée** (absente de GitLab, BR-10 ; ligne en texte atténué) ; **Mergée non supprimée** (indicateur `merged` de GitLab, ou au moins une MR liée mergée) ; **Morte** (dernier commit plus vieux que le seuil, défaut 30 jours calendaires, réglable dans Config ; couleur « score rouge » du thème) ; **Active** sinon. |
@@ -430,7 +441,7 @@ Objectif : consulter les tags des dépôts suivis et leurs informations sans ouv
 
 | Réf. | Exigence |
 |---|---|
-| TG-01 | Onglet « Tags », placé après l'onglet Branches. Tous profils. Couvre les dépôts suivis. Deux sous-onglets : **Parcourir** (TG-02 à TG-09) et **Comparer** (12.1). Le sous-onglet affiché est mémorisé. |
+| TG-01 | Onglet « Tags », placé après l'onglet Branches. Couvre les dépôts suivis. Deux sous-onglets : **Parcourir** (TG-02 à TG-09) et **Comparer** (12.1). Le sous-onglet affiché est mémorisé. |
 | TG-02 | Colonnes : Dépôt ; Tag (clic = ouverture de la page du tag dans GitLab) ; Message ; Notes de release ; Date (date du commit pointé, heure locale) ; Commit (SHA court, clic = ouverture du commit) ; Auteur du commit (personne, PE-03). Tri par défaut : date décroissante. |
 | TG-03 | **Message** (message du tag annoté, vide pour un tag léger) et **Notes de release** (description de la release GitLab associée, vide s'il n'y en a pas) : deux colonnes distinctes, première ligne seulement, texte complet en infobulle et dans le panneau. |
 | TG-04 | Filtres, combinés (ET) : **Dépôts** (sélection multiple parmi les dépôts suivis) ; **Recherche texte** (nom, message, notes de release, SHA par préfixe dès 1 caractère ; non mémorisée) ; **Période** sur la date (deux dates `JJ/MM/AAAA`, raccourcis et bouton « Total » comme ST-05 ; défaut « Total »). Dépôts et période mémorisés. |
@@ -464,10 +475,10 @@ Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dép�
 |---|---|
 | CH-01 | Les appels GitLab s'exécutent en tâche de fond ; l'IHM reste réactive. |
 | CH-02 | Indicateur de chargement visible pendant les appels. |
-| CH-03 | Base locale persistante `gitective.db` (SQLite, `sqlite3`) : projets accessibles, MR (dont assignés et relecteurs), commits de MR, commits des branches surveillées, résultats de détection hors MR, statuts CI, membres et branches protégées, utilisateurs et avatars, branches (dernier commit, indicateurs, date de suppression constatée, BR-10), tags (message, release, commit pointé, date de suppression constatée, TG-08), pipelines des tags (TG-09), commits et MR des comparaisons de tags et MR liées à chaque commit (TC-06, TC-10), utilisateur du token et profil (5.7), détails de MR du panneau (état de merge, approbations, discussions, pipeline et jobs, fin des logs en échec, fichiers modifiés, DE-12), MR ouvertes de tous les dépôts où l'utilisateur est assigné ou relecteur, et couples MR / rôle déjà vus (AM-02, AM-04). Le changement de page, de tri ou de filtre lit la base sans réinterroger GitLab. |
+| CH-03 | Base locale persistante `gitective.db` (SQLite, `sqlite3`) : projets accessibles, MR (dont assignés et relecteurs), commits de MR, commits des branches surveillées, résultats de détection hors MR, statuts CI, membres et branches protégées, utilisateurs et avatars, branches (dernier commit, indicateurs, date de suppression constatée, BR-10), tags (message, release, commit pointé, date de suppression constatée, TG-08), pipelines des tags (TG-09), commits et MR des comparaisons de tags et MR liées à chaque commit (TC-06, TC-10), utilisateur du token (5.7), détails de MR du panneau (état de merge, approbations, discussions, pipeline et jobs, fin des logs en échec, fichiers modifiés, DE-12), MR ouvertes de tous les dépôts où l'utilisateur est assigné ou relecteur, et couples MR / rôle déjà vus (AM-02, AM-04). Le changement de page, de tri ou de filtre lit la base sans réinterroger GitLab. |
 | CH-04 | Un changement de filtre ou de dates ne déclenche une requête GitLab que pour la partie de la période absente de la base. |
-| CH-05 | Bouton **Rafraîchir** : mise à jour incrémentale depuis la dernière synchronisation de chaque dépôt (MR via `updated_after`, commits via `since`), relecture des branches et des tags (BR-10, TG-08), retéléchargement des avatars et recalcul du profil (PR-04). |
-| CH-13 | **Synchronisation automatique**, tous profils : toutes les N minutes (réglable dans l'onglet Config, défaut 5), même fenêtre réduite, la mise à jour incrémentale des MR et commits de CH-05, la relecture des branches et des tags (BR-10, TG-08) et le recalcul du profil s'exécutent en tâche de fond (avatars : au bouton Rafraîchir uniquement). Puis rafraîchissement de l'affichage, des badges (BA-04) et des notifications (NO-04). Ignorée si une synchronisation est déjà en cours. Instance injoignable : nouvel essai au cycle suivant, bandeau CH-08. |
+| CH-05 | Bouton **Rafraîchir** : mise à jour incrémentale depuis la dernière synchronisation de chaque dépôt (MR via `updated_after`, commits via `since`), relecture des branches et des tags (BR-10, TG-08) et retéléchargement des avatars. |
+| CH-13 | **Synchronisation automatique** : toutes les N minutes (réglable dans l'onglet Config, défaut 5), même fenêtre réduite, la mise à jour incrémentale des MR et commits de CH-05 et la relecture des branches et des tags (BR-10, TG-08) s'exécutent en tâche de fond (avatars : au bouton Rafraîchir uniquement). Puis rafraîchissement de l'affichage, des badges (BA-04) et des notifications (NO-04). Ignorée si une synchronisation est déjà en cours. Instance injoignable : nouvel essai au cycle suivant, bandeau CH-08. |
 | CH-06 | Les requêtes « une par commit » (commits hors MR) et « une par MR » (règles sur les commits, RC-05, ST-12) partent en parallèle, comme les lectures de branches et tags des différents dépôts ; le nombre de requêtes simultanées se règle dans l'onglet Config (1 à 16, défaut 6). |
 | CH-07 | Les règles sont évaluées localement à partir des données en base : modifier une règle, une pondération ou une correspondance de personnes recalcule l'affichage sans requête GitLab. Idem pour la regex d'exclusion et le seuil des branches. |
 | CH-08 | Mode hors ligne : si l'instance est injoignable, l'application affiche les données en base et un bandeau indique la date de dernière synchronisation. |
@@ -496,10 +507,10 @@ Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dép�
 | AR-01 | Découpage par sujet, en trois niveaux : **`forge`** (requêtes GitLab) ← **métier** (`database`, `review`, `repository`, `reporting`, `shared`, `settings`) ← **`ui`**. Un niveau ne dépend que des niveaux inférieurs. Le métier dépend uniquement de l'interface `ForgeClient` (15.3), jamais de `GitLabClient` ; seule l'IHM crée le client. |
 | AR-07 | `forge` est isolé : il n'importe que la bibliothèque standard et ses propres modules. Il peut être copié tel quel dans un autre projet. |
 | AR-08 | Noms explicites : un dossier par sujet, un fichier par fonctionnalité, nommé avec les termes de l'IHM (ex. `direct_commits.py` pour l'état « Commits directs »). Les tests reprennent les mêmes dossiers. |
-| AR-02 | Code, noms et commentaires en anglais. |
+| AR-02 | Code, noms et commentaires en anglais. Les textes affichés passent tous par `shared/i18n.py` (LG-05). |
 | AR-03 | Commentaires synthétiques et logiques : docstring courte pour chaque module, classe et fonction publique ; commentaire en ligne uniquement pour la logique non évidente. |
 | AR-04 | Annotations de type partout. |
-| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), profil (PR-03 : niveaux d'accès, branche protégée, `developers_can_merge`, administrateur), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux), détection des nouveautés (AM-02, AM-04, NO-04, NO-09), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08), comparaison de tags (commits → MR sans requête puis par requête, MR comptée une fois, divergence, texte copié, recalcul d'une branche dont la tête a changé, TC-05 à TC-10). |
+| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), droits de merge (ST-11 : niveaux d'accès, branche protégée, `developers_can_merge`), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux, MR créées pour le badge Auteur), détection des nouveautés (AM-02, AM-04, NO-04, NO-09, NO-11), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08), comparaison de tags (commits → MR sans requête puis par requête, MR comptée une fois, divergence, texte copié, recalcul d'une branche dont la tête a changé, TC-05 à TC-10), traductions (mêmes clés et mêmes paramètres en français et en anglais, LG-05). |
 | AR-06 | `README.md` en anglais : prérequis, installation, configuration, utilisation. |
 
 ### 15.2 Arborescence
@@ -529,7 +540,7 @@ gitective/
 │   │   ├── mr_detail.py        # Detail panel data: merge readiness, approvals, discussions, pipeline jobs, changed files
 │   │   ├── direct_commits.py   # Commits pushed without MR
 │   │   ├── merge_rights.py     # Who can merge into the watched branches
-│   │   └── profile.py          # Token user, Developer / Merger profile, my open MRs, "new" flags
+│   │   └── my_mrs.py           # Token user, my open MRs (assignee, reviewer, author), "new" flags
 │   ├── repository/             # Branches and tags tabs logic
 │   │   ├── branches.py         # Branch state, exclusions, related MRs, copied list, deleted marking
 │   │   ├── tags.py             # Tag list, deleted marking, pointed-commit MR, tag pipeline
@@ -539,6 +550,8 @@ gitective/
 │   │   └── overview_figures.py # Overview tab figures
 │   ├── shared/                 # Cross-cutting helpers
 │   │   ├── dates.py            # Date parsing, "since yesterday", local timezone
+│   │   ├── i18n.py             # Language choice and translation function (5.9)
+│   │   ├── translations_en.py  # English texts, keyed by the French text
 │   │   ├── people.py           # Account-to-person mapping
 │   │   ├── search.py           # Text and SHA prefix search
 │   │   ├── parallel.py         # Concurrent forge lookups
@@ -546,13 +559,13 @@ gitective/
 │   ├── settings/
 │   │   └── config_file.py      # Load/save config.json, defaults
 │   └── ui/
-│       ├── app.py              # Main window, tabs, badges, window title count
+│       ├── app.py              # Main window, tabs, badges, window title count, F11 on the current monitor
 │       ├── themes.py           # Default, Light, Dark, Windows 95, Matrix
 │       ├── background.py       # Background tasks and progress
 │       ├── first_launch_wizard.py
 │       ├── tabs/
 │       │   ├── data_tab.py     # Base class of the data tabs
-│       │   ├── overview.py     # Overview, F11
+│       │   ├── overview.py     # Overview, latest merges clickable (VE-14)
 │       │   ├── merge_requests.py # MR tab, filters, reset, "Total", open MRs of other repos, "new" column
 │       │   ├── mr_detail_panel.py # Side panel with the selected MR details (6.6)
 │       │   ├── direct_commits.py # Direct commits view of the MR tab
@@ -561,7 +574,7 @@ gitective/
 │       │   ├── tag_compare.py  # Comparer sub-tab: comparison lines, detail panel, copy (12.1)
 │       │   ├── tag_detail_panel.py # Side panel with the selected tag details (TG-07)
 │       │   ├── statistics.py   # Per-person / per-repository switch
-│       │   └── config.py       # Config tab, connection test, rule tester, branches, profile, notifications
+│       │   └── config.py       # Config tab, connection test, rule tester, branches, token user, notifications, language
 │       ├── components/
 │       │   ├── grid.py         # Custom colored grid, sorting, tooltips
 │       │   ├── pagination.py
@@ -573,15 +586,15 @@ gitective/
 │       └── alerts/
 │           ├── error_banner.py # In-app error banner
 │           ├── desktop_toast.py # Desktop notifications and taskbar flash (ctypes)
-│           └── badges.py       # Assignee and reviewer badges (Canvas icons)
+│           └── badges.py       # Assignee, reviewer and author badges (Canvas icons)
 └── tests/                      # Same folders as gitective/
     ├── factories.py
     ├── forge/       test_gitlab_client.py
     ├── database/    test_store.py, test_project_list.py
-    ├── review/      test_rules.py, test_pipeline.py, test_merge_rights.py, test_profile.py, test_mr_detail.py
+    ├── review/      test_rules.py, test_pipeline.py, test_merge_rights.py, test_my_mrs.py, test_mr_detail.py
     ├── repository/  test_branches.py, test_tags.py, test_tag_compare.py
     ├── reporting/   test_statistics.py, test_overview_figures.py
-    └── shared/      test_parallel.py, test_search.py
+    └── shared/      test_parallel.py, test_search.py, test_i18n.py
 ```
 
 ### 15.3 Interface forge et classe API GitLab
@@ -595,7 +608,7 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 | API-03 | Gestion transparente de la pagination GitLab. |
 | API-04 | Renvoie des objets métier typés et neutres (`Project`, `MergeRequest`, `Commit`, `CommitStatus`, `User`, `ProtectedBranch`, `Branch`, `Tag`, `Pipeline`, `Job`), pas de JSON brut ni de champ propre à GitLab. |
 | API-05 | Lève des exceptions dédiées, définies au niveau de l'interface : authentification, droits, ressource introuvable, réseau, SSL. |
-| API-06 | Méthodes minimales : lire l'utilisateur du token ; lister les projets accessibles ; lire le niveau d'accès du token sur un projet ; lister les MR d'un projet (état, dates, mises à jour depuis une date) ; lister les MR ouvertes de toute l'instance où un utilisateur est assigné, ou relecteur ; lister les commits d'une MR ; lister les commits d'une branche (dates) ou d'un intervalle `référence..current` (TC-05) ; lister les MR associées à un commit ; lister les statuts CI d'un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet ; lister les branches d'un projet (dernier commit, mergée, protégée, par défaut) ; lister les tags d'un projet (message, commit pointé, release associée) ; lire une branche (protégée, merge autorisé aux développeurs) ; lister les pipelines d'une référence ; pour le panneau de détail (6.6) : lire une MR (état de merge détaillé, conflits, retard sur la cible), lister ses approbations, ses discussions, ses fichiers modifiés (lignes ajoutées / retirées), les jobs d'un pipeline et la fin du log d'un job. `Project` porte la branche par défaut ; `MergeRequest` porte ses assignés, ses relecteurs et les SHA de tête, de merge et de squash ; `User` porte l'indicateur administrateur. |
+| API-06 | Méthodes minimales : lire l'utilisateur du token ; lister les projets accessibles ; lire le niveau d'accès du token sur un projet ; lister les MR d'un projet (état, dates, mises à jour depuis une date) ; lister les MR ouvertes de toute l'instance où un utilisateur est assigné, ou relecteur ; lister les commits d'une MR ; lister les commits d'une branche (dates) ou d'un intervalle `référence..current` (TC-05) ; lister les MR associées à un commit ; lister les statuts CI d'un commit ; lister les membres d'un projet avec leur niveau d'accès ; lister les branches protégées d'un projet ; lister les branches d'un projet (dernier commit, mergée, protégée, par défaut) ; lister les tags d'un projet (message, commit pointé, release associée) ; lire une branche (protégée, merge autorisé aux développeurs) ; lister les pipelines d'une référence ; pour le panneau de détail (6.6) : lire une MR (état de merge détaillé, conflits, retard sur la cible), lister ses approbations, ses discussions, ses fichiers modifiés (lignes ajoutées / retirées), les jobs d'un pipeline et la fin du log d'un job. `Project` porte la branche par défaut ; `MergeRequest` porte ses assignés, ses relecteurs et les SHA de tête, de merge et de squash. |
 | API-07 | `GitLabClient` reste générique et réutilisable, indépendant de l'application. |
 
 ## 16. Jalons
@@ -609,5 +622,4 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 
 | Point | Statut |
 |---|---|
-| Onglet Statistiques réservé à un mode admin | Reporté à une version ultérieure, mode d'implémentation à définir. Le profil Mergeur (5.7) pourrait servir de base. |
-| Notifications « nouveau merge » : réservées au profil Mergeur | Hypothèse retenue. À confirmer (utile aussi aux développeurs ?). « Ma MR mergée » est disponible pour tous les profils (NO-09). |
+| Onglet Statistiques réservé à un mode admin | Reporté à une version ultérieure, mode d'implémentation à définir. Le droit de merge (ST-11) pourrait servir de base. |
