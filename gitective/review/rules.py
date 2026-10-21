@@ -85,14 +85,13 @@ def validate_regex(pattern: str) -> str | None:
     return None
 
 
-def _extract(pattern: re.Pattern[str], text: str) -> str | None:
-    """First ticket number found: named group 'ticket', else group 1, else whole match."""
+def extract(pattern: re.Pattern[str], text: str, group: int = 0) -> str | None:
+    """Text of the chosen capturing group in the first match (0 = the whole match); None when absent."""
     match = pattern.search(text)
-    if not match:
+    # A group the regex does not have (hand-edited config.json) extracts nothing.
+    if not match or group > pattern.groups:
         return None
-    if "ticket" in pattern.groupindex:
-        return match.group("ticket")
-    return match.group(1) if pattern.groups else match.group(0)
+    return match.group(group)
 
 
 class RuleSet:
@@ -105,8 +104,12 @@ class RuleSet:
         ticket_regex: str,
         fixed_weights: dict[str, float],
         assignee_rule: bool = False,
+        link_group: int = 0,
+        ticket_group: int = 0,
     ) -> None:
         self.rules = [r for r in rules if r.active]
+        self.link_group = link_group
+        self.ticket_group = ticket_group
         self.assignee_rule = assignee_rule
         self._compiled = {r.id: re.compile(r.pattern) for r in self.rules if r.pattern}
         self.link = re.compile(link_regex) if link_regex else None
@@ -121,7 +124,7 @@ class RuleSet:
     @classmethod
     def from_settings(cls, settings: Settings) -> RuleSet:
         return cls(settings.rules, settings.link_regex, settings.ticket_regex, settings.weights,
-                   settings.assignee_rule)
+                   settings.assignee_rule, settings.link_group, settings.ticket_group)
 
     @property
     def criteria(self) -> list[Criterion]:
@@ -153,20 +156,21 @@ class RuleSet:
             return CheckResult(KO, t("{count} commit(s) contien(nen)t le motif interdit : {shas}", count=len(bad),
                                      shas=listed))
         value = getattr(fields, rule.field, "")
-        if bool(pattern.search(value)) == expected:
-            return CheckResult(OK)
+        found = extract(pattern, value, rule.group)
+        if (found is not None) == expected:
+            return CheckResult(OK, found or "")  # the extracted value, shown by the rule tester
         label = t(RULE_FIELDS.get(rule.field, rule.field))
         if expected:
             return CheckResult(KO, t("{field} : motif attendu absent", field=label))
-        return CheckResult(KO, t("{field} : motif interdit trouvé", field=label))
+        return CheckResult(KO, t("{field} : motif interdit trouvé ({value})", field=label, value=found))
 
     def _check_ticket(self, fields: MrFields) -> CheckResult:
         """RC-03: ticket number in the title equals the one in the description link."""
         if self.link is None or self.ticket is None:
             return CheckResult(KO, t("Regex du lien ou du n° de ticket non configurée"))
-        link_match = self.link.search(fields.description)
-        in_title = _extract(self.ticket, fields.title)
-        in_link = _extract(self.ticket, link_match.group(0)) if link_match else None
+        link = extract(self.link, fields.description, self.link_group)
+        in_title = extract(self.ticket, fields.title, self.ticket_group)
+        in_link = extract(self.ticket, link, self.ticket_group) if link else None
         if in_title and in_link and in_title == in_link:
             return CheckResult(OK, in_title)
         if not in_title and not in_link:

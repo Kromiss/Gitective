@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page
+from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page, group_error
 from gitective.settings import config_file as config
 from gitective.settings.config_file import CustomRule, Settings
 
@@ -16,6 +16,29 @@ def fields(**changes: object) -> NumberFields:
                                  "green": "100", "orange": "50", "parallel": "6", "sync_minutes": "5"}
     values.update(changes)
     return NumberFields(**values)  # type: ignore[arg-type]
+
+
+class RegexGroupTests(unittest.TestCase):
+    def test_group_must_exist_in_the_regex(self) -> None:
+        self.assertEqual(group_error(r"(#)(\d+)", "2"), "")
+        self.assertEqual(group_error(r"(#)(\d+)", "0"), "")
+        self.assertEqual(group_error("", "0"), "")
+        self.assertIn("2 groupe", group_error(r"(#)(\d+)", "3"))
+        self.assertTrue(group_error(r"(#)(\d+)", "-1"))
+        self.assertTrue(group_error(r"(#)(\d+)", "x"))
+
+    def test_saved_groups_are_kept_and_checked(self) -> None:
+        loaded = Settings.from_dict({"ticket_group": 2, "link_group": 1,
+                                     "rules": [{"name": "a", "group": 3}, {"name": "b", "group": "x"}]})
+        self.assertEqual((loaded.ticket_group, loaded.link_group), (2, 1))
+        self.assertEqual([r.group for r in loaded.rules], [3, 0])
+        self.assertEqual(Settings.from_dict({"ticket_group": -1}).ticket_group, 0)
+
+    def test_save_refuses_a_missing_group(self) -> None:
+        settings = Settings(ticket_regex=r"(#)(\d+)")
+        self.assertIn("1 groupe", apply_numbers(Settings(link_regex="(a)"), fields(link_group="2")))
+        self.assertEqual(apply_numbers(settings, fields(ticket_group="2")), "")
+        self.assertEqual(settings.ticket_group, 2)
 
 
 class UnsavedChangesTests(unittest.TestCase):
