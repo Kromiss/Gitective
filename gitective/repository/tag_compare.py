@@ -21,6 +21,7 @@ from gitective.settings.config_file import TrackedProject
 from gitective.shared.dates import format_datetime
 from gitective.shared.parallel import run_parallel
 from gitective.shared.people import PersonDirectory
+from gitective.shared.repo_names import short_names
 
 Progress = Callable[[int, int], None]
 MrKey = tuple[int, int]
@@ -172,9 +173,11 @@ def compare(
 
 def copied_text(comparisons: Iterable[Comparison], people: PersonDirectory) -> str:
     """Markdown of every computed line: a title per line, its MRs, then its commits without MR (TC-09)."""
+    comparisons = list(comparisons)
+    names = short_names(c.project.path for c in comparisons)
     blocks = []
     for c in comparisons:
-        lines = [t("## {repo} : {reference} → {current}", repo=c.project.path.split("/")[-1],
+        lines = [t("## {repo} : {reference} → {current}", repo=names[c.project.path],
                    reference=c.reference.name, current=c.current.name), ""]
         lines += [f"- !{mr.iid} {mr.title} — {people.for_user(mr.author).name}" for mr in c.ahead.mrs]
         if c.ahead.orphans:

@@ -189,7 +189,7 @@ class BranchesTab(DataTab):
         rows = []
         for r in self._visible[self.pager.slice()]:
             rows.append({
-                "repo": r.project.path.split("/")[-1],
+                "repo": self.app.repo_label(r.project.path),
                 "branch": (r.branch.name, r.branch.web_url or self._branch_url(r)),
                 "last": last_commit_text(r),
                 "author": r.author.name,

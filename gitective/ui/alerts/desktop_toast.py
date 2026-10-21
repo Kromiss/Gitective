@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import sys
 import tkinter as tk
+import tkinter.font as tkfont
 from collections.abc import Callable, Sequence
 
 from gitective.shared.i18n import t
 from gitective.review.my_mrs import REVIEWER, Notice
+from gitective.ui.components.grid import ellipsize
 from gitective.ui.themes import Theme
 
 WIDTH = 380
@@ -21,8 +23,10 @@ class Toasts:
 
     def __init__(self, root: tk.Tk, get_theme: Callable[[], Theme], open_url: Callable[[str], None],
                  open_merge_requests: Callable[[], None], open_settings: Callable[[], None],
-                 score_colors: Callable[[float], tuple[str, str]], logo: tk.PhotoImage | None = None) -> None:
+                 score_colors: Callable[[float], tuple[str, str]], logo: tk.PhotoImage | None = None,
+                 repo_label: Callable[[str], str] = lambda path: path.rsplit("/", 1)[-1]) -> None:
         self._root = root
+        self._repo_label = repo_label
         self._score_colors = score_colors  # (background, foreground) of a score's level
         self._open_settings = open_settings
         self._get_theme = get_theme
@@ -38,7 +42,7 @@ class Toasts:
         if len(notices) <= MAX_SHOWN:
             for notice in notices:
                 people = f"{notice.author} → {notice.merger}" if notice.merger else t("par {author}", author=notice.author)
-                self._popup(notice.title, notice.mr.title, notice.repo.split("/")[-1], people,
+                self._popup(notice.title, notice.mr.title, self._repo_label(notice.repo), people,
                             self._color(notice), lambda n=notice: self._open_url(n.mr.web_url),
                             t("Cliquer pour ouvrir dans GitLab"), notice.score)
             return
@@ -114,18 +118,24 @@ class Toasts:
                  wraplength=WIDTH - 50, font=(font, size + 2, "bold")).pack(fill="x", pady=(10, 4))
         # People on their own line, above the repository; the score on the repository line (NO-03).
         if people:
-            tk.Label(body, text=people, background=theme.surface, foreground=theme.muted, anchor="w",
-                     font=(font, size - 1)).pack(fill="x", pady=(0, 4))
+            tk.Label(body, text=people, background=theme.surface, foreground=theme.muted, anchor="w", justify="left",
+                     wraplength=WIDTH - 50, font=(font, size - 1)).pack(fill="x", pady=(0, 4))
         if repo or score is not None:
             meta = tk.Frame(body, background=theme.surface)
             meta.pack(fill="x")
-            if repo:
-                tk.Label(meta, text=repo, background=theme.header, foreground=theme.text, padx=7, pady=1,
-                         font=(theme.mono[0], theme.mono[1] - 1)).pack(side="left")
+            room = WIDTH - 50
             if score is not None:
                 pill_bg, pill_fg = self._score_colors(score)
-                tk.Label(meta, text=t("Score {score} %", score=f"{score:.0f}"), background=pill_bg, foreground=pill_fg, padx=9, pady=1,
-                         font=(font, size - 1, "bold")).pack(side="right")
+                pill_font = tkfont.Font(font=(font, size - 1, "bold"))
+                text = t("Score {score} %", score=f"{score:.0f}")
+                tk.Label(meta, text=text, background=pill_bg, foreground=pill_fg, padx=9, pady=1,
+                         font=pill_font).pack(side="right")
+                room -= pill_font.measure(text) + 30
+            if repo:
+                # A long repository name is cut on the right; the score keeps its place (NO-03).
+                mono = tkfont.Font(font=(theme.mono[0], theme.mono[1] - 1))
+                tk.Label(meta, text=ellipsize(repo, mono, room - 14), background=theme.header, foreground=theme.text,
+                         padx=7, pady=1, font=mono).pack(side="left")
         tk.Frame(body, background=theme.border, height=1).pack(fill="x", pady=(10, 6))
         tk.Label(body, text=f"{hint}  ↗", background=theme.surface, foreground=theme.link, anchor="w",
                  font=(font, size - 1)).pack(fill="x")

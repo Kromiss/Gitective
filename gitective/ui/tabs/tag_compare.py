@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import tkinter as tk
-from collections.abc import Callable
+import tkinter.font as tkfont
+from collections.abc import Callable, Sequence
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
@@ -13,7 +14,9 @@ from gitective.repository.tag_compare import CompareError, Comparison, compare, 
 from gitective.review.rules import Evaluation, score_level
 from gitective.settings.config_file import CompareLine, TrackedProject
 from gitective.shared.dates import format_datetime
+from gitective.shared.repo_names import short_names
 from gitective.ui.components.side_panel import SidePanel
+from gitective.ui.components.widgets import Tooltip
 from gitective.ui.themes import Theme
 
 if TYPE_CHECKING:
@@ -23,7 +26,33 @@ if TYPE_CHECKING:
 HEADERS = ((t("Dépôt"), 14), (t("Current"), 12), (t("Référence"), 12), (t("Date current"), 16),
            (t("Date référence"), 16), (t("MR"), 5), (t("Hors MR"), 8), (t("Score"), 7), (t("Divergence"), 10))
 COMBO_COLUMNS = 3  # Dépôt, Current, Référence are combo boxes, the others labels
+COMBO_MAX = 22  # characters: wider names are cut in the field, the list shows them whole
+COMBO_MAX_PANEL = 14  # while the detail panel takes room on the right
 DATE_COLUMNS = (4, 5)  # hidden while the detail panel is open, which shows them (like DE-03)
+
+
+def repo_labels(projects: Sequence[TrackedProject]) -> list[str]:
+    """Repository name, or its whole path when another tracked repository has the same name."""
+    names = short_names(p.path for p in projects)
+    return [names[p.path] for p in projects]
+
+
+def fit_combo(combo: ttk.Combobox, values: Sequence[str], minimum: int, maximum: int = COMBO_MAX) -> None:
+    """Field as wide as its longest choice (capped), drop-down list always wide enough for every choice."""
+    longest = max((len(v) for v in values), default=0)
+    combo.configure(width=min(maximum, max(minimum, longest + 1)))
+
+    def widen() -> None:
+        # ttk sizes the list like the field; its style's postoffset adds the missing pixels.
+        current = combo.cget("values") or ()
+        font = tkfont.Font(root=combo, font=combo.option_get("font", "Font") or "TkDefaultFont")
+        needed = max((font.measure(str(v)) for v in current), default=0) + 40
+        extra = max(0, needed - combo.winfo_width())
+        style = f"Pop{extra}.TCombobox"
+        ttk.Style(combo).configure(style, postoffset=(0, 0, extra, 0))
+        combo.configure(style=style)
+
+    combo.configure(postcommand=widen)
 
 
 class _Line:
@@ -76,6 +105,7 @@ class TagCompareView(ttk.Frame):
             self._table.bind(key, lambda e, s=step: self._move(s))
         self._table.bind("<Escape>", lambda e: self.close_detail())
         self.panel = TagCompareDetail(self._split, app, self.close_detail)
+        self._tooltip = Tooltip(self, app.get_theme)
         self._split.bind("<ButtonRelease-1>", lambda e: self._panel_resized())
         for line in app.settings.tag_compares:
             self._lines.append(_Line(line))
@@ -145,13 +175,16 @@ class TagCompareView(ttk.Frame):
         projects = self._projects()
         item.marker = tk.Frame(self._table, width=3, background=theme.surface)
         item.marker.grid(row=row, column=0, sticky="ns", pady=2)
-        repo = ttk.Combobox(self._table, state="readonly", width=HEADERS[0][1],
-                            values=[p.path.split("/")[-1] for p in projects])
+        names = repo_labels(projects)
+        repo = ttk.Combobox(self._table, state="readonly", values=names)
+        fit_combo(repo, names, HEADERS[0][1], self._combo_max)
         project = self._project(item.line.project_id)
-        repo.set(project.path.split("/")[-1] if project else "")
+        repo.set(names[projects.index(project)] if project else "")
         repo.bind("<<ComboboxSelected>>", lambda e: self._repo_chosen(item, projects[repo.current()].id))
         current = self._ref_combo(item, 0, HEADERS[1][1])
         reference = self._ref_combo(item, 1, HEADERS[2][1])
+        for combo in (repo, current, reference):
+            self._tooltip_on(combo)
         item.combos = [repo, current, reference]
         for column, combo in enumerate(item.combos, start=1):
             combo.grid(row=row, column=column, sticky="ew", padx=4, pady=3)
@@ -165,9 +198,14 @@ class TagCompareView(ttk.Frame):
         remove.grid(row=row, column=len(HEADERS) + 1, padx=(6, 0), pady=3)
         self._fill(item, theme)
 
+    @property
+    def _combo_max(self) -> int:
+        return COMBO_MAX_PANEL if self._panel_open else COMBO_MAX
+
     def _ref_combo(self, item: _Line, which: int, width: int) -> ttk.Combobox:
         """Combo box with search: typing narrows the list, only a listed value is kept (TC-03)."""
-        combo = ttk.Combobox(self._table, width=width, values=item.choices[which])
+        combo = ttk.Combobox(self._table, values=item.choices[which])
+        fit_combo(combo, item.choices[which], width, self._combo_max)
         combo.set(item.line.current if which == 0 else item.line.reference)
 
         def narrow(event: tk.Event) -> None:
@@ -193,6 +231,16 @@ class TagCompareView(ttk.Frame):
         combo.bind("<Return>", commit)
         combo.bind("<FocusOut>", commit)
         return combo
+
+    def _tooltip_on(self, combo: ttk.Combobox) -> None:
+        """Hovering a field shows its whole value when it is cut."""
+        def show(event: tk.Event) -> None:
+            value = combo.get()
+            if len(value) >= int(combo.cget("width")):
+                self._tooltip.show(event.x_root, event.y_root, value)
+
+        combo.bind("<Enter>", show)
+        combo.bind("<Leave>", lambda e: self._tooltip.hide())
 
     def _fill(self, item: _Line, theme: Theme) -> None:
         """Dates, counts, score and divergence of a line (TC-07)."""
@@ -410,12 +458,12 @@ class TagCompareDetail(SidePanel):
                  foreground=theme.text, font=(theme.mono[0], theme.mono[1] + 3, "bold"), anchor="w",
                  wraplength=self._wrap - 30, justify="left").pack(fill="x")
         kind = t("branche") if result.current.is_branch else t("tag")
-        lines = (t("{repo} · current : {kind}", repo=result.project.path.split("/")[-1], kind=kind),
+        lines = (t("{repo} · current : {kind}", repo=self.app.repo_label(result.project.path), kind=kind),
                  t("{label} : {value}", label=result.reference.name, value=format_datetime(result.reference.date)),
                  t("{label} : {value}", label=result.current.name, value=format_datetime(result.current.date)))
         for text in lines:
-            tk.Label(head, text=text, background=theme.bg, foreground=theme.muted,
-                     font=(theme.mono[0], theme.mono[1] - 1), anchor="w").pack(fill="x")
+            tk.Label(head, text=text, background=theme.bg, foreground=theme.muted, justify="left",
+                     wraplength=self._wrap - 30, font=(theme.mono[0], theme.mono[1] - 1), anchor="w").pack(fill="x")
         tags = tk.Frame(inner, background=theme.bg)
         tags.pack(fill="x", padx=12, pady=(8, 0))
         self._tag(tags, t("{count} MR", count=len(result.ahead.mrs)), theme.info, theme)

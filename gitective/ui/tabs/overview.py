@@ -339,7 +339,7 @@ class OverviewTab(ttk.Frame):
             middle = cursor + row_h / 2
             text_w = w - (title_x - x) - INNER - pill_w - 14
             who = ev.author.name + (f" → {ev.merger.name}" if ev.merger else "")
-            meta = f"{ev.project_path.split('/')[-1]} · {who}"
+            meta = f"{self.app.repo_label(ev.project_path)} · {who}"
             if compact:
                 # One line: time, title, then repository and people as far as room allows.
                 # One line: time, title, then repository and people, which always keep their room.
@@ -505,7 +505,7 @@ class OverviewTab(ttk.Frame):
             cx = x + INNER + column * (col_w + col_gap)
             middle = top + row * row_h + row_h / 2
             self._text(cx + 20, middle, str(index + 1), 12, theme.muted, anchor="e")
-            self._text(cx + 30, middle, path.split("/")[-1], size, anchor="w", width=name_w)
+            self._text(cx + 30, middle, self.app.repo_label(path), size, anchor="w", width=name_w)
             bar_x = cx + 30 + name_w + 12
             if score is None:
                 self._bar(bar_x, middle - 5, cx + col_w - 60, middle + 5, 0, theme.muted)

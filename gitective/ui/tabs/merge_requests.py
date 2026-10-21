@@ -323,7 +323,7 @@ class MrTab(DataTab):
         rows = []
         for ev in self._page_rows():
             mr = ev.mr
-            repo = ev.project_path.split("/")[-1] + ("" if mr.project_id in self._tracked else NOT_TRACKED)
+            repo = self.app.repo_label(ev.project_path) + ("" if mr.project_id in self._tracked else NOT_TRACKED)
             row: dict[str, Any] = {
                 "new": _key(ev) in new or None,
                 "repo": repo,

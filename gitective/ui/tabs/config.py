@@ -519,10 +519,14 @@ class SettingsTab(ttk.Frame):
             self._branch_vars[project.id] = var
             ci = tk.BooleanVar(value=previous_ci.get(project.id, project.ci_expected))
             self._ci_vars[project.id] = ci
-            ttk.Label(row, text=project.path, style="Bar.TLabel").pack(side="left")
+            # The path on its own line, so a long one never pushes the branch and CI fields away.
+            ttk.Label(row, text=project.path, style="Bar.TLabel", wraplength=380).pack(anchor="w")
+            fields = ttk.Frame(row, style="Surface.TFrame")
+            fields.pack(fill="x", pady=(2, 6))
+            ttk.Label(fields, text=t("Branche"), style="BarMuted.TLabel").pack(side="left")
+            ttk.Entry(fields, textvariable=var, width=18, font=self.app.get_theme().mono).pack(side="left", padx=(6, 0))
             # RC-05 is N/A for the MRs of a repository without CI (SD-08, PI-06).
-            ttk.Checkbutton(row, text=t("CI attendue"), variable=ci).pack(side="right", padx=(8, 0))
-            ttk.Entry(row, textvariable=var, width=14, font=self.app.get_theme().mono).pack(side="right")
+            ttk.Checkbutton(fields, text=t("CI attendue"), variable=ci).pack(side="left", padx=(12, 0))
 
     def _choose_projects(self) -> None:
         client = self._form_client()

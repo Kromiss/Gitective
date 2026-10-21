@@ -18,6 +18,7 @@ HEADER_HEIGHT = 38
 MIN_WIDTH = 40
 GRIP = 5  # px on each side of a header border that start a resize
 TITLE_PAD = 26  # room around a header title, including the sort arrow
+TITLE_MAX = 170  # automatic width given to a long title: beyond, it is cut and shown whole on hover
 PAD = 10
 STATUS_TEXT = {"ok": "OK", "ko": "KO", "na": "N/A"}
 
@@ -80,6 +81,9 @@ class DataGrid(ttk.Frame):
         # Clickable parts of 'links' cells: (row index, column key) → [(x0, x1, url, tooltip)].
         self._spans: dict[tuple[int, str], list[tuple[float, float, str, str]]] = {}
         self._row_index = 0
+        # Texts cut with an ellipsis: (row index, column key) → whole text, shown on hover; row -1 = header.
+        self._cut: dict[tuple[int, str], str] = {}
+        self._cell: tuple[int, str] | None = None
         # Widths set by the user (dragged), by column key; saved in config.json.
         self._user_widths: dict[str, int] = dict(widths or {})
         self._on_widths_changed = on_widths_changed
@@ -111,6 +115,7 @@ class DataGrid(ttk.Frame):
         self.header.bind("<ButtonRelease-1>", self._on_header_release)
         self.header.bind("<Double-Button-1>", self._on_header_double)
         self.header.bind("<Motion>", self._on_header_motion)
+        self.header.bind("<Leave>", lambda e: self._tooltip.hide())
 
     # -------------------------------------------------------------- Public API
 
@@ -148,7 +153,7 @@ class DataGrid(ttk.Frame):
         if bold is None:
             theme = self._get_theme()
             bold = tkfont.Font(font=(theme.font[0], theme.font[1], "bold"))
-        return max(col.width, bold.measure(col.title) + TITLE_PAD)
+        return max(col.width, min(bold.measure(col.title) + TITLE_PAD, TITLE_MAX))
 
     def _layout(self, width: int, bold: tkfont.Font) -> None:
         """Compute column positions.
@@ -184,10 +189,12 @@ class DataGrid(ttk.Frame):
     def _draw_header(self, theme: Theme, bold: tkfont.Font, width: int) -> None:
         self.header.configure(background=theme.header)
         self.header.delete("all")
+        self._cut = {k: v for k, v in self._cut.items() if k[0] != -1}
         for col, (x0, x1) in zip(self.columns, self._x):
             title = col.title
             if col.key == self._sort_key:
                 title += " ▲" if self._ascending else " ▼"
+            self._cell = (-1, col.key)
             self._text(self.header, x0, x1, HEADER_HEIGHT / 2, title, bold, theme.text, col.align)
             # Column separator, also the handle for resizing.
             self.header.create_line(x1, 8, x1, HEADER_HEIGHT - 8, fill=theme.border)
@@ -199,6 +206,7 @@ class DataGrid(ttk.Frame):
         self.body.configure(background=theme.surface)
         self.body.delete("all")
         self._spans = {}
+        self._cut = {k: v for k, v in self._cut.items() if k[0] == -1}
         if not self._rows:
             self.body.create_text(width / 2, 40, text=self._empty_text, fill=theme.muted, font=font)
             self.body.configure(scrollregion=(0, 0, width, 80))
@@ -210,6 +218,7 @@ class DataGrid(ttk.Frame):
                 self.body.create_rectangle(0, top, 3, top + ROW_HEIGHT - 1, fill=theme.accent, outline="")
             self._row_index = index
             for col, (x0, x1) in zip(self.columns, self._x):
+                self._cell = (index, col.key)
                 self._draw_cell(col, row.get(col.key), x0, x1, top + ROW_HEIGHT / 2, theme, fonts, row)
             self.body.create_line(0, top + ROW_HEIGHT - 1, width, top + ROW_HEIGHT - 1, fill=theme.header)
         self.body.configure(scrollregion=(0, 0, width, len(self._rows) * ROW_HEIGHT))
@@ -295,7 +304,9 @@ class DataGrid(ttk.Frame):
     def _text(self, canvas: tk.Canvas, x0: int, x1: int, y: float, text: str, font: tkfont.Font,
               color: str, align: str, underline: bool = False) -> None:
         room = x1 - x0 - 8
-        shown = _ellipsize(text, font, room)
+        shown = ellipsize(text, font, room)
+        if shown != text and self._cell is not None:
+            self._cut[self._cell] = text
         anchor = {"w": "w", "center": "center", "e": "e"}[align]
         x = {"w": x0, "center": (x0 + x1) / 2, "e": x1 - 8}[align]
         item = canvas.create_text(x, y, text=shown, fill=color, font=font, anchor=anchor)
@@ -391,6 +402,9 @@ class DataGrid(ttk.Frame):
                 tip = value[1]
             if col.kind in ("tip", "flag") and value and value[1]:
                 tip = value[1]
+            index = self._row_at(event)
+            if not tip and index is not None:
+                tip = self._cut.get((index, col.key), "")
         self.body.configure(cursor=cursor)
         if tip:
             self._tooltip.show(event.x_root, event.y_root, tip)
@@ -408,8 +422,15 @@ class DataGrid(ttk.Frame):
 
     def _on_header_motion(self, event: tk.Event) -> None:
         if self._drag is None:
-            near = self._border_at(self.header.canvasx(event.x)) is not None
+            x = self.header.canvasx(event.x)
+            near = self._border_at(x) is not None
             self.header.configure(cursor="sb_h_double_arrow" if near else "")
+            col = next((c for c, (x0, x1) in zip(self.columns, self._x) if x0 <= x < x1), None)
+            title = self._cut.get((-1, col.key), "") if col is not None and not near else ""
+            if title:
+                self._tooltip.show(event.x_root, event.y_root, title)
+            else:
+                self._tooltip.hide()
 
     def _on_header_press(self, event: tk.Event) -> None:
         x = self.header.canvasx(event.x)
@@ -452,7 +473,7 @@ class DataGrid(ttk.Frame):
             self._on_widths_changed(dict(self._user_widths))
 
 
-def _ellipsize(text: str, font: tkfont.Font, room: int) -> str:
+def ellipsize(text: str, font: tkfont.Font, room: int) -> str:
     """Cut text with an ellipsis so it fits in room pixels."""
     if room <= 0 or font.measure(text) <= room:
         return text

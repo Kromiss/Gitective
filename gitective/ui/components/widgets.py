@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+import tkinter.font as tkfont
 from collections.abc import Callable, Sequence
 from tkinter import ttk
 
@@ -128,7 +129,10 @@ class MultiSelect(ttk.Button):
         variables: dict[str, tk.BooleanVar] = {}
         frame = ScrollableFrame(popup, style="Surface.TFrame")
         frame.set_background(theme.surface)
-        frame.canvas.configure(width=280, height=min(320, 30 * max(1, len(self._items))))
+        # As wide as the longest choice (long repository paths, people names), within reason.
+        font = tkfont.Font(font=theme.font)
+        longest = max((font.measure(text) for _, text in self._items), default=0)
+        frame.canvas.configure(width=max(280, min(560, longest + 60)), height=min(320, 30 * max(1, len(self._items))))
         for key, text in self._items:
             var = tk.BooleanVar(value=(not self._selected) or key in self._selected)
             variables[key] = var

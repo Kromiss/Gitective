@@ -191,8 +191,9 @@ class MrDetailPanel(SidePanel):
             row.pack(fill="x", pady=1)
             tk.Label(row, text=t("OK") if result.status == OK else t("KO"), background=bg, foreground=fg, width=4,
                      font=self._font(theme, -1, "bold")).pack(side="right")
+            # A long rule name wraps instead of hiding under its OK / KO label.
             tk.Label(row, text=label, background=theme.surface, foreground=theme.text, font=self._font(theme),
-                     anchor="w").pack(side="left")
+                     anchor="w", justify="left", wraplength=self._wrap - 90).pack(side="left")
             if result.status == KO and result.detail:
                 tk.Label(body, text=result.detail, background=theme.surface, foreground=theme.muted,
                          font=self._font(theme, -1), wraplength=self._wrap - 30, justify="left",
