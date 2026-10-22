@@ -128,18 +128,22 @@ class GaugeTests(unittest.TestCase):
         self.assertEqual(label_text("75 %", "orange", True), "▮▮▯ 75 %")
         self.assertEqual(label_text("75 %", "orange", False), "75 %")
 
-    def test_hatches_stay_inside_their_box(self) -> None:
+    def test_stripes_are_vertical_on_whole_pixels_and_evenly_spaced(self) -> None:
         canvas = FakeCanvas()
-        draw_hatched(canvas, 10, 20, 40, 80, "#f00", "#000")  # type: ignore[arg-type]
-        lines = [c for kind, c, _ in canvas.items if kind == "line"]
-        self.assertTrue(lines)
-        for x0, y0, x1, y1 in lines:
-            self.assertTrue(10 <= x0 <= 40 and 10 <= x1 <= 40 and 20 <= y0 <= 80 and 20 <= y1 <= 80)
+        draw_hatched(canvas, 10.4, 20.6, 40.3, 80.2, "#f00", "#000")  # type: ignore[arg-type]
+        stripes = [c for _, c, o in canvas.items if o["fill"] == "#f00"]
+        self.assertTrue(stripes)
+        for x0, y0, x1, y1 in stripes:
+            self.assertTrue(all(v == int(v) for v in (x0, y0, x1, y1)))  # no fraction: nothing to round
+            self.assertTrue(10 <= x0 < x1 <= 40 and (y0, y1) == (21, 80))
+        self.assertEqual({b[0] - a[0] for a, b in zip(stripes, stripes[1:])}, {5})
 
-    def test_dots_cover_the_box(self) -> None:
+    def test_dots_cover_the_box_on_whole_pixels(self) -> None:
         canvas = FakeCanvas()
-        draw_dotted(canvas, 0, 0, 20, 10, "#ff0", "#000")  # type: ignore[arg-type]
-        self.assertEqual(sum(1 for kind, _, o in canvas.items if o["fill"] == "#000"), 8)
+        draw_dotted(canvas, 0, 0, 20.4, 10.4, "#ff0", "#000")  # type: ignore[arg-type]
+        dots = [c for _, c, o in canvas.items if o["fill"] == "#000"]
+        self.assertEqual(len(dots), 8)
+        self.assertTrue(all(v == int(v) for c in dots for v in c))
 
 
 if __name__ == "__main__":
