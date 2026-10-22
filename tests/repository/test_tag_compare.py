@@ -97,7 +97,17 @@ class CompareTests(unittest.TestCase):
         with self.assertRaisesRegex(CompareError, "v0 introuvable"):
             self.run_compare("v2", "v0")
         with self.assertRaisesRegex(CompareError, "main introuvable"):
-            self.run_compare("v1", "main")  # a branch is never a reference
+            self.run_compare("v1", "main")  # an unprotected branch is never a reference
+
+    def test_protected_branch_as_reference(self) -> None:
+        self.store.replace_named("branches", 10, [Branch("main", "s3", None, protected=True),
+                                                 Branch("feature", "s5", None)], 2.0)
+        self.forge.ranges = {"s3..s5": [commit("c7")], "s5..s3": []}
+        result = self.run_compare("feature", "main")
+        self.assertTrue(result.reference.protected)
+        self.assertEqual([o.short_id for o in result.ahead.orphans], ["c7"])
+        _, branches = ref_choices(self.store, 10)
+        self.assertEqual({b.name: b.protected for b in branches}, {"main": True, "feature": False})
 
     def test_choices_leave_deleted_out(self) -> None:
         self.store.replace_named("tags", 10, [Tag("v2", "", "s2")], 3.0)

@@ -39,6 +39,7 @@ class Ref:
     sha: str
     date: datetime | None
     is_branch: bool = False
+    protected: bool = False
 
 
 def ref_choices(store: Store, project_id: int) -> tuple[list[Ref], list[Ref]]:
@@ -48,7 +49,8 @@ def ref_choices(store: Store, project_id: int) -> tuple[list[Ref], list[Ref]]:
 
     tags = [Ref(t.name, t.commit_sha, t.committed_date) for _, t, deleted in store.tags([project_id])
             if deleted is None and t.commit_sha]
-    branches = [Ref(b.name, b.commit_sha, b.committed_date, True) for _, b, deleted in store.branches([project_id])
+    branches = [Ref(b.name, b.commit_sha, b.committed_date, True, b.protected)
+                for _, b, deleted in store.branches([project_id])
                 if deleted is None and b.commit_sha]
     return newest_first(tags), newest_first(branches)
 
@@ -139,11 +141,11 @@ def build_side(commits: Sequence[Commit], links: dict[str, list[MergeRequest]]) 
 
 
 def resolve(store: Store, project_id: int, current: str, reference: str) -> tuple[Ref, Ref]:
-    """Current: a tag, else a branch; reference: a tag (TC-02). Raises CompareError when one is gone."""
+    """Current: a tag, else a branch; reference: a tag, else a protected branch (TC-02). Raises CompareError when one is gone."""
     tags, branches = ref_choices(store, project_id)
     by_tag = {r.name: r for r in tags}
     cur = by_tag.get(current) or next((b for b in branches if b.name == current), None)
-    ref = by_tag.get(reference)
+    ref = by_tag.get(reference) or next((b for b in branches if b.name == reference and b.protected), None)
     for name, found in ((current, cur), (reference, ref)):
         if found is None:
             raise CompareError(f"{name} introuvable")
