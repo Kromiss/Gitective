@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.20 (brouillon) — 21/10/2026
+Version : 1.21 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -478,8 +478,8 @@ Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dép�
 | Réf. | Exigence |
 |---|---|
 | TC-01 | Sous-onglet **Comparer** de l'onglet Tags : un tableau de lignes de comparaison, à gauche, et un panneau de détail à droite (mêmes mécanismes que DE-01 et DE-02 : ligne surlignée, flèches haut / bas, Échap, largeur commune). |
-| TC-02 | Bouton **« + Ajouter une ligne »**. Une ligne = **Dépôt** (liste des dépôts suivis), **Current** (tag ou branche du dépôt) et **Référence** (tag du dépôt). Un même dépôt peut figurer sur plusieurs lignes. Croix de suppression en bout de ligne. Les lignes sont mémorisées dans `config.json` et retrouvées au lancement. |
-| TC-03 | Choix de Current et Référence : listes déroulantes avec recherche, construites depuis la base (TG-08, BR-10) : tags non supprimés du dépôt, du plus récent au plus ancien, puis, pour Current uniquement, ses branches non supprimées. Changer de dépôt vide les deux choix. |
+| TC-02 | Bouton **« + Ajouter une ligne »**. Une ligne = **Dépôt** (liste des dépôts suivis), **Current** (tag ou branche du dépôt) et **Référence** (tag ou branche protégée du dépôt). Un même dépôt peut figurer sur plusieurs lignes. Croix de suppression en bout de ligne. Les lignes sont mémorisées dans `config.json` et retrouvées au lancement. |
+| TC-03 | Choix de Current et Référence : listes déroulantes avec recherche, construites depuis la base (TG-08, BR-10) : tags non supprimés du dépôt, du plus récent au plus ancien, puis ses branches non supprimées : toutes pour Current, seulement les branches protégées (indicateur GitLab `protected`) pour Référence. Le panneau de détail indique la nature de chaque côté (tag, branche, branche protégée). Changer de dépôt vide les deux choix. |
 | TC-04 | Calcul lancé dès que Current et Référence sont choisis, en tâche de fond, ligne par ligne ; indicateur « Calcul… » sur la ligne. Aucun bouton à cliquer. |
 | TC-05 | **Commits de l'écart** : `GET /projects/:id/repository/commits?ref_name=<référence>..<current>` (commits présents dans Current et absents de Référence, d'après le graphe Git, quelles que soient les dates), paginé, sans les diffs. **Divergence** : même requête dans l'autre sens (`<current>..<référence>`). |
 | TC-06 | **Commits → MR**, sans requête d'abord : SHA de merge, de squash ou de tête d'une MR en base, puis commits des MR en base (RP-04, ST-12) ; pour les commits restants, `GET /projects/:id/repository/commits/:sha/merge_requests`, une requête par commit, en parallèle (CH-06), résultat stocké une fois pour toutes (comme CO-08). Une MR est comptée une fois même si plusieurs de ses commits sont dans l'écart. Les commits sans MR sont gardés à part. |
