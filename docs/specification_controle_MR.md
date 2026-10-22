@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.19 (brouillon) — 21/10/2026
+Version : 1.21 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -328,7 +328,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 
 | Réf. | Exigence |
 |---|---|
-| RP-01 | Une règle = nom, champ inspecté, regex, condition, pondération, case « Active ». |
+| RP-01 | Une règle = nom, champ inspecté, regex, groupe à récupérer (RP-09), condition, pondération, case « Active ». |
 | RP-02 | Champs inspectables : titre, description, branche source, branche cible, messages des commits de la MR. |
 | RP-03 | Condition : « doit correspondre » ou « ne doit pas correspondre ». |
 | RP-04 | Messages de commits : OK seulement si **tous** les commits de la MR respectent la condition ; l'infobulle du KO liste les SHA fautifs. Nécessite une requête GitLab par MR (stockée en base, voir CH-09). |
@@ -336,6 +336,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 | RP-06 | Chaque règle active a sa colonne OK / KO dans le tableau, compte dans le score selon sa pondération et dans les statistiques (nombre de KO). |
 | RP-07 | Règles pré-remplies à la création : « Titre conforme » (titre, doit correspondre) et « Lien ticket » (description, doit correspondre), regex à compléter. Elles remplacent les anciennes RC-01 et RC-02. |
 | RP-08 | Regex validées avant enregistrement (OC-07). Une règle active sans regex est KO (« regex non configurée »). |
+| RP-09 | **Groupe à récupérer** sur chaque regex qui lit une valeur : règles personnalisées, lien ticket et n° de ticket (RC-03). 0 (défaut) = toute la correspondance, N = le groupe capturant N (ex. `(#)(\d+)` sur « #42 » : groupe 2 = « 42 »). Le groupe doit exister dans la regex, sinon l'enregistrement est refusé (OC-07). Règle « doit correspondre » : la valeur récupérée est affichée par le testeur ; règle « ne doit pas correspondre » : elle est citée dans le KO. Un groupe facultatif non trouvé compte comme absent. Pas de groupe pour la regex d'exclusion des branches (filtre, aucune valeur lue). |
 
 ### 7.2 Règles fixes
 
@@ -346,7 +347,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 | RC-05 | Pipeline vert | Au moment du merge, tous les statuts CI du dernier commit de la MR sont terminés en succès. | Au moins un statut en échec, annulé, ou encore en cours au moment du merge ; ou aucun statut. | MR non mergée, ou dépôt sans « CI attendue ». |
 | RC-06 | Mergée par l'assigné (activable, désactivée par défaut) | Le mergeur est l'un des assignés de la MR (comparaison par personne, 5.4). | Le mergeur n'est aucun des assignés (infobulle : « Mergée par X, assignée à Y »). | MR non mergée, ou MR sans assigné. |
 
-Les regex du lien et du n° de ticket de RC-03 sont dans un bloc dédié « Correspondance ticket » de l'onglet Config. Le bloc « Règles fixes » de l'onglet Config affiche la pondération de RC-03 à RC-06 et la case « Active » de RC-06.
+Les regex du lien et du n° de ticket de RC-03, chacune avec son groupe à récupérer (RP-09), sont dans un bloc dédié « Correspondance ticket » de l'onglet Config. Le n° de ticket est cherché dans le texte récupéré par la regex du lien. Le bloc « Règles fixes » de l'onglet Config affiche la pondération de RC-03 à RC-06 et la case « Active » de RC-06.
 
 **Détail de RC-05 :**
 
@@ -477,8 +478,8 @@ Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dép�
 | Réf. | Exigence |
 |---|---|
 | TC-01 | Sous-onglet **Comparer** de l'onglet Tags : un tableau de lignes de comparaison, à gauche, et un panneau de détail à droite (mêmes mécanismes que DE-01 et DE-02 : ligne surlignée, flèches haut / bas, Échap, largeur commune). |
-| TC-02 | Bouton **« + Ajouter une ligne »**. Une ligne = **Dépôt** (liste des dépôts suivis), **Current** (tag ou branche du dépôt) et **Référence** (tag du dépôt). Un même dépôt peut figurer sur plusieurs lignes. Croix de suppression en bout de ligne. Les lignes sont mémorisées dans `config.json` et retrouvées au lancement. |
-| TC-03 | Choix de Current et Référence : listes déroulantes avec recherche, construites depuis la base (TG-08, BR-10) : tags non supprimés du dépôt, du plus récent au plus ancien, puis, pour Current uniquement, ses branches non supprimées. Changer de dépôt vide les deux choix. |
+| TC-02 | Bouton **« + Ajouter une ligne »**. Une ligne = **Dépôt** (liste des dépôts suivis), **Current** (tag ou branche du dépôt) et **Référence** (tag ou branche protégée du dépôt). Un même dépôt peut figurer sur plusieurs lignes. Croix de suppression en bout de ligne. Les lignes sont mémorisées dans `config.json` et retrouvées au lancement. |
+| TC-03 | Choix de Current et Référence : listes déroulantes avec recherche, construites depuis la base (TG-08, BR-10) : tags non supprimés du dépôt, du plus récent au plus ancien, puis ses branches non supprimées : toutes pour Current, seulement les branches protégées (indicateur GitLab `protected`) pour Référence. Le panneau de détail indique la nature de chaque côté (tag, branche, branche protégée). Changer de dépôt vide les deux choix. |
 | TC-04 | Calcul lancé dès que Current et Référence sont choisis, en tâche de fond, ligne par ligne ; indicateur « Calcul… » sur la ligne. Aucun bouton à cliquer. |
 | TC-05 | **Commits de l'écart** : `GET /projects/:id/repository/commits?ref_name=<référence>..<current>` (commits présents dans Current et absents de Référence, d'après le graphe Git, quelles que soient les dates), paginé, sans les diffs. **Divergence** : même requête dans l'autre sens (`<current>..<référence>`). |
 | TC-06 | **Commits → MR**, sans requête d'abord : SHA de merge, de squash ou de tête d'une MR en base, puis commits des MR en base (RP-04, ST-12) ; pour les commits restants, `GET /projects/:id/repository/commits/:sha/merge_requests`, une requête par commit, en parallèle (CH-06), résultat stocké une fois pour toutes (comme CO-08). Une MR est comptée une fois même si plusieurs de ses commits sont dans l'écart. Les commits sans MR sont gardés à part. |

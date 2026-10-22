@@ -14,6 +14,7 @@ from gitective.settings.config_file import RULE_FIELDS, RULE_MODES, CustomRule, 
 from gitective.shared.dates import format_datetime, now_local
 from gitective.database.project_list import load_cached, save_cached
 from gitective.review.rules import validate_regex
+from gitective.review.settings_form import group_error
 from gitective.ui.components.widgets import ProjectPicker
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ class RuleDialog(tk.Toplevel):
         self._rule = rule
         self._on_done = on_done
         self.title(t("Règle personnalisée"))
-        self.geometry("520x380")
+        self.geometry("560x430")
         self.transient(master.winfo_toplevel())
         self.configure(background=app.get_theme().bg)
         frame = ttk.Frame(self, padding=16)
@@ -44,6 +45,7 @@ class RuleDialog(tk.Toplevel):
         self.pattern = tk.StringVar(value=rule.pattern)
         self.mode_label = tk.StringVar(value=self._modes.get(rule.mode, self._modes["match"]))
         self.weight = tk.StringVar(value=f"{rule.weight:g}")
+        self.group = tk.StringVar(value=str(rule.group))
         self.active = tk.BooleanVar(value=rule.active)
 
         rows: list[tuple[str, tk.Widget]] = [
@@ -53,11 +55,12 @@ class RuleDialog(tk.Toplevel):
             (t("Condition"), ttk.Combobox(frame, textvariable=self.mode_label, state="readonly",
                                           values=list(self._modes.values()))),
             (t("Regex"), ttk.Entry(frame, textvariable=self.pattern, font=app.get_theme().mono)),
+            (t("Groupe à récupérer"), ttk.Spinbox(frame, from_=0, to=99, textvariable=self.group, width=6)),
             (t("Pondération"), ttk.Entry(frame, textvariable=self.weight, width=8)),
         ]
         for line, (label, widget) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=line, column=0, sticky="w", pady=6, padx=(0, 12))
-            widget.grid(row=line, column=1, sticky="w" if line == len(rows) - 1 else "ew", pady=6)
+            widget.grid(row=line, column=1, sticky="w" if line >= len(rows) - 2 else "ew", pady=6)
         ttk.Checkbutton(frame, text=t("Active"), variable=self.active).grid(row=len(rows), column=1, sticky="w")
         self._hint = ttk.Label(frame, style="Muted.TLabel", wraplength=470)
         self._hint.grid(row=len(rows) + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
@@ -76,7 +79,9 @@ class RuleDialog(tk.Toplevel):
                                       "Coût : une requête GitLab de plus par MR."))
         else:
             self._hint.configure(text=t("La regex est cherchée n'importe où dans le champ "
-                                      "(utilisez ^ et $ pour l'ancrer)."))
+                                      "(utilisez ^ et $ pour l'ancrer). Groupe à récupérer : 0 = toute la "
+                                      "correspondance, sinon le n° du groupe capturant ; la valeur s'affiche "
+                                      "dans le testeur."))
 
     def _validate(self) -> None:
         name = self.name.get().strip()
@@ -86,6 +91,11 @@ class RuleDialog(tk.Toplevel):
         error = validate_regex(self.pattern.get())
         if error:
             self.app.notify("error", t("Regex invalide : {error}", error=error))
+            return
+        group = self.group.get().strip()
+        error = group_error(self.pattern.get(), group)
+        if error:
+            self.app.notify("error", t("Regex : {error}", error=error))
             return
         try:
             weight = float(self.weight.get().replace(",", "."))
@@ -98,7 +108,7 @@ class RuleDialog(tk.Toplevel):
         modes = {v: k for k, v in self._modes.items()}
         self._on_done(CustomRule(name=name, field=fields[self.field_label.get()], pattern=self.pattern.get(),
                                  mode=modes[self.mode_label.get()], weight=weight, active=self.active.get(),
-                                 id=self._rule.id))
+                                 id=self._rule.id, group=int(group)))
         self.destroy()
 
 

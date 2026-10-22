@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from gitective.ui.components.gauge import label_text
 from gitective.shared.i18n import t
 from gitective.forge.models import Commit, MergeRequest
-from gitective.repository.tag_compare import CompareError, Comparison, compare, copied_text, ref_choices
+from gitective.repository.tag_compare import CompareError, Comparison, Ref, compare, copied_text, ref_choices
 from gitective.review.rules import Evaluation, score_level
 from gitective.settings.config_file import CompareLine, TrackedProject
 from gitective.shared.dates import format_datetime
@@ -101,7 +101,7 @@ class TagCompareView(ttk.Frame):
         self._table.pack(anchor="nw")
         self._empty = ttk.Label(card, style="BarMuted.TLabel",
                                 text=t("Aucune ligne : « + Ajouter une ligne », puis choisissez un dépôt, "
-                                     "le tag ou la branche Current et le tag de Référence."))
+                                     "le tag ou la branche Current et le tag ou la branche protégée de Référence."))
         for key, step in (("<Up>", -1), ("<Down>", 1)):
             self._table.bind(key, lambda e, s=step: self._move(s))
         self._table.bind("<Escape>", lambda e: self.close_detail())
@@ -144,10 +144,11 @@ class TagCompareView(ttk.Frame):
         self._render()
 
     def _load_choices(self, item: _Line) -> None:
-        """Current: tags then branches; Référence: tags; deleted ones left out (TC-03)."""
+        """Current: tags then branches; Référence: tags then protected branches; deleted ones left out (TC-03)."""
         tags, branches = ref_choices(self.app.store, item.line.project_id) if item.line.project_id else ([], [])
         names = [t.name for t in tags]
-        item.choices = (names + [b.name for b in branches if b.name not in names], names)
+        others = [b for b in branches if b.name not in names]
+        item.choices = (names + [b.name for b in others], names + [b.name for b in others if b.protected])
 
     # ------------------------------------------------------------- Drawing
 
@@ -458,8 +459,11 @@ class TagCompareDetail(SidePanel):
         tk.Label(head, text=f"{result.reference.name} → {result.current.name}", background=theme.bg,
                  foreground=theme.text, font=(theme.mono[0], theme.mono[1] + 3, "bold"), anchor="w",
                  wraplength=self._wrap - 30, justify="left").pack(fill="x")
-        kind = t("branche") if result.current.is_branch else t("tag")
-        lines = (t("{repo} · current : {kind}", repo=self.app.repo_label(result.project.path), kind=kind),
+        def kind(ref: Ref) -> str:
+            return t("branche protégée") if ref.protected else t("branche") if ref.is_branch else t("tag")
+
+        lines = (t("{repo} · référence : {reference} · current : {current}", repo=self.app.repo_label(result.project.path),
+                   reference=kind(result.reference), current=kind(result.current)),
                  t("{label} : {value}", label=result.reference.name, value=format_datetime(result.reference.date)),
                  t("{label} : {value}", label=result.current.name, value=format_datetime(result.current.date)))
         for text in lines:

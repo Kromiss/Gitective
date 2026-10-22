@@ -23,8 +23,8 @@ from gitective.settings.config_file import (
 from gitective.settings import config_file as config
 from gitective.shared import autostart
 from gitective.shared.avatars import badge_color, initials
-from gitective.review.rules import FIXED_LABELS, MrFields, RuleSet, validate_regex
-from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page
+from gitective.review.rules import FIXED_LABELS, TICKET, MrFields, RuleSet, validate_regex
+from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page, group_error
 from gitective.ui.themes import THEMES
 from gitective.shared.i18n import LANGUAGES
 from gitective.ui.components.dialogs import PersonDialog, ProjectsDialog, RuleDialog
@@ -307,14 +307,18 @@ class SettingsTab(ttk.Frame):
         fixed = self._section(parent, t("Correspondance ticket"))
         self.link_regex = tk.StringVar()
         self.ticket_regex = tk.StringVar()
+        self.link_group = tk.StringVar()
+        self.ticket_group = tk.StringVar()
         mono = self.app.get_theme().mono
         self._labeled_entry(fixed, t("Regex du lien ticket (dans la description)"), self.link_regex,
                             t("Regex qui trouve le lien du ticket dans la description de la MR. "
                               "Par défaut : {value}", value=DEFAULTS.link_regex), font=mono)
+        self._group_spin(fixed, self.link_group)
         self._labeled_entry(fixed, t("Regex du n° de ticket"), self.ticket_regex,
                             t("Regex qui extrait le n° de ticket (premier groupe capturant). "
                               "Par défaut : {value}", value=DEFAULTS.ticket_regex), font=mono)
-        for var in (self.link_regex, self.ticket_regex):
+        self._group_spin(fixed, self.ticket_group)
+        for var in (self.link_regex, self.ticket_regex, self.link_group, self.ticket_group):
             var.trace_add("write", lambda *_: self._run_tester())
 
         scoring = self._section(parent, t("Pondérations et seuils"))
@@ -380,6 +384,9 @@ class SettingsTab(ttk.Frame):
         text.bind("<KeyRelease>", lambda e: self._run_tester())
         return text
 
+    def _group_spin(self, parent: tk.Misc, var: tk.StringVar) -> None:
+        self._spin(parent, t("Groupe à récupérer"), var, (0, 99), group_help())
+
     # -------------------------------------------------------------- Avancé
 
     def _build_network(self, parent: tk.Misc) -> None:
@@ -439,7 +446,7 @@ class SettingsTab(ttk.Frame):
     def _tracked_vars(self) -> list[tk.Variable]:
         return [self.url, self.token, self.theme, self.language, self.notify_merges, self.notify_assigned,
                 self.notify_own_merged, self.notify_new_mrs, self.link_regex, self.ticket_regex,
-                *self.weights.values(), self.assignee_rule, self.green, self.orange, self.verify_ssl,
+                self.link_group, self.ticket_group, *self.weights.values(), self.assignee_rule, self.green, self.orange, self.verify_ssl,
                 self.parallel, self.sync_minutes, self.branch_regex, self.dead_days, self.autostart]
 
     def _snapshot(self) -> dict[str, object]:
@@ -454,7 +461,8 @@ class SettingsTab(ttk.Frame):
             "general.notify_own_merged": self.notify_own_merged.get(), "general.notify_new_mrs": self.notify_new_mrs.get(),
             "general.people": repr(d.people),
             "rules.rules": repr(d.rules), "rules.link_regex": self.link_regex.get(),
-            "rules.ticket_regex": self.ticket_regex.get(), "rules.assignee_rule": self.assignee_rule.get(),
+            "rules.ticket_regex": self.ticket_regex.get(), "rules.link_group": self.link_group.get().strip(),
+            "rules.ticket_group": self.ticket_group.get().strip(), "rules.assignee_rule": self.assignee_rule.get(),
             "rules.green": self.green.get().strip(), "rules.orange": self.orange.get().strip(),
             "advanced.verify_ssl": self.verify_ssl.get(), "advanced.parallel": self.parallel.get().strip(),
             "advanced.sync_minutes": self.sync_minutes.get().strip(),
@@ -521,6 +529,8 @@ class SettingsTab(ttk.Frame):
         self.notify_new_mrs.set(d.notify_new_mrs)
         self.link_regex.set(d.link_regex)
         self.ticket_regex.set(d.ticket_regex)
+        self.link_group.set(str(d.link_group))
+        self.ticket_group.set(str(d.ticket_group))
         self.branch_regex.set(d.branch_exclude_regex)
         self.dead_days.set(str(d.dead_branch_days))
         for criterion, var in self.weights.items():
@@ -555,7 +565,8 @@ class SettingsTab(ttk.Frame):
         error = apply_numbers(d, NumberFields(
             weights={c: v.get() for c, v in self.weights.items()}, green=self.green.get(),
             orange=self.orange.get(), parallel=self.parallel.get(), sync_minutes=self.sync_minutes.get(),
-            dead_branch_days=self.dead_days.get()))
+            dead_branch_days=self.dead_days.get(), link_group=self.link_group.get().strip(),
+            ticket_group=self.ticket_group.get().strip()))
         if error:
             return None, error
         for project in d.projects:
@@ -647,7 +658,13 @@ class SettingsTab(ttk.Frame):
         if any(validate_regex(p) for p in patterns):
             ttk.Label(self._results, text=t("Une regex est invalide."), style="Bar.TLabel").pack(anchor="w")
             return
-        rules = RuleSet(self.draft.rules, self.link_regex.get(), self.ticket_regex.get(), {})
+        link_group, ticket_group = self.link_group.get().strip(), self.ticket_group.get().strip()
+        error = group_error(self.link_regex.get(), link_group) or group_error(self.ticket_regex.get(), ticket_group)
+        if error:
+            ttk.Label(self._results, text=error, style="Bar.TLabel").pack(anchor="w")
+            return
+        rules = RuleSet(self.draft.rules, self.link_regex.get(), self.ticket_regex.get(), {},
+                        link_group=int(link_group), ticket_group=int(ticket_group))
         commits = [line for line in self.sample_commits.get("1.0", "end").splitlines() if line.strip()]
         fields = MrFields(
             title=self.sample_title.get(),
@@ -667,7 +684,12 @@ class SettingsTab(ttk.Frame):
                      width=4, font=(theme.font[0], theme.font[1], "bold")).pack(side="left")
             text = labels.get(criterion_id, criterion_id)
             if result.detail:
-                text += " — " + (t("n° extrait {number}", number=result.detail) if result.status == "ok" else result.detail)
+                if result.status != "ok":
+                    text += " — " + result.detail
+                elif criterion_id == TICKET:
+                    text += " — " + t("n° extrait {number}", number=result.detail)
+                else:
+                    text += " — " + t("valeur récupérée : {value}", value=result.detail)
             ttk.Label(row, text=text, style="Bar.TLabel", wraplength=420).pack(side="left", padx=8)
 
     # --------------------------------------------------------------- Rules
@@ -693,6 +715,7 @@ class SettingsTab(ttk.Frame):
                       font=(theme.font[0], theme.font[1], "bold")).pack(anchor="w")
             mode = "≈" if rule.mode == "match" else "≠"
             detail = (f"{t(RULE_FIELDS.get(rule.field, rule.field))} {mode} {rule.pattern or t('(regex à compléter)')}"
+                      + (t("  ·  groupe {group}", group=rule.group) if rule.group else "")
                       + t("  ·  poids {weight}", weight=f"{rule.weight:g}"))
             ttk.Label(text, text=detail, style="BarMuted.TLabel", font=theme.mono, wraplength=300).pack(anchor="w")
         self._refresh_changes()
@@ -837,6 +860,12 @@ class SettingsTab(ttk.Frame):
             self._render_people()
 
         PersonDialog(self, self.app, person, done)
+
+
+def group_help() -> str:
+    """ⓘ text of every "group to extract" field (RP-09)."""
+    return t("N° du groupe capturant à récupérer. Exemple : avec (#)(\\d+) sur « #42 », le groupe 2 donne 42, "
+             "le groupe 1 donne #. 0 = toute la correspondance. Par défaut : 0.")
 
 
 def _fmt(value: float) -> str:

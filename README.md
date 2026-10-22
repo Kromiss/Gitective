@@ -85,7 +85,7 @@ discard or stay.
 | URL, token, SSL verification | Connection to GitLab. You can disable SSL verification for an instance that uses an internal certificate. |
 | Simultaneous requests | Number of GitLab requests sent in parallel for per-commit and per-MR lookups (1–16, default 6). Lower it if your instance answers with HTTP 429. |
 | Custom rules | Any number of regex checks (see below). |
-| Ticket matching | Regex of the ticket link (searched in the description) and regex of the ticket number. The number found in the title must equal the number found in the link. |
+| Ticket matching | Regex of the ticket link (searched in the description) and regex of the ticket number, each with a **group to extract** (0 = the whole match, N = capturing group N: with `(#)(\d+)`, group 2 gives `42` for `#42`). The number found in the title must equal the number found in the link. Custom rules have the same group field; the rule tester shows the extracted value. |
 | Weights and thresholds | Each rule's weight in the score, and the color thresholds (green ≥ 100 %, orange ≥ 50 % by default). |
 | Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR, and a **CI attendue** box for repositories that run a CI (see "Green pipeline"). |
 | People | Groups several GitLab accounts and Git identities under one person. |
@@ -262,7 +262,7 @@ job's log. Tags deleted from GitLab stay listed, labelled **SUPPRIMÉ**.
 
 The **Comparer** sub-tab lists the MRs delivered between two versions. Add a
 line per repository, then choose **Current** (a tag or a branch) and
-**Référence** (a tag): the line is computed at once from the Git history, not
+**Référence** (a tag or a protected branch): the line is computed at once from the Git history, not
 from the dates, and shows the number of MRs, commits without MR, their average
 score and a warning when the reference holds commits missing from Current.
 Click a line to see its MRs, commits without MR and that divergence in the side
