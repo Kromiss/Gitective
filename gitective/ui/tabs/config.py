@@ -311,8 +311,10 @@ class SettingsTab(ttk.Frame):
         self.ticket_group = tk.StringVar()
         mono = self.app.get_theme().mono
         self._labeled_entry(fixed, t("Regex du lien ticket (dans la description)"), self.link_regex,
-                            t("Regex qui trouve le lien du ticket dans la description de la MR. "
-                              "Par défaut : {value}", value=DEFAULTS.link_regex), font=mono)
+                            t("Regex qui trouve le lien du ticket dans la description de la MR. Avec un groupe "
+                              "à récupérer ≥ 1, ce groupe est directement le n° de ticket ; avec 0, la regex du "
+                              "n° de ticket cherche le n° dans le lien trouvé. Par défaut : {value}",
+                              value=DEFAULTS.link_regex), font=mono)
         self._group_spin(fixed, self.link_group)
         self._labeled_entry(fixed, t("Regex du n° de ticket"), self.ticket_regex,
                             t("Regex qui extrait le n° de ticket (premier groupe capturant). "

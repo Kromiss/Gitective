@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.21 (brouillon) — 21/10/2026
+Version : 1.22 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -347,7 +347,7 @@ L'utilisateur ajoute autant de règles qu'il le souhaite dans l'onglet Config.
 | RC-05 | Pipeline vert | Au moment du merge, tous les statuts CI du dernier commit de la MR sont terminés en succès. | Au moins un statut en échec, annulé, ou encore en cours au moment du merge ; ou aucun statut. | MR non mergée, ou dépôt sans « CI attendue ». |
 | RC-06 | Mergée par l'assigné (activable, désactivée par défaut) | Le mergeur est l'un des assignés de la MR (comparaison par personne, 5.4). | Le mergeur n'est aucun des assignés (infobulle : « Mergée par X, assignée à Y »). | MR non mergée, ou MR sans assigné. |
 
-Les regex du lien et du n° de ticket de RC-03, chacune avec son groupe à récupérer (RP-09), sont dans un bloc dédié « Correspondance ticket » de l'onglet Config. Le n° de ticket est cherché dans le texte récupéré par la regex du lien. Le bloc « Règles fixes » de l'onglet Config affiche la pondération de RC-03 à RC-06 et la case « Active » de RC-06.
+Les regex du lien et du n° de ticket de RC-03, chacune avec son groupe à récupérer (RP-09), sont dans un bloc dédié « Correspondance ticket » de l'onglet Config. N° du lien : avec un groupe ≥ 1 sur la regex du lien, la valeur de ce groupe est directement le n° de ticket (ex. `(issues\/)(\d+)` groupe 2 sur « …/issues/75 » = « 75 ») ; avec le groupe 0, la regex du n° de ticket cherche le n° dans le lien trouvé. Le n° du titre est toujours extrait par la regex du n° de ticket. Le bloc « Règles fixes » de l'onglet Config affiche la pondération de RC-03 à RC-06 et la case « Active » de RC-06.
 
 **Détail de RC-05 :**
 
