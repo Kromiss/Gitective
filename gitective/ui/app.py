@@ -45,6 +45,7 @@ from gitective.settings.filter_state import FilterState
 from gitective.ui.tabs.branches import BranchesTab
 from gitective.ui.tabs.merge_requests import MrTab
 from gitective.ui.tabs.tags import TagsTab
+from gitective.ui.components.dialogs import ask_unsaved
 from gitective.ui.components.tab_bar import TabBar
 from gitective.ui.alerts.badges import Badge
 from gitective.ui.alerts.desktop_toast import Toasts, flash_taskbar
@@ -217,6 +218,7 @@ class App:
         self.tags_tab = TagsTab(self.notebook, self)
         self.stats_tab = StatsTab(self.notebook, self)
         self.settings_tab = SettingsTab(self.notebook, self)
+        self._current_tab: int | None = None
         # The overview is the first tab, shown at launch (VE-01); Branches and Tags follow the MRs (BR-01, TG-01).
         for tab, text in ((self.overview_tab, t("Vue d'ensemble")), (self.mr_tab, t("Merge Requests")),
                           (self.branches_tab, t("Branches")), (self.tags_tab, t("Tags")),
@@ -304,6 +306,11 @@ class App:
 
     def save_settings(self) -> None:
         """Write config.json after a tab changed its remembered filters (BR-06, TG-04)."""
+        self._save()
+
+    def save_config_view(self, view: str) -> None:
+        """Remember the last Config sub-tab (OC-14)."""
+        self.settings.config_view = view
         self._save()
 
     def save_stats_view(self, view: str) -> None:
@@ -499,6 +506,7 @@ class App:
         # Filters remembered by the tabs since the Config form was loaded.
         new.branch_filters, new.tag_filters = self.settings.branch_filters, self.settings.tag_filters
         new.tags_view, new.tag_compares = self.settings.tags_view, self.settings.tag_compares
+        new.stats_view, new.config_view = self.settings.stats_view, self.settings.config_view
         url_changed = new.gitlab_url.rstrip("/") != self.settings.gitlab_url.rstrip("/")
         self.settings = new
         self._save()
@@ -584,7 +592,18 @@ class App:
         self.notebook.select(tab)
 
     def _tab_changed(self) -> None:
-        self.tab_bar.select(self.notebook.index("current"))
+        index = self.notebook.index("current")
+        settings_index = self.notebook.index(self.settings_tab)
+        leaving = self._current_tab == settings_index and index != settings_index
+        if leaving and self.settings_tab.has_changes():  # OC-17
+            choice = ask_unsaved(self.root, self, self.settings_tab.change_count(), self.settings_tab.changed_pages())
+            if choice == "stay" or (choice == "save" and not self.settings_tab.save()):
+                self.notebook.select(self.settings_tab)
+                return
+            if choice == "discard":
+                self.settings_tab.reset()
+        self._current_tab = index
+        self.tab_bar.select(index)
         current = self.notebook.nametowidget(self.notebook.select())
         if getattr(current, "dirty", False):
             current.reload()  # type: ignore[attr-defined]

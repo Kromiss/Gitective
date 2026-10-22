@@ -69,3 +69,16 @@ def apply_numbers(settings: Settings, fields: NumberFields) -> str:
         return t("Branche morte : un nombre entier de jours, au moins 1.")
     settings.parallel_requests, settings.sync_minutes, settings.dead_branch_days = parallel, minutes, dead_days
     return ""
+
+
+def changes_by_page(baseline: dict[str, object], current: dict[str, object]) -> dict[str, int]:
+    """Count the form values that differ from the saved ones, per Config sub-tab (OC-15).
+
+    Keys look like "general.url": the part before the dot names the sub-tab.
+    """
+    counts: dict[str, int] = {}
+    for key in baseline.keys() | current.keys():
+        if baseline.get(key) != current.get(key):
+            page = key.split(".", 1)[0]
+            counts[page] = counts.get(page, 0) + 1
+    return counts

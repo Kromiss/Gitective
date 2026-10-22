@@ -11,6 +11,7 @@ from typing import Any
 
 from gitective.shared.i18n import t
 from gitective.ui.components.gauge import draw_gauge, gauge_width
+from gitective.ui.rounded import blend
 from gitective.ui.themes import Theme
 from gitective.ui.components.widgets import Tooltip
 
@@ -275,7 +276,8 @@ class DataGrid(ttk.Frame):
         if col.kind == "status":
             self._pill(x0, x1, mid, STATUS_TEXT.get(value[0], value[0]), theme.status_colors(value[0]), bold)
         elif col.kind == "score":
-            gauge = (value[1], theme.empty_bar) if theme.shapes else None
+            colors = theme.level_colors(value[1])
+            gauge = (value[1], blend(colors[0], colors[1], 0.3)) if theme.shapes else None
             self._pill(x0, x1, mid, value[0], theme.level_colors(value[1]), bold, minimum=52, gauge=gauge)
         elif col.kind == "link":
             self._text(self.body, x0, x1, mid, value[0], font, theme.muted if row.get("_muted") else theme.link,

@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.18 (brouillon) — 21/10/2026
+Version : 1.19 (brouillon) — 21/10/2026
 
 ## 1. Objet
 
@@ -77,7 +77,7 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 
 | Réf. | Exigence |
 |---|---|
-| OC-01 | Onglet « Config » dans l'application, permettant de modifier tous les paramètres de la section 3. |
+| OC-01 | Onglet « Config » dans l'application, permettant de modifier tous les paramètres de la section 3, répartis en trois sous-onglets (OC-14). |
 | OC-02 | Token : champ masqué + bouton « Afficher ». |
 | OC-03 | Enregistrement dans `config.json`. |
 | OC-04 | Choix du thème parmi une liste figée (voir 5.2) ; s'applique à tous les onglets, Vue d'ensemble comprise. |
@@ -90,6 +90,10 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | OC-12 | Case « Lancer Gitective au démarrage de Windows (réduit) » : ajoute ou retire une entrée dans la clé de registre de l'utilisateur `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (module `winreg`, sans droits administrateur), qui lance `pythonw main.pyw --minimized`. L'application démarre réduite dans la barre des tâches, synchronisation et notifications actives. Réglage lu dans le registre, pas dans `config.json` ; case grisée hors Windows. |
 | OC-13 | Liste « Langue » : Français / English (5.9). |
 | OC-09 | Bouton « Vider la base locale » : supprime toutes les données de `gitective.db` après confirmation (voir CH-10). |
+| OC-14 | Trois sous-onglets, au plus deux colonnes chacun. **Général** : Connexion GitLab, Dépôts suivis | Apparence (thème, langue), Notifications, Personnes. **Règles** : Règles personnalisées, Correspondance ticket, Pondérations et seuils | Testeur de règles. **Avancé** : Réseau et synchronisation (SSL, requêtes simultanées, période), Onglet Branches | Démarrage (Windows, assistant), Base locale. Le dernier sous-onglet ouvert est mémorisé (`config_view`). |
+| OC-15 | Modifications non enregistrées : comparaison du formulaire avec la configuration enregistrée. Point « • » sur chaque sous-onglet modifié, nombre de modifications sur « Enregistrer (N) », résumé dans la barre du bas (« N modification(s) non enregistrée(s) · Général, Règles »). Sans modification, « Enregistrer » et « Annuler les modifications » sont grisés. Les champs du testeur ne comptent pas. |
+| OC-16 | Aide : une icône ⓘ à côté de chaque réglage ; au survol, une infobulle explique le réglage et donne sa valeur par défaut. |
+| OC-17 | Quitter l'onglet Config avec des modifications en attente ouvre une fenêtre : « Rester dans Config », « Ignorer les modifications » (le formulaire revient à la configuration enregistrée) ou « Enregistrer » (on reste dans Config si l'enregistrement échoue ou est refusé). |
 
 ### 5.2 Thèmes (DA)
 
@@ -98,22 +102,24 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | TH-00 | Default | Thème par défaut. Sombre et soigné : fond bleu nuit, cartes ardoise, accent turquoise, scores menthe / ambre / corail, coins arrondis. |
 | TH-01 | Clair | Classique et minimaliste. |
 | TH-02 | Sombre | Classique et minimaliste. |
-| TH-03 | Windows 95 | Gris, reliefs biseautés, police système rétro. |
-| TH-04 | Matrix | Fond noir, texte vert, police monospace. |
-| TH-05 | Daltonien | Pour la deutéranopie et la protanopie. Sombre (fond `#0E1117`), accent lavande. Niveaux de score bleu ciel (bon) / jaune (moyen) / vermillon (faible), palette Okabe-Ito, distincts aussi par la luminosité. OK bleu, KO vermillon. Seul thème avec les **indicateurs de forme** (5.2.1). |
+| TH-03 | Windows 95 | Gris, reliefs biseautés, police système rétro. Adouci pour ménager les yeux : cartes blanc cassé (`#F4F4EE`), texte quasi noir, couleurs de niveau et OK / KO / N/A en teintes pâles avec texte foncé (contraste ≥ 6:1), liens bleu marine. |
+| TH-04 | Matrix | Fond noir, police monospace, tout en vert mais lisible : trois intensités de texte (titres vert vif `#33FF66` précédés de « > », texte courant `#8CE6A0`, texte secondaire `#4FA866`), liens soulignés. Niveaux distingués par la luminosité : bon = vert vif, moyen = vert atténué, faible et KO = **vidéo inverse** (fond vert vif, texte noir). Barres et grands chiffres du niveau faible en vert vif hachuré. Sous-titres raccourcis pour ne pas chevaucher les titres. |
+| TH-05 | Daltonien | Pour la deutéranopie et la protanopie. Sombre (fond `#0E1117`), accent lavande. Niveaux de score bleu ciel (bon) / jaune (moyen) / vermillon (faible), palette Okabe-Ito, distincts aussi par la luminosité. OK bleu, KO vermillon. Comme tous les thèmes, porte les **indicateurs de forme** (5.2.1). |
 
 Chaque thème définit : fonds, textes, bordures, rayons des coins, police, accent et accent secondaire, couleurs OK / KO / N/A et couleurs des niveaux de score (aussi utilisées par les merges par jour, VE-06). Thèmes non modifiables. Appliqués via `ttk.Style` et la grille personnalisée.
 
-Les couleurs OK / KO / N/A sont adaptées à chaque thème (ex. Matrix : vert vif / vert sombre / gris). Les libellés texte « OK », « KO », « N/A » restent affichés pour garantir la lisibilité quelle que soit la couleur.
+Les couleurs OK / KO / N/A sont adaptées à chaque thème (ex. Matrix : vert vif / vidéo inverse / vert atténué). Les libellés texte « OK », « KO », « N/A » restent affichés pour garantir la lisibilité quelle que soit la couleur.
 
-#### 5.2.1 Indicateurs de forme (thème Daltonien)
+#### 5.2.1 Indicateurs de forme (tous les thèmes)
+
+La couleur n'est jamais le seul indice : tous les thèmes dessinent les indicateurs ci-dessous.
 
 | Réf. | Exigence |
 |---|---|
 | TF-01 | Chaque score coloré porte une **jauge à 3 barres montantes** dessinée en `Canvas` : 3 barres pleines = bon, 2 = moyen, 1 = faible, les autres dans une couleur neutre. Dans les pastilles du tableau MR et des Statistiques, le fil des derniers merges, les cases des merges par jour, le score moyen (grande jauge), le classement des dépôts. Dans les libellés Tk (score moyen de l'onglet MR, panneau de détail, comparaison de tags, notifications), la jauge est écrite en caractères : `▮▮▮`, `▮▮▯`, `▮▯▯`. |
 | TF-02 | Qualité par semaine (VE-08) et sa légende : bon en aplat, moyen à points, faible hachuré. Hachures et points dessinés en lignes (le `stipple` de Tk n'est pas fiable sous Windows). |
 | TF-03 | Courbes : la première série en trait plein, les suivantes en tirets (motifs Tk `-`, `.`, `-.`, `-..`, gérés sous Windows) ; « Créées » en tirets dans « MR créées / mergées ». Légendes avec le même trait. |
-| TF-04 | Test : les trois couleurs de niveau, simulées pour deutéranope et protanope (matrices de Machado 2009), restent séparées d'un écart CIELAB ΔE > 20 ; le texte des pastilles, OK / KO / N/A et le texte atténué gardent un contraste ≥ 4,5:1. |
+| TF-04 | Test : les trois couleurs de niveau, simulées pour deutéranope et protanope (matrices de Machado 2009), restent séparées d'un écart CIELAB ΔE > 20 ; pour tous les thèmes, le texte des pastilles, OK / KO / N/A, le texte courant et le texte atténué gardent un contraste ≥ 4,5:1 ; Matrix : bon plus lumineux que moyen, faible en vidéo inverse. |
 
 Badges (6.5) : fond, bordure, coins et police des cartes du thème ; icône Assigné (merge) en couleur d'accent, icône Relecteur (œil) en accent secondaire, icône Auteur (crayon) en couleur de texte ; pastille des nouvelles en couleur « score rouge » ; badge à 0 en couleur N/A. Icônes et libellés identiques dans tous les thèmes, dessinés en `Canvas` (pas de police d'icônes).
 

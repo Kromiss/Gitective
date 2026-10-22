@@ -67,9 +67,40 @@ class PaletteTests(unittest.TestCase):
             self.assertGreaterEqual(contrast(fg, bg), 4.5, (fg, bg))
         self.assertGreaterEqual(contrast(t.muted, t.surface), 4.5)
 
-    def test_only_this_theme_draws_shapes(self) -> None:
+    def test_every_theme_draws_shapes(self) -> None:
         from gitective.ui.themes import THEMES
-        self.assertEqual([k for k, theme in THEMES.items() if theme.shapes], ["daltonien"])
+        self.assertEqual([k for k, theme in THEMES.items() if not theme.shapes], [])
+
+
+@unittest.skipUnless(importlib.util.find_spec("tkinter"), "Tk not installed")
+class AllThemesTests(unittest.TestCase):
+    """Gauges and patterns in every theme; Windows 95 and Matrix made readable (TH-03, TH-04)."""
+
+    def setUp(self) -> None:
+        from gitective.ui.themes import THEMES
+        self.themes = THEMES
+
+    def test_text_readable_on_levels_and_statuses_in_every_theme(self) -> None:
+        for key, t in self.themes.items():
+            for bg, fg in (t.green, t.orange, t.red, t.ok, t.ko, t.na):
+                self.assertGreaterEqual(contrast(fg, bg), 4.5, (key, fg, bg))
+            self.assertGreaterEqual(contrast(t.text, t.surface), 4.5, key)
+            self.assertGreaterEqual(contrast(t.muted, t.surface), 4.5, key)
+
+    def test_matrix_levels_differ_by_brightness(self) -> None:
+        m = self.themes["matrix"]
+        def luminance(color: str) -> float:
+            r, g, b = linear(color)
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        # Good is bright, medium dimmed, low in inverse video (light background).
+        self.assertGreater(luminance(m.green[1]), luminance(m.orange[1]))
+        self.assertGreater(luminance(m.red[0]), luminance(m.green[0]) * 5)
+        self.assertNotEqual(m.fill("red"), m.red[1])  # bars stay visible on the dark card
+        self.assertEqual(m.heading_prefix, "> ")
+
+    def test_fill_defaults_to_the_level_text_color(self) -> None:
+        d = self.themes["default"]
+        self.assertEqual((d.fill("green"), d.fill("orange"), d.fill("red")), (d.green[1], d.orange[1], d.red[1]))
 
 
 class FakeCanvas:

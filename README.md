@@ -68,7 +68,14 @@ your administrator has disabled personal tokens: ask them.
 ## Configuration
 
 Every setting is editable in the **Config** tab and saved to `config.json`,
-next to `main.py`.
+next to `main.py`. The tab has three sub-tabs: **Général** (connection,
+repositories, theme, language, notifications, people), **Règles** (custom
+rules, ticket matching, weights and thresholds, rule tester) and **Avancé**
+(SSL, simultaneous requests, synchronisation, Branches tab, startup, local
+database). Hover the ⓘ next to a setting to see what it does and its default
+value. Changed sub-tabs show a dot and **Enregistrer** shows the number of
+pending changes; leaving the tab with pending changes asks whether to save,
+discard or stay.
 
 > The token is stored in plain text in `config.json`. Give it the `read_api`
 > scope only, and keep the file private.
@@ -82,7 +89,7 @@ next to `main.py`.
 | Weights and thresholds | Each rule's weight in the score, and the color thresholds (green ≥ 100 %, orange ≥ 50 % by default). |
 | Repositories | The repositories to inspect, with the branch watched for commits pushed without an MR, and a **CI attendue** box for repositories that run a CI (see "Green pipeline"). |
 | People | Groups several GitLab accounts and Git identities under one person. |
-| Theme | Default, Light, Dark, Windows 95, Matrix or Colour-blind (Daltonien). Default is a dark navy theme with a turquoise accent. Colour-blind is made for deuteranopia and protanopia: blue / yellow / vermilion score levels, each score also drawn as a 3-bar gauge (3 bars good, 2 medium, 1 low), weekly quality bars plain / dotted / hatched, and dashed chart curves. |
+| Theme | Default, Light, Dark, Windows 95, Matrix or Colour-blind (Daltonien). Default is a dark navy theme with a turquoise accent. Colour-blind is made for deuteranopia and protanopia (blue / yellow / vermilion score levels). Windows 95 uses soft off-white cards and pale level colours; Matrix keeps everything green but readable: bright for good, dimmed for medium, inverse video for low and KO. In every theme each score is also drawn as a 3-bar gauge (3 bars good, 2 medium, 1 low), weekly quality bars are plain / dotted / hatched and chart curves are dashed, so colour is never the only cue. |
 | Language | Français (default) or English. Applied at the next start of Gitective. |
 | Automatic synchronisation | How often Gitective updates its database from GitLab, in minutes (default 5), even when minimized. |
 | Desktop notifications | New merges on the tracked repositories, MRs assigned to you or awaiting your review, your own MR merged, and (off by default) every new MR of the tracked repositories. |

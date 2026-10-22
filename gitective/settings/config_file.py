@@ -20,6 +20,7 @@ DB_PATH = APP_DIR / "gitective.db"
 # Fixed criteria (RC-03 to RC-06); custom rules are identified by their own id.
 FIXED_CRITERIA = ("ticket", "self_merge", "pipeline", "assignee")
 STATS_VIEWS = ("person", "repo")
+CONFIG_VIEWS = ("general", "rules", "advanced")
 THEMES = ("default", "light", "dark", "win95", "matrix", "daltonien")
 REFRESH_RANGE = (1, 120)  # automatic synchronisation period, in minutes (CH-13)
 DRAFT_MODES = ("all", "exclude", "only")  # drafts filter (FI-17)
@@ -168,6 +169,8 @@ class Settings:
     detail_width: int = 420
     # View of the Statistics tab: "person" or "repo" (ST-01).
     stats_view: str = "person"
+    # Last sub-tab of the Config tab (OC-14).
+    config_view: str = "general"
     # Simultaneous GitLab requests for per-commit / per-MR lookups (P1).
     parallel_requests: int = 6
     filters: Filters = dc_field(default_factory=Filters)
@@ -217,6 +220,7 @@ class Settings:
             notify_new_mrs=bool(data.get("notify_new_mrs", False)),
             detail_width=clamp_width(data.get("detail_width", base.detail_width)),
             stats_view=data.get("stats_view") if data.get("stats_view") in STATS_VIEWS else base.stats_view,
+            config_view=data.get("config_view") if data.get("config_view") in CONFIG_VIEWS else base.config_view,
             column_widths=_column_widths(data.get("column_widths")),
             branch_exclude_regex=str(data.get("branch_exclude_regex", base.branch_exclude_regex)),
             dead_branch_days=clamp_dead_days(data.get("dead_branch_days", base.dead_branch_days)),

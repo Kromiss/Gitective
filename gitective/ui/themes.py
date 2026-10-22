@@ -53,9 +53,12 @@ class Theme:
     chart: tuple[str, ...] = ("#2B3A5C", "#C9622F", "#2F8F8A", "#5B4A8A", "#2F7A57", "#8A3D5C", "#7A5A1F")
     accent2: str = ""  # secondary accent: reviewer badge (5.2); accent when empty
     selection: str = ""  # background of the selected grid row; header when empty
-    # Score levels also drawn as shapes: 3-bar gauges, hatches, dots and dashed curves (TH-05).
-    shapes: bool = False
+    # Score levels also drawn as shapes: 3-bar gauges, hatches, dots and dashed curves (5.2.1).
+    shapes: bool = True
     gauge_empty: str = ""  # unfilled bars of a gauge; border when empty
+    red_fill: str = ""  # bars and big numbers of a low score when its text color is dark (Matrix inverse video)
+    heading: str = ""  # color of the section titles; text when empty
+    heading_prefix: str = ""  # mark before the overview card titles ("> " in Matrix)
 
     @property
     def second(self) -> str:
@@ -76,6 +79,14 @@ class Theme:
     def level_colors(self, level: str) -> tuple[str, str]:
         """(background, foreground) of a score level."""
         return {"green": self.green, "orange": self.orange}.get(level, self.red)
+
+    def fill(self, level: str) -> str:
+        """Color of a score level drawn on the card itself: bars, big numbers, chart segments."""
+        return {"green": self.green[1], "orange": self.orange[1]}.get(level, self.red_fill or self.red[1])
+
+    @property
+    def title_color(self) -> str:
+        return self.heading or self.text
 
 
 THEMES: dict[str, Theme] = {
@@ -108,25 +119,30 @@ THEMES: dict[str, Theme] = {
         chart=("#8FB0F5", "#E08A54", "#5CC6BF", "#B39DEB", "#7FD8A2", "#F08FB5", "#E6C36A"), radius=12,
         accent2="#B39DEB", selection="#2B3550",
     ),
+    # Windows 95 spirit (gray chrome, bevels, navy) made easier on the eyes: off-white surfaces, no pure black
+    # or pure blue, score levels as dark text on pale tints (TH-03).
     "win95": Theme(
-        key="win95", label=t("Windows 95"), bg="#C0C0C0", surface="#FFFFFF", text="#000000", muted="#404040",
+        key="win95", label=t("Windows 95"), bg="#C0C0C0", surface="#F4F4EE", text="#1E1E1E", muted="#3C3C3C",
         border="#808080", header="#C0C0C0", accent="#000080", accent_text="#FFFFFF", highlight="#000080",
-        link="#0000EE", ok=("#C0C0C0", "#006400"), ko=("#C0C0C0", "#B00000"), na=("#C0C0C0", "#404040"),
-        green=("#C0C0C0", "#006400"), orange=("#C0C0C0", "#8A5A00"), red=("#C0C0C0", "#B00000"),
-        error=("#FFFFE1", "#800000"), success=("#FFFFE1", "#004000"), info=("#FFFFE1", "#000080"),
-        tooltip=("#FFFFE1", "#000000"), font=("MS Sans Serif", 9), mono=("Courier New", 9), relief="raised",
-        chart=("#000080", "#800000", "#008080", "#800080", "#008000", "#808000", "#000000"),
-        accent2="#008080", selection="#C8D0F0",
+        link="#1F3A93", ok=("#D7EBD7", "#1D5E26"), ko=("#F2D4D0", "#8C1D16"), na=("#E0E0DA", "#3C3C3C"),
+        green=("#D7EBD7", "#1D5E26"), orange=("#F1E2BE", "#6A4500"), red=("#F2D4D0", "#8C1D16"),
+        error=("#F2D4D0", "#6E140F"), success=("#D7EBD7", "#174A1E"), info=("#E4E4DC", "#14285A"),
+        tooltip=("#FFFFE1", "#1E1E1E"), font=("MS Sans Serif", 9), mono=("Courier New", 9), relief="raised",
+        chart=("#1F3A93", "#8C3B2E", "#2E7D7A", "#6A4C93", "#3B7A3B", "#8A7A2E", "#3C3C3C"),
+        accent2="#2E7D7A", selection="#C8D0F0", gauge_empty="#B4B4AC",
     ),
+    # Phosphor terminal that stays readable: three text intensities, and three score levels told apart by
+    # brightness, a frame and inverse video for low scores and KO (TH-04).
     "matrix": Theme(
-        key="matrix", label=t("Matrix"), bg="#000000", surface="#030A03", text="#33FF66", muted="#1E9C40",
-        border="#0F4A1E", header="#061406", accent="#33FF66", accent_text="#000000", highlight="#B6FFC8",
-        link="#7CFF9E", ok=("#0B3A16", "#66FF8A"), ko=("#1A1A1A", "#7FB08A"), na=("#0A0F0A", "#5A6B5A"),
-        green=("#0B3A16", "#66FF8A"), orange=("#102810", "#B6FFC8"), red=("#1A1A1A", "#7FB08A"),
-        error=("#0B200B", "#B6FFC8"), success=("#0B3A16", "#66FF8A"), info=("#061406", "#33FF66"),
+        key="matrix", label=t("Matrix"), bg="#000000", surface="#061206", text="#8CE6A0", muted="#4FA866",
+        border="#145A26", header="#0A1E0D", accent="#33FF66", accent_text="#000000", highlight="#B6FFC8",
+        link="#B6FFC8", ok=("#0B3A16", "#33FF66"), ko=("#33FF66", "#000000"), na=("#0A140B", "#4FA866"),
+        green=("#0B3A16", "#33FF66"), orange=("#0A1A0C", "#6BBF80"), red=("#33FF66", "#000000"),
+        error=("#0B200B", "#B6FFC8"), success=("#0B3A16", "#33FF66"), info=("#061406", "#8CE6A0"),
         tooltip=("#33FF66", "#000000"), font=("Consolas", 10), mono=("Consolas", 10),
-        chart=("#33FF66", "#B6FFC8", "#1E9C40", "#7CFF9E", "#0F7A2E", "#D8FFE2", "#5ACC77"),
-        accent2="#B6FFC8", selection="#0B3A16",
+        chart=("#33FF66", "#B6FFC8", "#6BBF80", "#4FA866", "#2E7A44", "#D8FFE2", "#8CE6A0"),
+        accent2="#B6FFC8", selection="#0F3A1A", gauge_empty="#1E4A2A", red_fill="#33FF66", heading="#33FF66",
+        heading_prefix="> ",
     ),
     # Deuteranopia / protanopia: blue / yellow / vermilion levels (Okabe-Ito), told apart by lightness too,
     # and every score level doubled by a shape (TH-05).
@@ -138,7 +154,7 @@ THEMES: dict[str, Theme] = {
         error=("#3A1D0E", "#FFD9C2"), success=("#0F2A40", "#CFEBFB"), info=("#1E2440", "#DCD3FF"),
         tooltip=("#EEF1F6", "#0E1117"), font=("Segoe UI", 10), mono=("Consolas", 10),
         chart=("#56B4E9", "#E69F00", "#C9B6FF", "#F0E442", "#CC79A7", "#E8603C", "#A4ADBD"),
-        radius=16, feature="#141A26", accent2="#E6E1F5", selection="#252E40", shapes=True, gauge_empty="#3A4456",
+        radius=16, feature="#141A26", accent2="#E6E1F5", selection="#252E40", gauge_empty="#3A4456",
     ),
 }
 
@@ -174,7 +190,7 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     style.configure("Muted.TLabel", background=theme.bg, foreground=theme.muted)
     style.configure("BarMuted.TLabel", background=theme.surface, foreground=theme.muted)
     style.configure("Title.TLabel", background=theme.bg, foreground=theme.text, font=(theme.font[0], theme.font[1] + 2, "bold"))
-    style.configure("Section.TLabel", background=theme.surface, foreground=theme.text, font=(theme.font[0], theme.font[1] + 1, "bold"))
+    style.configure("Section.TLabel", background=theme.surface, foreground=theme.title_color, font=(theme.font[0], theme.font[1] + 1, "bold"))
     # width=0: buttons as wide as their text, so the filter cards fit the window.
     style.configure("TButton", background=theme.surface, foreground=theme.text, borderwidth=border,
                     relief=theme.relief if theme.relief == "raised" else "solid", padding=(10, 4), width=0)
@@ -209,6 +225,9 @@ def apply_theme(root: tk.Tk, theme: Theme) -> None:
     # Notification switches pointed at from a desktop notification (NO-10): the card gets the
     # "alternate" state (accent border), its title and switches the accent color.
     style.map("Card.TFrame", bordercolor=[("alternate", theme.accent)])
+    # Unsaved changes of the Config tab (OC-15).
+    style.configure("Pending.TLabel", background=theme.bg, foreground=theme.link,
+                    font=(theme.font[0], theme.font[1], "bold"))
     style.configure("Highlight.TLabel", background=theme.surface, foreground=theme.accent,
                     font=(theme.font[0], theme.font[1] + 1, "bold"))
     style.configure("Highlight.TCheckbutton", background=theme.surface, foreground=theme.accent,
