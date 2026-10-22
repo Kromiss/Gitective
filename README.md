@@ -262,7 +262,7 @@ job's log. Tags deleted from GitLab stay listed, labelled **SUPPRIMÉ**.
 
 The **Comparer** sub-tab lists the MRs delivered between two versions. Add a
 line per repository, then choose **Current** (a tag or a branch) and
-**Référence** (a tag): the line is computed at once from the Git history, not
+**Référence** (a tag or a protected branch): the line is computed at once from the Git history, not
 from the dates, and shows the number of MRs, commits without MR, their average
 score and a warning when the reference holds commits missing from Current.
 Click a line to see its MRs, commits without MR and that divergence in the side
