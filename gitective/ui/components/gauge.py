@@ -47,33 +47,21 @@ def label_text(text: str, level: str, shapes: bool) -> str:
 
 def draw_hatched(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, color: str, back: str,
                  step: int = 5) -> None:
-    """Rectangle with diagonal stripes, drawn as lines (Tk stipples are unreliable on Windows)."""
+    """Rectangle with vertical stripes on whole pixels: no staircase nor moiré at any size or scaling (TF-02)."""
+    x0, y0, x1, y1 = round(x0), round(y0), round(x1), round(y1)
     canvas.create_rectangle(x0, y0, x1, y1, fill=back, outline="")
-    width, height = x1 - x0, y1 - y0
-    offset = -height
-    while offset < width:
-        # Line from (offset, bottom) to (offset + height, top), clipped to the box.
-        sx, sy, ex, ey = offset, height, offset + height, 0.0
-        if sx < 0:
-            sy, sx = height + sx, 0.0
-        if ex > width:
-            ey, ex = ex - width, width
-        if ex > sx:
-            canvas.create_line(x0 + sx, y0 + sy, x0 + ex, y0 + ey, fill=color, width=2)
-        offset += step
+    for x in range(x0 + 1, x1, step):
+        canvas.create_rectangle(x, y0, min(x + 2, x1), y1, fill=color, outline="")
 
 
 def draw_dotted(canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, color: str, dot: str,
                 step: int = 5) -> None:
-    """Filled rectangle sprinkled with small dots."""
+    """Filled rectangle sprinkled with 1-pixel dots on whole pixels, evenly spaced at any size (TF-02)."""
+    x0, y0, x1, y1 = round(x0), round(y0), round(x1), round(y1)
     canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
-    y = y0 + step / 2
-    while y < y1:
-        x = x0 + step / 2
-        while x < x1:
+    for y in range(y0 + step // 2, y1, step):
+        for x in range(x0 + step // 2, x1, step):
             canvas.create_rectangle(x, y, x + 1, y + 1, fill=dot, outline="")
-            x += step
-        y += step
 
 
 # Dash patterns Tk draws on Windows too: one per chart series after the first (solid).

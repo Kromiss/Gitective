@@ -209,7 +209,7 @@ class SettingsTab(ttk.Frame):
         box = self._section(parent, t("Apparence"))
         self._field_label(box, t("Thème"),
                           t("Couleurs de l'interface, appliquées dès l'enregistrement. Chaque thème double les "
-                            "couleurs de jauges, hachures et pointillés. Par défaut : {value}.",
+                            "couleurs de jauges, rayures et pointillés. Par défaut : {value}.",
                             value=THEMES[DEFAULTS.theme].label))
         self.theme = tk.StringVar()
         themes = ttk.Frame(box, style="Surface.TFrame")

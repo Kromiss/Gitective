@@ -150,7 +150,7 @@ EN: dict[str, str] = {
     "Connexion GitLab non configurée": "GitLab connection not configured",
     "Connexion réussie : connecté en tant que {username} ({name}).": "Connection successful: signed in as {username} ({name}).",
     "Correspondance ticket": "Ticket matching",
-    "Couleurs de l'interface, appliquées dès l'enregistrement. Chaque thème double les couleurs de jauges, hachures et pointillés. Par défaut : {value}.": "Interface colours, applied on save. Every theme backs colours with gauges, hatching and dots. Default: {value}.",
+    "Couleurs de l'interface, appliquées dès l'enregistrement. Chaque thème double les couleurs de jauges, rayures et pointillés. Par défaut : {value}.": "Interface colours, applied on save. Every theme backs colours with gauges, stripes and dots. Default: {value}.",
     "Critères ajoutés au score : une regex cherchée (≈) ou interdite (≠) dans un champ de la MR, avec un poids. Par défaut : aucune règle.": "Criteria added to the score: a regex required (≈) or forbidden (≠) in an MR field, with a weight. Default: no rules.",
     "Création du": "Created from",
     "Créez-le dans GitLab : Préférences › Jetons d'accès, avec uniquement le droit read_api. Il sera stocké en clair dans config.json, à côté de l'application.": "Create it in GitLab: Preferences › Access tokens, with the read_api scope only. It is stored in plain text in config.json, next to the application.",
