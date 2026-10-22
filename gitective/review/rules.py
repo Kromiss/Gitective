@@ -170,7 +170,10 @@ class RuleSet:
             return CheckResult(KO, t("Regex du lien ou du n° de ticket non configurée"))
         link = extract(self.link, fields.description, self.link_group)
         in_title = extract(self.ticket, fields.title, self.ticket_group)
-        in_link = extract(self.ticket, link, self.ticket_group) if link else None
+        if self.link_group:  # the chosen group of the link is the number itself
+            in_link = link or None
+        else:  # the whole link: the ticket regex finds the number in it
+            in_link = extract(self.ticket, link, self.ticket_group) if link else None
         if in_title and in_link and in_title == in_link:
             return CheckResult(OK, in_title)
         if not in_title and not in_link:

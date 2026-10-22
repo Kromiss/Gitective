@@ -98,11 +98,21 @@ class TicketRuleTests(unittest.TestCase):
         result = rules.check_fields(MrFields("Fix #42", "https://jira.test/browse/#42"))[TICKET]
         self.assertEqual((result.status, result.detail), (OK, "#42"))
 
-    def test_link_group_narrows_the_link(self) -> None:
-        # Group 1 of the link keeps only the key, so the ticket regex cannot match the host name.
-        rules = RuleSet([], r"browse/(\S+)", r"\d+", WEIGHTS, link_group=1)
-        result = rules.check_fields(MrFields("Fix 42", "https://jira9.test/browse/42"))[TICKET]
-        self.assertEqual((result.status, result.detail), (OK, "42"))
+    def test_link_group_zero_looks_for_the_number_in_the_link(self) -> None:
+        # Group 0: the whole link "issues/75", where the ticket regex finds the number after "/".
+        rules = RuleSet([], r"(issues\/)(\d+)", r"(#|/)(\d+)", WEIGHTS, ticket_group=2)
+        result = rules.check_fields(MrFields("[CORE-#75] : x", "sdjkhgsdfg/issues/75"))[TICKET]
+        self.assertEqual((result.status, result.detail), (OK, "75"))
+        strict = RuleSet([], r"(issues\/)(\d+)", r"(#)(\d+)", WEIGHTS, ticket_group=2)
+        self.assertEqual(strict.check_fields(MrFields("[CORE-#75] : x", "sdjkhgsdfg/issues/75"))[TICKET].status, KO)
+
+    def test_link_group_is_the_number_itself(self) -> None:
+        # Each regex gives 75 on its own text: the ticket regex is not applied to the link's group.
+        rules = RuleSet([], r"(issues\/)(\d+)", r"(#)(\d+)", WEIGHTS, link_group=2, ticket_group=2)
+        result = rules.check_fields(MrFields("[CORE-#75] : kjsdhgdskjg", "sdjkhgsdfg/issues/75"))[TICKET]
+        self.assertEqual((result.status, result.detail), (OK, "75"))
+        other = rules.check_fields(MrFields("[CORE-#75] : x", "sdjkhgsdfg/issues/76"))[TICKET]
+        self.assertEqual((other.status, other.detail), (KO, "75 (titre) ≠ 76 (lien)"))
 
     def test_custom_rule_extracts_its_group(self) -> None:
         rule = CustomRule(name="N°", field="title", pattern=r"(#)(\d+)", id="r_n", group=2)

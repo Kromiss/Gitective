@@ -391,7 +391,7 @@ EN: dict[str, str] = {
     "Regex invalide : {error}": "Invalid regex: {error}",
     "Regex non configurée": "Regex not configured",
     "Regex qui extrait le n° de ticket (premier groupe capturant). Par défaut : {value}": "Regex extracting the ticket number (first capturing group). Default: {value}",
-    "Regex qui trouve le lien du ticket dans la description de la MR. Par défaut : {value}": "Regex finding the ticket link in the MR description. Default: {value}",
+    "Regex qui trouve le lien du ticket dans la description de la MR. Avec un groupe à récupérer ≥ 1, ce groupe est directement le n° de ticket ; avec 0, la regex du n° de ticket cherche le n° dans le lien trouvé. Par défaut : {value}": "Regex finding the ticket link in the MR description. With a group to extract ≥ 1, that group is the ticket number itself; with 0, the ticket number regex looks for the number in the link found. Default: {value}",
     "Regroupe plusieurs comptes GitLab et identités git sous une même personne pour les statistiques. Sans personne déclarée, chaque compte compte pour une personne.": "Groups several GitLab accounts and git identities under one person for the statistics. With no person declared, each account counts as one person.",
     "Relancer l'assistant de démarrage": "Run the setup assistant again",
     "Relancer le test": "Test again",
