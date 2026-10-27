@@ -8,7 +8,6 @@ if sys.version_info < (3, 11):
 
 from gitective.settings import config_file  # noqa: E402
 from gitective.shared import i18n  # noqa: E402
-from gitective.shared.autostart import MINIMIZED  # noqa: E402
 
 # The interface modules translate their texts when imported: choose the language first (LG-02).
 i18n.use(config_file.load().language)
@@ -27,8 +26,6 @@ def main() -> None:
         pass
     root = tk.Tk()
     App(root, first_launch)
-    if MINIMIZED in sys.argv[1:]:
-        root.iconify()  # started with Windows: stays in the taskbar, notifications still appear (OC-12)
     root.mainloop()
 
 

@@ -94,7 +94,6 @@ discard or stay.
 | Automatic synchronisation | How often Gitective updates its database from GitLab, in minutes (default 5), even when minimized. |
 | Desktop notifications | New merges on the tracked repositories, MRs assigned to you or awaiting your review, your own MR merged, and (off by default) every new MR of the tracked repositories. |
 | Merged by the assignee | Tick to count the RC-06 rule (see below) in the score; off by default. |
-| Start with Windows | Starts Gitective minimized when you log in to Windows, so the synchronisation and notifications run all day. Stored in your user's registry (`HKCU\...\Run`), no admin rights needed. |
 
 ### Custom rules
 
