@@ -2,7 +2,7 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.23 (brouillon) — 21/10/2026
+Version : 1.24 (brouillon) — 27/10/2026
 
 ## 1. Objet
 
@@ -87,10 +87,9 @@ Fichier `config.json`, dans le dossier de l'application, contenant :
 | OC-08 | Gestion des correspondances personnes ↔ comptes (voir 5.4). |
 | OC-10 | Bloc « Branches » : regex d'exclusion (BR-05, validée par OC-07) et seuil « branche morte » en jours calendaires (BR-04, entier ≥ 1). |
 | OC-11 | Affichage en lecture seule de l'utilisateur du token (PR-01). Bloc « Notifications » : quatre cases (NO-01), dont « Toutes les nouvelles MR » (NO-11), décochée par défaut. |
-| OC-12 | Case « Lancer Gitective au démarrage de Windows (réduit) » : ajoute ou retire une entrée dans la clé de registre de l'utilisateur `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (module `winreg`, sans droits administrateur), qui lance `pythonw main.pyw --minimized`. L'application démarre réduite dans la barre des tâches, synchronisation et notifications actives. Réglage lu dans le registre, pas dans `config.json` ; case grisée hors Windows. |
 | OC-13 | Liste « Langue » : Français / English (5.9). |
 | OC-09 | Bouton « Vider la base locale » : supprime toutes les données de `gitective.db` après confirmation (voir CH-10). |
-| OC-14 | Trois sous-onglets, au plus deux colonnes chacun. **Général** : Connexion GitLab, Dépôts suivis | Apparence (thème, langue), Notifications, Personnes. **Règles** : Règles personnalisées, Correspondance ticket, Pondérations et seuils | Testeur de règles. **Avancé** : Réseau et synchronisation (SSL, requêtes simultanées, période), Onglet Branches | Démarrage (Windows, assistant), Base locale. Le dernier sous-onglet ouvert est mémorisé (`config_view`). |
+| OC-14 | Trois sous-onglets, au plus deux colonnes chacun. **Général** : Connexion GitLab, Dépôts suivis | Apparence (thème, langue), Notifications, Personnes. **Règles** : Règles personnalisées, Correspondance ticket, Pondérations et seuils | Testeur de règles. **Avancé** : Réseau et synchronisation (SSL, requêtes simultanées, période), Onglet Branches | Démarrage (assistant), Base locale. Le dernier sous-onglet ouvert est mémorisé (`config_view`). |
 | OC-15 | Modifications non enregistrées : comparaison du formulaire avec la configuration enregistrée. Point « • » sur chaque sous-onglet modifié, nombre de modifications sur « Enregistrer (N) », résumé dans la barre du bas (« N modification(s) non enregistrée(s) · Général, Règles »). Sans modification, « Enregistrer » et « Annuler les modifications » sont grisés. Les champs du testeur ne comptent pas. |
 | OC-16 | Aide : une icône ⓘ à côté de chaque réglage ; au survol, une infobulle explique le réglage et donne sa valeur par défaut. |
 | OC-17 | Quitter l'onglet Config avec des modifications en attente ouvre une fenêtre : « Rester dans Config », « Ignorer les modifications » (le formulaire revient à la configuration enregistrée) ou « Enregistrer » (on reste dans Config si l'enregistrement échoue ou est refusé). |

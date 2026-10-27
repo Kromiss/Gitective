@@ -20,8 +20,6 @@ from gitective.settings.config_file import (
     Settings,
     TrackedProject,
 )
-from gitective.settings import config_file as config
-from gitective.shared import autostart
 from gitective.shared.avatars import badge_color, initials
 from gitective.review.rules import FIXED_LABELS, TICKET, MrFields, RuleSet, validate_regex
 from gitective.review.settings_form import NumberFields, apply_numbers, changes_by_page, group_error
@@ -423,15 +421,8 @@ class SettingsTab(ttk.Frame):
 
     def _build_startup(self, parent: tk.Misc) -> None:
         box = self._section(parent, t("Démarrage"))
-        # Start with Windows (OC-12): stored in the registry, not in config.json.
-        self.autostart = tk.BooleanVar()
-        self._autostart_box = self._check(box, t("Lancer Gitective au démarrage de Windows (réduit)"), self.autostart,
-                                          t("Lance Gitective réduit à l'ouverture de session Windows. Réglé dans le "
-                                            "registre, pas dans config.json. Par défaut : décoché."))
-        if not autostart.supported():
-            self._autostart_box.state(["disabled"])
         row = ttk.Frame(box, style="Surface.TFrame")
-        row.pack(fill="x", pady=(12, 0))
+        row.pack(fill="x")
         ttk.Button(row, text=t("Relancer l'assistant de démarrage"), command=self.app.open_wizard).pack(side="left")
         self._help(row, t("Rouvre l'assistant du premier lancement : URL, token et dépôts."))
 
@@ -449,7 +440,7 @@ class SettingsTab(ttk.Frame):
         return [self.url, self.token, self.theme, self.language, self.notify_merges, self.notify_assigned,
                 self.notify_own_merged, self.notify_new_mrs, self.link_regex, self.ticket_regex,
                 self.link_group, self.ticket_group, *self.weights.values(), self.assignee_rule, self.green, self.orange, self.verify_ssl,
-                self.parallel, self.sync_minutes, self.branch_regex, self.dead_days, self.autostart]
+                self.parallel, self.sync_minutes, self.branch_regex, self.dead_days]
 
     def _snapshot(self) -> dict[str, object]:
         """Current form values, keyed "<sub-tab>.<setting>" (OC-15)."""
@@ -469,7 +460,6 @@ class SettingsTab(ttk.Frame):
             "advanced.verify_ssl": self.verify_ssl.get(), "advanced.parallel": self.parallel.get().strip(),
             "advanced.sync_minutes": self.sync_minutes.get().strip(),
             "advanced.branch_regex": self.branch_regex.get().strip(), "advanced.dead_days": self.dead_days.get().strip(),
-            "advanced.autostart": self.autostart.get(),
         }
         for criterion, var in self.weights.items():
             values[f"rules.weight_{criterion}"] = var.get().strip()
@@ -523,7 +513,6 @@ class SettingsTab(ttk.Frame):
         self.theme.set(d.theme)
         self.language.set(LANGUAGES.get(d.language, LANGUAGES["fr"]))
         self.sync_minutes.set(str(d.sync_minutes))
-        self.autostart.set(autostart.is_enabled(self._registry()))
         self.assignee_rule.set(d.assignee_rule)
         self.notify_merges.set(d.notify_merges)
         self.notify_assigned.set(d.notify_assigned)
@@ -589,13 +578,6 @@ class SettingsTab(ttk.Frame):
                                        t("L'URL de l'instance change : la base locale va être vidée et les données "
                                          "seront relues depuis la nouvelle instance.\n\nContinuer ?"), parent=self):
                 return False
-        registry = self._registry()
-        if autostart.supported() and self.autostart.get() != autostart.is_enabled(registry):
-            try:
-                autostart.set_enabled(registry, self.autostart.get(), config.APP_DIR)
-            except OSError as exc:
-                self.app.notify("error", t("Démarrage avec Windows impossible à régler : {error}", error=exc))
-                return False
         restart = settings.language != self.app.settings.language
         self.app.apply_settings(settings)
         self.draft = copy.deepcopy(settings)
@@ -608,13 +590,6 @@ class SettingsTab(ttk.Frame):
 
     def _save(self) -> None:
         self.save()
-
-    @staticmethod
-    def _registry() -> autostart.Registry | None:
-        try:
-            return autostart.default_registry()
-        except OSError:
-            return None
 
     def _clear_store(self) -> None:
         """OC-09: delete every stored row after confirmation."""
