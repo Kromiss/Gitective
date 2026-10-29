@@ -109,11 +109,14 @@ class StoreTests(unittest.TestCase):
     def test_reopening_a_file_keeps_data_and_clear_empties_it(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "gitective.db"
-            Store(path).put_merge_requests(10, [mr(1), mr(2)])
+            first = Store(path)
+            first.put_merge_requests(10, [mr(1), mr(2)])
+            first.close()  # Windows cannot delete an open file
             store = Store(path)
             self.assertEqual(sorted(m.iid for m in store.merge_requests(10)), [1, 2])
             store.clear()
             self.assertTrue(store.is_empty())
+            store.close()
 
     def test_corrupted_file_raises_store_error(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
@@ -121,11 +124,14 @@ class StoreTests(unittest.TestCase):
             path.write_bytes(b"this is not a database" * 100)
             with self.assertRaises(StoreError):
                 Store(path)
+            path.unlink()  # ER-06 recreates the base: the file must not stay locked (Windows)
 
     def test_newer_schema_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "gitective.db"
-            Store(path).conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
+            first = Store(path)
+            first.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
+            first.close()
             with self.assertRaises(StoreError):
                 Store(path)
 

@@ -192,16 +192,33 @@ class Store:
             self._uri = None
         try:
             self._check_and_migrate()
-        except sqlite3.DatabaseError as exc:
+        except (sqlite3.DatabaseError, StoreError) as exc:
+            # Windows keeps an open file locked: release it so ER-06 can delete and recreate the base.
+            self.close()
+            if isinstance(exc, StoreError):
+                raise
             raise StoreError(str(exc)) from exc
+
+    def close(self) -> None:
+        """Close this thread's connection (and the in-memory anchor)."""
+        for conn in (getattr(self._local, "conn", None), self._anchor):
+            if conn is not None:
+                conn.close()
+        self._local.conn = None
+        self._anchor = None
 
     def _connect(self) -> sqlite3.Connection:
         if self._uri:
             conn = sqlite3.connect(self._uri, uri=True, timeout=30, check_same_thread=False)
         else:
             conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
-            conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        try:
+            if not self._uri:
+                conn.execute("PRAGMA journal_mode=WAL")  # fails first on a file that is not a database
+            conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.DatabaseError:
+            conn.close()
+            raise
         return conn
 
     @property
