@@ -121,6 +121,7 @@ class StoreTests(unittest.TestCase):
             path.write_bytes(b"this is not a database" * 100)
             with self.assertRaises(StoreError):
                 Store(path)
+            path.unlink()  # ER-06 recreates the base: the file must not stay locked (Windows)
 
     def test_newer_schema_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as folder:

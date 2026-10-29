@@ -54,6 +54,7 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(store.get_meta("instance_url"), "https://gitlab.test")
             # MRs are read again once, to get their assignees and reviewers.
             self.assertIsNone(store.sync_state("mr:10"))
+            store.close()  # Windows cannot delete an open file
 
     def test_new_tables_work_after_upgrade_and_reopening(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
@@ -72,6 +73,8 @@ class MigrationTests(unittest.TestCase):
             self.assertIsNotNone(again.get_mr_detail(10, 5, MrDetailData))
             again.clear()  # OC-09 also empties the new tables
             self.assertEqual((again.my_mrs(), again.seen_roles()), ([], set()))
+            store.close()
+            again.close()
 
 
 if __name__ == "__main__":
