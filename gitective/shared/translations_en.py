@@ -67,7 +67,9 @@ EN: dict[str, str] = {
     "Aucune donnée": "No data",
     "Aucune ligne : « + Ajouter une ligne », puis choisissez un dépôt, le tag ou la branche Current et le tag ou la branche protégée de Référence.": "No lines: “+ Add a line”, then choose a repository, the Current tag or branch and the Reference tag or protected branch.",
     "Aucune merge request pour ces filtres": "No merge request for these filters",
+    # admin:begin
     "Aucune merge request sur cette période": "No merge request in this period",
+    # admin:end
     "Aucune modification en attente.": "No pending changes.",
     "Aucune MR mergée": "No merged MR",
     "Aucune personne : chaque compte compte pour une personne.": "No person: each account counts as one person.",
@@ -124,7 +126,9 @@ EN: dict[str, str] = {
     "Classement des dépôts": "Repository ranking",
     "Clic : voir ces MR ouvertes": "Click: see these open MRs",
     "Clic sur un commit : ouvre sa page GitLab": "Click a commit: opens its GitLab page",
+    # admin:begin
     "Clic sur un dépôt : ses statistiques par personne": "Click a repository: its statistics by person",
+    # admin:end
     "Clic sur un tag ou un commit : ouvre GitLab · sur la ligne : détail": "Click a tag or a commit: opens GitLab · the row: details",
     "Clic sur un titre : ouvre GitLab · sur la ligne : détail": "Click a title: opens GitLab · the row: details",
     "Clic sur une branche ou une MR : ouvre GitLab": "Click a branch or an MR: opens GitLab",
@@ -172,7 +176,9 @@ EN: dict[str, str] = {
     "Derniers merges": "Latest merges",
     "Description": "Description",
     "description": "description",
+    # admin:begin
     "Dev": "Dev",
+    # admin:end
     "Dim": "Sun",
     "Dimanche": "Sunday",
     "Discussions non résolues · {count}": "Unresolved discussions · {count}",
@@ -185,7 +191,9 @@ EN: dict[str, str] = {
     "Du": "From",
     "décembre": "December",
     "Délai création → merge": "Creation → merge delay",
+    # admin:begin
     "Délai dernier commit → merge": "Last commit → merge delay",
+    # admin:end
     "Démarrage": "Startup",
     "Dépôt": "Repository",
     "Dépôt non suivi": "Repository not tracked",
@@ -334,21 +342,29 @@ EN: dict[str, str] = {
     "ouverte": "open",
     "Ouverte depuis {days}": "Open for {days}",
     "Ouvertes": "Open",
+    # admin:begin
     "Par dépôt": "By repository",
+    # admin:end
     "par page": "per page",
+    # admin:begin
     "Par personne": "By person",
+    # admin:end
     "par {author}": "by {author}",
     "Parcourir": "Browse",
     "Pas d'approbation": "No approval",
     "Pas de conflit": "No conflict",
+    # admin:begin
     "Pas de droit de merge": "No merge right",
+    # admin:end
     "Pas de notes de release.": "No release notes.",
     "Pas prête à merger": "Not ready to merge",
     "Passer": "Skip",
     "Personne": "Person",
     "Personnes": "People",
     "Personnes et comptes": "People and accounts",
+    # admin:begin
     "Peut merger sur :": "Can merge into:",
+    # admin:end
     "Pipeline": "Pipeline",
     "Pipeline : {status}": "Pipeline: {status}",
     "Pipeline du tag": "Tag pipeline",
@@ -412,7 +428,9 @@ EN: dict[str, str] = {
     "Réseau et synchronisation": "Network and synchronisation",
     "Résultat": "Result",
     "Réussi": "Passed",
+    # admin:begin
     "Rôle": "Role",
+    # admin:end
     "Saisissez une MR fictive pour voir le résultat des règles du formulaire, avant même d'enregistrer. Ces champs ne sont pas enregistrés.": "Type a sample MR to see the result of the form rules, even before saving. These fields are not saved.",
     "Sam": "Sat",
     "Samedi": "Saturday",

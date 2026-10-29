@@ -2,18 +2,18 @@
 
 Contrôle des Merge Requests GitLab
 
-Version : 1.24 (brouillon) — 27/10/2026
+Version : 1.25 (brouillon) — 29/10/2026
 
 ## 1. Objet
 
-**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts, et de lister les MR qui séparent deux tags. Toutes les fonctions sont disponibles pour tous les utilisateurs, en français ou en anglais (5.9).
+**Gitective** (Git + detective) est une application de bureau permettant de contrôler le respect du process sur les Merge Requests (MR) des dépôts GitLab choisis par l'utilisateur, de détecter les commits poussés sans MR, et de suivre les branches (actives, mortes, mergées non supprimées) et les tags de ces dépôts, et de lister les MR qui séparent deux tags. Deux éditions sont livrées : **admin** (complète) et **user** (conforme RGPD, sans chiffres ni noms par personne, section 18). Dans une édition, toutes les fonctions sont disponibles pour tous les utilisateurs, en français ou en anglais (5.9).
 
 ## 2. Contraintes techniques
 
 | Réf. | Exigence |
 |---|---|
 | CT-01 | Langage : Python 3.11 minimum. |
-| CT-02 | Bibliothèque standard uniquement (aucun module externe, aucun téléchargement). Ex. : `tkinter`, `urllib`, `json`, `re`, `ssl`, `sqlite3`, `webbrowser`, `datetime`, `threading`, `unittest`. |
+| CT-02 | Bibliothèque standard uniquement (aucun module externe, aucun téléchargement). Ex. : `tkinter`, `urllib`, `json`, `re`, `ssl`, `sqlite3`, `webbrowser`, `datetime`, `threading`, `unittest`. Les outils de build (PyInstaller, LV-04) servent uniquement à la livraison GitHub, jamais à l'application. |
 | CT-03 | Système cible : Windows, Python déjà installé sur le poste. |
 | CT-04 | GitLab auto-hébergé : URL de l'instance configurable. |
 | CT-05 | Authentification API par Personal Access Token GitLab, droits `read_api` uniquement. |
@@ -369,7 +369,7 @@ RC-06 désactivée : ni colonne, ni score, ni statistiques (comme RP-05).
 
 | Réf. | Exigence |
 |---|---|
-| ST-01 | Onglet dédié « Statistiques », avec un sélecteur **Par personne / Par dépôt** qui bascule entre deux tableaux. La vue choisie est mémorisée dans `config.json`. |
+| ST-01 | Onglet dédié « Statistiques », avec un sélecteur **Par personne / Par dépôt** qui bascule entre deux tableaux. La vue choisie est mémorisée dans `config.json`. Édition user : vue Par dépôt seule (ED-03). |
 | ST-03 | MR prises en compte : tous états (mergées, ouvertes, fermées), hors Draft. |
 | ST-04 | Filtres propres à l'onglet, communs aux deux vues : période sur la date de création, dépôts (sélection multiple parmi les dépôts suivis). |
 | ST-05 | Période : deux dates `JJ/MM/AAAA` + raccourcis « 7 jours », « 30 jours », « Mois en cours », « Année en cours » + bouton « Total » (sans limite de date). |
@@ -411,7 +411,7 @@ Onglet de supervision, purement graphique, pensé pour un affichage permanent : 
 | VE-13 | Multi-écran : le plein écran (F11) occupe l'écran sur lequel se trouve la fenêtre (celui qui en contient la plus grande partie), pas l'écran principal. Sous Windows : écran lu via `ctypes` (`MonitorFromWindow`, `GetMonitorInfoW`), fenêtre sans bordure placée sur toute la surface de cet écran, au-dessus de la barre des tâches. Second F11 : taille et position d'avant restaurées. Hors Windows : attribut `-fullscreen` de Tk. |
 | VE-03 | Redessinée après chaque synchronisation automatique (CH-13). En-tête : heure de la dernière synchronisation et délai avant la prochaine. |
 | VE-04 | Disposition : colonne de gauche (≈ un tiers) = fil des derniers merges, puis merges par jour ; à droite, trois niveaux : score moyen + qualité par semaine / classement des dépôts / règles enfreintes + MR créées et mergées. |
-| VE-05 | **Derniers merges**, élément principal : jusqu'à 40 dernières MR mergées, de la plus récente à la plus ancienne, groupées par jour. Ligne : heure de merge, titre, dépôt, auteur → mergeur, pastille de score colorée. Dès que les merges du jour ne tiennent pas sur deux lignes chacun, chaque merge passe sur une seule ligne, pour voir d'un coup une journée chargée (10 à 15 merges) ; le titre est coupé (45 caractères au plus, avec « … ») pour que le dépôt et les personnes restent toujours visibles. Groupe « Aujourd'hui » mis en évidence ; nombre de merges du jour en grand dans l'en-tête. Les plus anciennes sont coupées si la place manque. |
+| VE-05 | **Derniers merges**, élément principal : jusqu'à 40 dernières MR mergées, de la plus récente à la plus ancienne, groupées par jour. Ligne : heure de merge, titre, dépôt, auteur → mergeur (édition admin uniquement, ED-02), pastille de score colorée. Dès que les merges du jour ne tiennent pas sur deux lignes chacun, chaque merge passe sur une seule ligne, pour voir d'un coup une journée chargée (10 à 15 merges) ; le titre est coupé (45 caractères au plus, avec « … ») pour que le dépôt et les personnes restent toujours visibles. Groupe « Aujourd'hui » mis en évidence ; nombre de merges du jour en grand dans l'en-tête. Les plus anciennes sont coupées si la place manque. |
 | VE-14 | Clic sur une ligne des derniers merges : onglet Merge Requests, état **Mergées**, période réglée sur le jour du merge, autres filtres remis à zéro comme FI-18 (auteur, mergeur, assigné, relecteur, dépôt, recherche), tri par date de merge décroissante ; la page contenant la MR est affichée, sa ligne est sélectionnée et son panneau de détail ouvert (DE-01). Ces filtres sont mémorisés normalement (FI-06). Survol de la ligne : curseur main et fond de survol du thème. Aucune requête GitLab (MR déjà en base). |
 | VE-06 | **Merges par jour** : semaine en cours et semaine précédente, lundi → dimanche. Chaque case affiche le nombre de merges ; son fond prend la couleur du niveau (vert / orange / rouge, seuils de la section 3, mêmes couleurs que les pastilles de score) du score moyen des MR mergées ce jour-là ; jour sans merge : fond neutre. Total par semaine. Jours à venir en pointillés. |
 | VE-07 | **Score moyen** : MR mergées des 30 derniers jours, couleur selon les seuils, écart en points avec les 30 jours précédents, barre 0 – 100. |
@@ -529,7 +529,7 @@ Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dép�
 | AR-02 | Code, noms et commentaires en anglais. Les textes affichés passent tous par `shared/i18n.py` (LG-05). |
 | AR-03 | Commentaires synthétiques et logiques : docstring courte pour chaque module, classe et fonction publique ; commentaire en ligne uniquement pour la logique non évidente. |
 | AR-04 | Annotations de type partout. |
-| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), droits de merge (ST-11 : niveaux d'accès, branche protégée, `developers_can_merge`), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux, MR créées pour le badge Auteur), détection des nouveautés (AM-02, AM-04, NO-04, NO-09, NO-11), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08), comparaison de tags (commits → MR sans requête puis par requête, MR comptée une fois, divergence, texte copié, recalcul d'une branche dont la tête a changé, TC-05 à TC-10), traductions (mêmes clés et mêmes paramètres en français et en anglais, LG-05). |
+| AR-05 | Tests unitaires avec `unittest` : règles de contrôle (dont RC-05 et RC-06), classe API (réponses HTTP simulées), base locale (base SQLite en mémoire), recherche (dont SHA par préfixe, FI-20), droits de merge (ST-11 : niveaux d'accès, branche protégée, `developers_can_merge`), MR ouvertes de l'utilisateur (tous dépôts, rôles assigné / relecteur / les deux, MR créées pour le badge Auteur), détection des nouveautés (AM-02, AM-04, NO-04, NO-09, NO-11), données du panneau de détail (état « prête à merger », extraction de la fin des logs, comptage des lignes des fichiers modifiés, DE-05 à DE-10), branches (état et priorité, exclusions, MR liées, liste copiée, comparaison avec la base et marquage supprimé, BR-03 à BR-10) et tags (comparaison avec la base, MR du commit pointé, TG-07, TG-08), comparaison de tags (commits → MR sans requête puis par requête, MR comptée une fois, divergence, texte copié, recalcul d'une branche dont la tête a changé, TC-05 à TC-10), traductions (mêmes clés et mêmes paramètres en français et en anglais, LG-05), édition user (blocs admin retirés, chaque fichier reste du Python valide, ED-05). |
 | AR-06 | `README.md` en anglais : prérequis, installation, configuration, utilisation. |
 
 ### 15.2 Arborescence
@@ -537,11 +537,14 @@ Objectif : lister les MR livrées entre deux versions, sur un ou plusieurs dép�
 ```
 gitective/
 ├── main.py / main.pyw          # Entry points
+├── .github/workflows/release.yml # Release on every push to main (18.3)
+├── tools/make_edition.py       # Builds the admin or user edition (ED-05)
 ├── README.md                   # Installation and usage (English)
 ├── config.json                 # Created on first launch
 ├── gitective.db                # Local SQLite store (CH-03)
 ├── docs/
-│   └── specification_controle_MR.md
+│   ├── specification_controle_MR.md
+│   └── README_user.md          # README of the user edition: GitLab token only (ED-06)
 ├── gitective/
 │   ├── assets/                 # logo.svg, logo.png, logo.ico
 │   ├── forge/                  # GitLab requests, isolated (AR-07)
@@ -614,7 +617,8 @@ gitective/
     ├── review/      test_rules.py, test_pipeline.py, test_merge_rights.py, test_my_mrs.py, test_mr_detail.py
     ├── repository/  test_branches.py, test_tags.py, test_tag_compare.py
     ├── reporting/   test_statistics.py, test_overview_figures.py
-    └── shared/      test_parallel.py, test_search.py, test_i18n.py
+    ├── shared/      test_parallel.py, test_search.py, test_i18n.py
+    └── tools/       test_make_edition.py   (not shipped)
 ```
 
 ### 15.3 Interface forge et classe API GitLab
@@ -636,10 +640,49 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 | Jalon | Contenu |
 |---|---|
 | J1 | Application exécutée par Python installé (périmètre de ce document). |
-| J2 (futur) | Exécutable Windows autonome. |
+| J2 | Exécutable Windows autonome, livré par la release GitHub (section 18). |
 
 ## 17. Points ouverts
 
 | Point | Statut |
 |---|---|
-| Onglet Statistiques réservé à un mode admin | Reporté à une version ultérieure, mode d'implémentation à définir. Le droit de merge (ST-11) pourrait servir de base. |
+| Onglet Statistiques réservé à un mode admin | Tranché en v1.25 : éditions admin et user (section 18). |
+
+## 18. Éditions et livraison
+
+### 18.1 Éditions admin et user
+
+| Réf. | Exigence |
+|---|---|
+| ED-01 | Deux éditions construites depuis le même code : **admin** (complète) et **user** (conformité RGPD : aucun chiffre ni classement par personne). L'édition est figée à la construction, non réglable dans `config.json`. Elle est affichée dans l'en-tête (VR-03). |
+| ED-02 | Édition user, **Vue d'ensemble** : les derniers merges (VE-05) n'affichent pas « auteur → mergeur ». Le reste de l'onglet ne nomme personne et ne change pas. |
+| ED-03 | Édition user, **Statistiques** : vue Par dépôt seule. Ni sélecteur Par personne / Par dépôt, ni filtre Personnes (FI-09 ne s'applique pas à l'onglet, SR-03 sans objet), ni clic sur un dépôt (SR-05, colonne Dépôt en texte simple). Les commits des MR mergées et les droits de merge ne sont pas lus (ST-11, ST-12 sans objet). |
+| ED-04 | Le reste de l'IHM est identique dans les deux éditions (onglet Merge Requests, Branches, Tags, notifications, badges, Config). |
+| ED-05 | Le code propre à l'admin est **retiré** de l'édition user, pas masqué : il est placé dans des blocs `# admin:begin` / `# admin:end` (code, tests, textes anglais), que `tools/make_edition.py` supprime. Blocs non imbriqués ; le code qui reste fonctionne seul. Un test vérifie que chaque fichier reste du Python valide une fois les blocs retirés ; les tests sont relancés dans chaque édition construite. |
+| ED-06 | README de l'édition user : uniquement la création du token GitLab `read_api` (`docs/README_user.md`). L'édition admin garde le README complet. |
+
+### 18.2 Versions
+
+| Réf. | Exigence |
+|---|---|
+| VR-01 | **Version du logiciel** `X.Y.Z` dans `gitective/__init__.py`, augmentée à chaque modification selon son ampleur (majeure / normale / mineure). |
+| VR-02 | **Numéro de livraison** `AAAA.MM.JJ-N` : date du push (heure de Paris) et compteur du jour à partir de 1. C'est le tag Git de la release. |
+| VR-03 | En-tête de la fenêtre, à côté du nom : version, numéro de livraison, édition (« v1.2.0 · 2026.10.29-1 · user »). Lancé depuis le dépôt Git : « v1.2.0 · admin ». |
+
+### 18.3 Livraison
+
+| Réf. | Exigence |
+|---|---|
+| LV-01 | Déclencheur : chaque push sur `main` (GitHub Actions, runner Windows, Python 3.11). |
+| LV-02 | Étapes : tests, numéro de livraison, construction des deux éditions (tests relancés dans chacune), publication. Un échec arrête la livraison. |
+| LV-03 | Release GitHub publique, tag VR-02, titre « Gitective X.Y.Z (AAAA.MM.JJ-N) », notes générées depuis les PR. Quatre fichiers : `Gitective-admin.exe`, `Gitective-admin.zip`, `Gitective-user.exe`, `Gitective-user.zip`. |
+| LV-04 | `.zip` : code source de l'édition, à lancer avec Python 3.11+ (comme J1). `.exe` : PyInstaller, un seul fichier, sans console, icône `logo.ico` ; `config.json` et `gitective.db` sont créés à côté de l'exe. |
+| LV-05 | Limites : exe non signé (alerte SmartScreen ou antivirus possible) ; release publique, édition admin téléchargeable par tous (elle ne contient aucune donnée, celles-ci viennent du token GitLab). |
+
+### 18.4 Branches Git
+
+| Réf. | Exigence |
+|---|---|
+| BG-01 | `main` = livraisons, `develop` = intégration. Les branches `feature/…` ou `fix/…` partent de `develop`, PR vers `develop` mergée en squash, branche supprimée automatiquement au merge. |
+| BG-02 | Livraison : PR `develop` → `main` mergée en **merge commit** (pas en squash, sinon les deux branches divergent). |
+| BG-03 | `main` et `develop` sont protégées contre la suppression (ruleset GitHub). |

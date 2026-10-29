@@ -21,8 +21,10 @@ packages to install.
    if it is not already there (`python --version` in a terminal). In the
    installer, keep **tcl/tk and IDLE** checked (it is by default) and tick
    **Add python.exe to PATH**.
-2. Get the code: on GitHub, **Code → Download ZIP** and unzip it, or
-   `git clone https://github.com/Kromiss/Gitective.git`.
+2. Get the code: download `Gitective-admin.zip` from the latest
+   [release](https://github.com/Kromiss/Gitective/releases) and unzip it, or
+   `git clone https://github.com/Kromiss/Gitective.git`. Without Python,
+   `Gitective-admin.exe` from the same release runs on its own (step 1 not needed).
 3. Copy the folder anywhere on your computer (it holds `main.py`).
 4. Start the application:
    - on Windows, double-click `main.pyw` (no console window), or
@@ -342,6 +344,8 @@ gitective/ui/components       grid, pagination, chart, filter bar, tab bar, side
 gitective/ui/alerts           error banner, desktop notifications, badges
 gitective/assets              logo (svg, png, ico)
 tests                         unit tests, same folders as gitective/
+tools/make_edition.py         builds the admin or user edition
+.github/workflows/release.yml release on every push to main
 ```
 
 Run the tests with:
@@ -350,6 +354,22 @@ Run the tests with:
 python -m unittest discover -s tests -t .
 ```
 
-## Roadmap
+## Editions and releases
 
-- Standalone Windows executable that does not need a Python installation.
+Every push to `main` publishes a GitHub release tagged with the date and a
+counter (`2026.10.29-1`), titled with the software version from
+`gitective/__init__.py`. It holds four files:
+
+| File | Content |
+|---|---|
+| `Gitective-admin.exe` / `.zip` | Full application (executable / source code). |
+| `Gitective-user.exe` / `.zip` | GDPR edition: no people names in the Overview, Statistics by repository only, README limited to the GitLab token. |
+
+Code that belongs to the admin edition only sits between `# admin:begin` and
+`# admin:end` lines: `tools/make_edition.py` removes those blocks to build the
+user edition. Try it locally with
+`python tools/make_edition.py user build/Gitective-user`.
+
+Branches: work on `feature/…` or `fix/…` branches from `develop`, merged into
+`develop` with squash; deliver with a pull request from `develop` to `main`,
+merged with a merge commit.

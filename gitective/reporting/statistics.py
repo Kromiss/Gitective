@@ -9,12 +9,20 @@ from statistics import median
 
 from gitective.shared.i18n import t
 from gitective.shared.dates import business_days, week_key
-from gitective.shared.people import PersonRef
 from gitective.review.rules import KO, Evaluation
+# admin:begin
+from gitective.shared.people import PersonRef
+# admin:end
 
 GLOBAL_KEY = "__all__"
 
 
+def average(values: Iterable[float]) -> float:
+    items = list(values)
+    return sum(items) / len(items) if items else 0.0
+
+
+# admin:begin
 @dataclass
 class PersonStats:
     """Aggregated figures for one person (one row of the Statistics tab).
@@ -38,11 +46,6 @@ class PersonStats:
     @property
     def merge_delay_days(self) -> float | None:
         return median(self.merge_delays) if self.merge_delays else None
-
-
-def average(values: Iterable[float]) -> float:
-    items = list(values)
-    return sum(items) / len(items) if items else 0.0
 
 
 def per_person(evaluations: Sequence[Evaluation], direct_authors: Sequence[PersonRef] = ()) -> list[PersonStats]:
@@ -76,6 +79,7 @@ def per_person(evaluations: Sequence[Evaluation], direct_authors: Sequence[Perso
     for person in direct_authors:
         row(person).direct_commits += 1
     return sorted(rows.values(), key=lambda r: r.person.name.casefold())
+# admin:end
 
 
 @dataclass
