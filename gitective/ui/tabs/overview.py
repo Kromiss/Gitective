@@ -361,8 +361,10 @@ class OverviewTab(ttk.Frame):
             self._feed_rows.append((cursor, cursor + row_h, x, x + w, hover, ev))
             middle = cursor + row_h / 2
             text_w = w - (title_x - x) - INNER - pill_w - 14
-            who = ev.author.name + (f" → {ev.merger.name}" if ev.merger else "")
-            meta = f"{self.app.repo_label(ev.project_path)} · {who}"
+            meta = self.app.repo_label(ev.project_path)
+            # admin:begin
+            meta += " · " + ev.author.name + (f" → {ev.merger.name}" if ev.merger else "")
+            # admin:end
             if compact:
                 # One line: time, title, then repository and people as far as room allows.
                 # One line: time, title, then repository and people, which always keep their room.

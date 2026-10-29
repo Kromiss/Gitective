@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
@@ -12,8 +13,8 @@ from typing import Any
 
 from gitective.shared.i18n import t
 
-# Application root: the folder holding main.py, config.json and gitective.db.
-APP_DIR = Path(__file__).resolve().parents[2]
+# Application root: the folder holding main.py (or Gitective.exe), config.json and gitective.db.
+APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_DIR / "config.json"
 DB_PATH = APP_DIR / "gitective.db"
 

@@ -9,7 +9,10 @@ from gitective.forge.models import Commit, MergeRequest
 from gitective.shared.dates import business_days
 from gitective.shared.people import PersonDirectory
 from gitective.shared.people import PersonRef
-from gitective.reporting.statistics import by_repo, delay_details, per_person, per_repo, weekly_scores
+from gitective.reporting.statistics import by_repo, delay_details, per_repo, weekly_scores
+# admin:begin
+from gitective.reporting.statistics import per_person
+# admin:end
 from tests.factories import commit_json, mr_json, user_json
 from tests.review.test_rules import make_rules
 
@@ -26,6 +29,7 @@ class BusinessDaysTests(unittest.TestCase):
         self.assertEqual(business_days(FRIDAY_NOON, FRIDAY_NOON - timedelta(hours=1)), 0.0)
 
 
+# admin:begin
 class MergeDelayTests(unittest.TestCase):
     def test_merger_delay_from_last_commit(self) -> None:
         rules, people = make_rules(), PersonDirectory([])
@@ -36,6 +40,7 @@ class MergeDelayTests(unittest.TestCase):
         self.assertAlmostEqual(stats["u:2"].merge_delay_days, 0.25)  # last commit 04:00 → merge 10:00
         self.assertIsNone(stats["u:1"].merge_delay_days)
         self.assertIn("Sur 1 MR", delay_details(stats["u:2"].merge_delays))
+# admin:end
 
 
 class RepositoryStatsTests(unittest.TestCase):
@@ -51,9 +56,11 @@ class RepositoryStatsTests(unittest.TestCase):
         weeks, series = weekly_scores(evs, ["g/api"], key_of=by_repo)
         self.assertEqual(len(series["g/api"]), len(weeks))
 
+    # admin:begin
     def test_direct_commit_authors_get_a_row(self) -> None:
         stats = per_person([], [PersonRef("g:carol", "Carol")])
         self.assertEqual((stats[0].person.name, stats[0].direct_commits, stats[0].score_avg), ("Carol", 1, None))
+    # admin:end
 
 
 if __name__ == "__main__":

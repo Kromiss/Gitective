@@ -8,7 +8,9 @@ from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
 from gitective.shared.i18n import t
+# admin:begin
 from gitective.shared.avatars import badge_color, initials
+# admin:end
 from gitective.shared.dates import (
     HISTORY_START,
     Period,
@@ -22,21 +24,22 @@ from gitective.shared.dates import (
     week_label,
 )
 from gitective.review.mr_evaluation import evaluate_all, load_all_states, load_pairs
-from gitective.review.merge_rights import merge_rights
 from gitective.review.direct_commits import OrphanCommit, find_orphan_commits
 from gitective.shared.people import PersonRef
 from gitective.review.rules import Evaluation, score_level
 from gitective.reporting.statistics import (
     GLOBAL_KEY,
-    PersonStats,
     RepoStats,
     by_repo,
     delay_details,
     format_days,
-    per_person,
     per_repo,
     weekly_scores,
 )
+# admin:begin
+from gitective.review.merge_rights import merge_rights
+from gitective.reporting.statistics import PersonStats, per_person
+# admin:end
 from gitective.ui.components.chart import Series, WeeklyChart
 from gitective.ui.tabs.data_tab import DataTab
 from gitective.ui.components.grid import Column, DataGrid, sort_rows
@@ -50,6 +53,22 @@ PERSON, REPO = "person", "repo"
 
 Loaded = tuple[list[Evaluation], dict[str, list[str]], list[OrphanCommit], list[Exception]]
 
+REPO_COLUMN = Column("repo", t("Dépôt"), 220, stretch=True)
+# admin:begin
+REPO_COLUMN = Column("repo", t("Dépôt"), 220, kind="link", stretch=True)  # click: per-person view (SR-05)
+# admin:end
+REPO_HEAD = [
+    REPO_COLUMN,
+    Column("mr", t("MR"), 60, align="e"),
+    Column("merged", t("MR mergées"), 90, align="e"),
+    Column("score", t("Score moyen"), 96, kind="score", align="center"),
+]
+REPO_TAIL = [
+    Column("direct", t("Commits directs"), 110, align="e"),
+    Column("lead", t("Délai création → merge"), 150, kind="tip", align="e"),
+]
+
+# admin:begin
 HEAD_COLUMNS = [
     Column("person", t("Personne"), 220, kind="avatar", stretch=True),
     Column("role", t("Rôle"), 80, kind="tip"),
@@ -63,17 +82,6 @@ DELAY_COLUMNS = [
     Column("lead", t("Délai création → merge"), 150, kind="tip", align="e"),
     Column("merge_delay", t("Délai dernier commit → merge"), 190, kind="tip", align="e"),
 ]
-REPO_HEAD = [
-    Column("repo", t("Dépôt"), 220, kind="link", stretch=True),
-    Column("mr", t("MR"), 60, align="e"),
-    Column("merged", t("MR mergées"), 90, align="e"),
-    Column("score", t("Score moyen"), 96, kind="score", align="center"),
-]
-REPO_TAIL = [
-    Column("direct", t("Commits directs"), 110, align="e"),
-    Column("lead", t("Délai création → merge"), 150, kind="tip", align="e"),
-]
-
 PERSON_SORT: dict[str, Callable[[PersonStats], Any]] = {
     "person": lambda s: s.person.name.casefold(),
     "mr": lambda s: s.mr_count,
@@ -82,6 +90,7 @@ PERSON_SORT: dict[str, Callable[[PersonStats], Any]] = {
     "direct": lambda s: s.direct_commits,
     "lead": lambda s: s.lead_time_days,
 }
+# admin:end
 REPO_SORT: dict[str, Callable[[RepoStats], Any]] = {
     "repo": lambda s: s.path.casefold(),
     "mr": lambda s: s.mr_count,
@@ -101,12 +110,18 @@ class StatsTab(DataTab):
         super().__init__(master, app, sort_key="score", ascending=False)
         self._evaluations: list[Evaluation] = []
         self._orphans: list[tuple[OrphanCommit, PersonRef]] = []
+        # admin:begin
         self._person_rows: list[PersonStats] = []
+        # admin:end
         self._repo_rows: list[RepoStats] = []
         self._merge_repos: dict[str, list[str]] = {}  # person key → repos they can merge into
         self._images: dict[int, tk.PhotoImage] = {}
         self._repos: list[int] = []
+        # User edition (GDPR): per-repository view only, without the people filter.
+        self._view = REPO
+        # admin:begin
         self._view = app.settings.stats_view
+        # admin:end
         # Each view keeps its own sort; the active one lives in _sort_key / _ascending.
         self._sorts = {PERSON: ("score", False), REPO: ("score", False)}
         start, end = last_days(30)
@@ -120,12 +135,14 @@ class StatsTab(DataTab):
         top.pack(fill="x")
         bottom = ttk.Frame(bar, style="Bar.TFrame")
         bottom.pack(fill="x", pady=(10, 0))
+        # admin:begin
         self._view_var = tk.StringVar(value=self._view)
         switch = ttk.Frame(top, style="Bar.TFrame")
         switch.pack(side="left", padx=(0, 18))
         for value, text in ((PERSON, t("Par personne")), (REPO, t("Par dépôt"))):
             ttk.Radiobutton(switch, text=text, value=value, variable=self._view_var, style="Toolbutton",
                             command=lambda: self.set_view(self._view_var.get())).pack(side="left")
+        # admin:end
         ttk.Label(top, text=t("Création du"), style="BarMuted.TLabel").pack(side="left", padx=(0, 6))
         for index, var in enumerate((self._from, self._to)):
             if index:
@@ -142,7 +159,9 @@ class StatsTab(DataTab):
         self.repos = MultiSelect(bottom, t("Dépôts"), self._repos_changed, app.get_theme)
         self.repos.pack(side="left")
         self.authors = self.make_authors(bottom, t("Personnes"))
+        # admin:begin
         self.authors.pack(side="left", padx=(8, 0))
+        # admin:end
         self.refresh_button(bottom).pack(side="right")
 
         self._card = ttk.Frame(self, style="Card.TFrame", padding=(10, 8, 10, 10))
@@ -155,10 +174,17 @@ class StatsTab(DataTab):
         self._hint = ttk.Label(status, style="BarMuted.TLabel")
         self._hint.pack(side="right")
 
-        self._person_grid = self.make_grid(HEAD_COLUMNS, t("Aucune merge request sur cette période"), master=self._card)
-        self._repo_grid = self.make_grid(REPO_HEAD, t("Aucun dépôt"), table="stats_repo", on_link=self._open_repo,
+        on_repo: Callable[[str], None] | None = None
+        # admin:begin
+        on_repo = self._open_repo
+        # admin:end
+        self._repo_grid = self.make_grid(REPO_HEAD, t("Aucun dépôt"), table="stats_repo", on_link=on_repo,
                                          master=self._card)
-        self.grid_view: DataGrid = self._person_grid
+        self.grid_view: DataGrid = self._repo_grid
+        # admin:begin
+        self._person_grid = self.make_grid(HEAD_COLUMNS, t("Aucune merge request sur cette période"), master=self._card)
+        self.grid_view = self._person_grid
+        # admin:end
         self.update_columns()
         self.chart = WeeklyChart(self, app.get_theme)
         self.chart.pack(side="bottom", fill="x", padx=16, pady=12)
@@ -167,6 +193,7 @@ class StatsTab(DataTab):
 
     # ------------------------------------------------------------ Views
 
+    # admin:begin
     def set_view(self, view: str) -> None:
         """Switch between the per-person and per-repository tables (ST-01)."""
         if view == self._view:
@@ -177,15 +204,21 @@ class StatsTab(DataTab):
         self.app.save_stats_view(view)
         self._show_view()
         self._apply_view()
+    # admin:end
 
     def _show_view(self) -> None:
         self._sort_key, self._ascending = self._sorts[self._view]
         self.grid_view.pack_forget()
-        self.grid_view = self._person_grid if self._view == PERSON else self._repo_grid
+        self.grid_view = self._repo_grid
+        # admin:begin
+        if self._view == PERSON:
+            self.grid_view = self._person_grid
+        self._hint.configure(text=t("Clic sur un dépôt : ses statistiques par personne") if self._view == REPO else "")
+        # admin:end
         self.grid_view.set_sort(self._sort_key, self._ascending)
         self.grid_view.pack(fill="both", expand=True)
-        self._hint.configure(text=t("Clic sur un dépôt : ses statistiques par personne") if self._view == REPO else "")
 
+    # admin:begin
     def _open_repo(self, path: str) -> None:
         """SR-05: per-person view restricted to the clicked repository."""
         project = next((p for p in self.app.settings.projects if p.path == path), None)
@@ -195,6 +228,7 @@ class StatsTab(DataTab):
         self.repos.set_selected([str(project.id)])
         self.set_view(PERSON)
         self.request_reload()
+    # admin:end
 
     # ------------------------------------------------------------ Columns
 
@@ -203,17 +237,21 @@ class StatsTab(DataTab):
         criteria = self.app.rules.criteria if self.app.rules else []
         self._criteria_ids = [c.id for c in criteria]
         ko = [Column(f"ko:{c.id}", t("KO {criterion}", criterion=c.label), 60, align="e") for c in criteria]
-        self._person_grid.set_columns([*HEAD_COLUMNS, *ko, *DELAY_COLUMNS])
         self._repo_grid.set_columns([*REPO_HEAD, *ko, *REPO_TAIL])
-        for view, keys in ((PERSON, self._person_keys()), (REPO, self._repo_keys())):
-            if self._sorts[view][0] not in keys:
-                self._sorts[view] = ("score", False)
+        if self._sorts[REPO][0] not in self._repo_keys():
+            self._sorts[REPO] = ("score", False)
+        # admin:begin
+        self._person_grid.set_columns([*HEAD_COLUMNS, *ko, *DELAY_COLUMNS])
+        if self._sorts[PERSON][0] not in self._person_keys():
+            self._sorts[PERSON] = ("score", False)
+        self._person_grid.set_sort(*self._sorts[PERSON])
+        # admin:end
         if self._sort_key not in self._sort_keys():
             self._sort_key, self._ascending = "score", False
-        self._person_grid.set_sort(*self._sorts[PERSON])
         self._repo_grid.set_sort(*self._sorts[REPO])
         self.grid_view.set_sort(self._sort_key, self._ascending)
 
+    # admin:begin
     def _person_keys(self) -> dict[str, Callable[[PersonStats], Any]]:
         keys = dict(PERSON_SORT)
         keys["role"] = lambda s: s.person.key not in self._merge_repos
@@ -221,6 +259,7 @@ class StatsTab(DataTab):
         for cid in self._criteria_ids:
             keys[f"ko:{cid}"] = lambda s, c=cid: s.ko_counts.get(c, 0)
         return keys
+    # admin:end
 
     def _repo_keys(self) -> dict[str, Callable[[RepoStats], Any]]:
         keys = dict(REPO_SORT)
@@ -229,7 +268,11 @@ class StatsTab(DataTab):
         return keys
 
     def _sort_keys(self) -> dict[str, Callable[[Any], Any]]:
-        return self._person_keys() if self._view == PERSON else self._repo_keys()  # type: ignore[return-value]
+        # admin:begin
+        if self._view == PERSON:
+            return self._person_keys()  # type: ignore[return-value]
+        # admin:end
+        return self._repo_keys()  # type: ignore[return-value]
 
     def _sort_by(self, key: str) -> None:
         super()._sort_by(key)
@@ -293,11 +336,19 @@ class StatsTab(DataTab):
 
         def task(progress: Callable[[int, int], None]) -> Loaded:
             pairs, errors = load_pairs(projects, lambda p: load_all_states(data, p, period))
-            evaluations = evaluate_all(data, pairs, rules, people, progress, workers, merged_commits=True)
-            rights, rights_errors = merge_rights(data, projects, workers)
+            # Commits of merged MRs and merge rights only feed the per-person view (ST-11, ST-12).
+            per_person_data = False
+            # admin:begin
+            per_person_data = True
+            # admin:end
+            evaluations = evaluate_all(data, pairs, rules, people, progress, workers, merged_commits=per_person_data)
             merge_repos: dict[str, set[str]] = {}
+            rights_errors: list[Exception] = []
+            # admin:begin
+            rights, rights_errors = merge_rights(data, projects, workers)
             for user, repos in rights.items():
                 merge_repos.setdefault(people.for_user(user).key, set()).update(repos)
+            # admin:end
             # Direct commits of the period (ST-15): only commits never checked go to GitLab.
             commit_errors: list[Exception] = []
             orphans = find_orphan_commits(data, projects, commit_period, progress=progress,
@@ -328,6 +379,7 @@ class StatsTab(DataTab):
         self._orphans = [(o, self.app.people.for_git(o.commit.author_name, o.commit.author_email)) for o in orphans]
         self.app.register_people((p.key, p.name) for _, p in self._orphans)
         self._apply_view()
+        # admin:begin
         self._load_avatars()
 
     def _load_avatars(self) -> None:
@@ -356,13 +408,18 @@ class StatsTab(DataTab):
             if image is not None:
                 self._images[user_id] = image
         self._render()
+    # admin:end
 
     # --------------------------------------------------------------- View
 
     def _apply_view(self, reset_page: bool = False) -> None:
+        authors: set[str] = set()  # user edition: no people filter (GDPR)
+        # admin:begin
         authors = set(self.app.filters.authors)
+        # admin:end
         evaluations = [e for e in self._evaluations if not authors or e.author.key in authors]
         orphans = [(o, p) for o, p in self._orphans if not authors or p.key in authors]
+        # admin:begin
         if self._view == PERSON:
             # Built from every MR so a merger's delay counts the MRs of all authors (ST-13).
             stats = per_person(self._evaluations, [p for _, p in self._orphans])
@@ -372,15 +429,18 @@ class StatsTab(DataTab):
             names = {e.author.key: e.author.name for e in evaluations}
             curves = [Series(t("Global"), series[GLOBAL_KEY], main=True)]
             curves += [Series(names.get(k, k), series[k]) for k in sorted(authors) if k in names]
-        else:
-            # The author filter restricts the MRs and commits counted (SR-03).
-            paths = [p.path for p in self.app.settings.projects if not self._repos or p.id in self._repos]
-            stats_repo = per_repo(evaluations, paths, [o.project.path for o, _ in orphans])
-            self._repo_rows = sort_rows(stats_repo, self._repo_keys()[self._sort_key], self._ascending)
-            chosen = paths if self._repos else []
-            weeks, series = weekly_scores(evaluations, chosen, key_of=by_repo)
-            curves = [Series(t("Global"), series[GLOBAL_KEY], main=True)]
-            curves += [Series(p.split("/")[-1], series[p]) for p in chosen]
+            self._render()
+            self.chart.set_data([week_label(w) for w in weeks], curves)
+            return
+        # admin:end
+        # The author filter restricts the MRs and commits counted (SR-03).
+        paths = [p.path for p in self.app.settings.projects if not self._repos or p.id in self._repos]
+        stats_repo = per_repo(evaluations, paths, [o.project.path for o, _ in orphans])
+        self._repo_rows = sort_rows(stats_repo, self._repo_keys()[self._sort_key], self._ascending)
+        chosen = paths if self._repos else []
+        weeks, series = weekly_scores(evaluations, chosen, key_of=by_repo)
+        curves = [Series(t("Global"), series[GLOBAL_KEY], main=True)]
+        curves += [Series(p.split("/")[-1], series[p]) for p in chosen]
         self._render()
         self.chart.set_data([week_label(w) for w in weeks], curves)
 
@@ -393,7 +453,7 @@ class StatsTab(DataTab):
     def _render(self) -> None:
         if self._view == REPO:
             self._repo_grid.set_rows([{
-                "repo": (stat.path, stat.path),
+                "repo": (stat.path, stat.path) if REPO_COLUMN.kind == "link" else stat.path,
                 "mr": str(stat.mr_count),
                 "merged": str(stat.merged_count),
                 "score": self._score_cell(stat.score_avg),
@@ -402,6 +462,7 @@ class StatsTab(DataTab):
                 "lead": (format_days(stat.lead_time_days), delay_details(stat.lead_times)),
             } for stat in self._repo_rows])
             return
+        # admin:begin
         rows = []
         for stat in self._person_rows:
             person = stat.person
@@ -426,11 +487,14 @@ class StatsTab(DataTab):
         if not repos:
             return t("Dev"), ""
         return t("Mergeur"), t("Peut merger sur :") + "\n" + "\n".join(repos)
+    # admin:end
 
     def forget_avatars(self) -> None:
         self._images.clear()
 
     def restyle(self) -> None:
-        self._person_grid.redraw()
         self._repo_grid.redraw()
+        # admin:begin
+        self._person_grid.redraw()
+        # admin:end
         self.chart.redraw()
