@@ -673,7 +673,7 @@ L'interface `ForgeClient` (`typing.Protocol`) décrit les opérations dont le m�
 
 | Réf. | Exigence |
 |---|---|
-| LV-01 | Déclencheur : chaque push sur `main` (GitHub Actions, runner Windows, Python 3.11). |
+| LV-01 | Déclencheur : chaque push sur `main` (GitHub Actions, runner Windows, Python 3.11). Chaque PR vers `develop` ou `main` exécute les mêmes tests et builds, sans publier. Tests en échec et erreurs de build repris en annotations GitHub. |
 | LV-02 | Étapes : tests, numéro de livraison, construction des deux éditions (tests relancés dans chacune), publication. Un échec arrête la livraison. |
 | LV-03 | Release GitHub publique, tag VR-02, titre « Gitective X.Y.Z (AAAA.MM.JJ-N) », notes générées depuis les PR. Quatre fichiers : `Gitective-admin.exe`, `Gitective-admin.zip`, `Gitective-user.exe`, `Gitective-user.zip`. |
 | LV-04 | `.zip` : code source de l'édition, à lancer avec Python 3.11+ (comme J1). `.exe` : PyInstaller, un seul fichier, sans console, icône `logo.ico` ; `config.json` et `gitective.db` sont créés à côté de l'exe. |
