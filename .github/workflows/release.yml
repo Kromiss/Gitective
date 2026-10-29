@@ -29,7 +29,11 @@ jobs:
         run: python -m pip install pyinstaller tzdata
 
       - name: Tests
-        run: python -m unittest discover -s tests -t .
+        run: |
+          python -m unittest discover -s tests -t . > test.log 2>&1 && exit 0
+          cat test.log
+          echo "::error title=Tests failed::$(grep -A25 -E '^(FAIL|ERROR):' test.log | head -150 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')"
+          exit 1
 
       - name: Release number
         id: number
