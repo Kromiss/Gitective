@@ -18,7 +18,10 @@ from gitective.review.rules import (
     score_level,
     validate_regex,
 )
-from gitective.reporting.statistics import format_days, per_person, weekly_scores
+from gitective.reporting.statistics import format_days, weekly_scores
+# admin:begin
+from gitective.reporting.statistics import per_person
+# admin:end
 from tests.factories import commit_json, mr_json, user_json
 
 TITLE = CustomRule(name="Titre conforme", field="title", pattern=r"^\[[A-Z]+-\d+\] .+", id="r_title")
@@ -188,6 +191,7 @@ class PeopleAndStatsTests(unittest.TestCase):
         user = User.from_json(user_json(5, "alice5"))
         self.assertEqual(directory.for_user(user).avatar_user_id, 9)
 
+    # admin:begin
     def test_per_person_and_weekly(self) -> None:
         people = PersonDirectory([])
         rules = make_rules()
@@ -202,6 +206,12 @@ class PeopleAndStatsTests(unittest.TestCase):
         self.assertIsNotNone(stats["u:1"].lead_time_days)
         # The merger gets a row of its own, without authored MRs (ST-13).
         self.assertEqual((stats["u:2"].mr_count, stats["u:2"].merged_count, stats["u:2"].score_avg), (0, 2, None))
+    # admin:end
+
+    def test_weekly_scores_and_days(self) -> None:
+        people, rules = PersonDirectory([]), make_rules()
+        evs = [rules.evaluate(MergeRequest.from_json(mr_json(iid=1)), "g/r", people),
+               rules.evaluate(MergeRequest.from_json(mr_json(iid=2, created_at="2026-09-28T08:00:00Z")), "g/r", people)]
         weeks, series = weekly_scores(evs, ["u:1"])
         self.assertEqual(len(weeks), 2)
         self.assertEqual(len(series["u:1"]), 2)

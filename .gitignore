@@ -14,3 +14,8 @@ projects_cache.json.tmp
 gitective.db
 gitective.db-wal
 gitective.db-shm
+# Release builds (tools/make_edition.py, PyInstaller)
+build/
+dist/
+work/
+*.spec

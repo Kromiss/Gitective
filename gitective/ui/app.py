@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from gitective.shared.i18n import t
-from gitective import APP_NAME, __version__
+from gitective import APP_NAME, BUILD, EDITION, __version__
 from gitective.forge.gitlab_client import GitLabClient
 from gitective.forge.models import MergeRequest, User
 from gitective.settings import config_file as config
@@ -189,7 +189,7 @@ class App:
             ttk.Label(header, image=self._logo_header, style="Header.TLabel").pack(side="left", padx=(0, 8), pady=8)
         ttk.Label(header, text=APP_NAME, style="Header.TLabel",
                   font=(self.theme.font[0], self.theme.font[1] + 4, "bold")).pack(side="left")
-        ttk.Label(header, text=f"v{__version__}", style="HeaderMuted.TLabel").pack(side="left", padx=(6, 0))
+        ttk.Label(header, text=" · ".join(filter(None, (f"v{__version__}", BUILD, EDITION))), style="HeaderMuted.TLabel").pack(side="left", padx=(6, 0))
         self.tab_bar = TabBar(header, self.get_theme, lambda i: self.notebook.select(i))
         self.tab_bar.pack(side="left", fill="y", padx=(24, 0))
         # Assignee, reviewer and author badges, top right of every tab (BA-01).
