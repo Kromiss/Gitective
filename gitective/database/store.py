@@ -212,8 +212,13 @@ class Store:
             conn = sqlite3.connect(self._uri, uri=True, timeout=30, check_same_thread=False)
         else:
             conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
-            conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        try:
+            if not self._uri:
+                conn.execute("PRAGMA journal_mode=WAL")  # fails first on a file that is not a database
+            conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.DatabaseError:
+            conn.close()
+            raise
         return conn
 
     @property
